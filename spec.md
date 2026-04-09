@@ -337,7 +337,7 @@ Goal:
 
 - Ship the first daily-use loop.
 
-Includes:
+Includes:/
 
 - calorie ring with macro breakdown
 - horizontal dining hall selector

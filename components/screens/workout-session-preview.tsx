@@ -1,17 +1,35 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import {
+  formatWorkoutTimerLabel,
+  getActiveWorkoutSessionView,
+} from '@/data/local/selectors';
+import { useAppData } from '@/providers/app-data-provider';
 import { ActionButton } from '@/components/ui/action-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { gymPreview } from '@/constants/preview-data';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
 
 export function WorkoutSessionPreview() {
   const router = useRouter();
+  const { finishWorkoutSession, logSet, state } = useAppData();
+  const activeWorkout = getActiveWorkoutSessionView(state);
+  const [clock, setClock] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setClock(new Date());
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
 
   return (
     <AppScreen tabbed={false} contentContainerStyle={styles.content}>
@@ -25,16 +43,44 @@ export function WorkoutSessionPreview() {
           <AppText variant="eyebrow" color={AppColors.textMuted}>
             Active workout
           </AppText>
-          <AppText variant="title">Leg Day</AppText>
+          <AppText variant="title">{activeWorkout?.session.title ?? 'Workout'}</AppText>
         </View>
         <View style={styles.timerBadge}>
           <AppText variant="label" color={AppColors.primary}>
-            38:12
+            {activeWorkout
+              ? formatWorkoutTimerLabel(activeWorkout.session.startedAt, clock)
+              : '00:00'}
           </AppText>
         </View>
       </View>
 
-      {gymPreview.exercises.map((exercise, index) => (
+      {!activeWorkout ? (
+        <SurfaceCard tone="low" style={styles.emptyCard}>
+          <AppText variant="title">No active session</AppText>
+          <AppText variant="body" dimmed>
+            Start a template or an empty workout from the Gym tab. Your local session history
+            is already being saved on device.
+          </AppText>
+          <ActionButton label="Back to Gym" variant="ghost" onPress={() => router.back()} />
+        </SurfaceCard>
+      ) : activeWorkout.exercises.length === 0 ? (
+        <SurfaceCard tone="low" style={styles.emptyCard}>
+          <AppText variant="title">Open session saved</AppText>
+          <AppText variant="body" dimmed>
+            This blank workout is persisted locally. Template-backed exercise editing lands in a
+            later module, but the session itself is already recoverable offline.
+          </AppText>
+          <ActionButton
+            label="Finish Workout"
+            variant="secondary"
+            onPress={() => {
+              finishWorkoutSession(activeWorkout.session.id);
+              router.back();
+            }}
+          />
+        </SurfaceCard>
+      ) : (
+        activeWorkout.exercises.map((exercise) => (
         <SurfaceCard key={exercise.id} style={[styles.exerciseCard, exercise.active ? styles.exerciseCardActive : null]}>
           <View style={styles.exerciseTop}>
             <View style={[styles.exerciseIcon, exercise.active ? styles.exerciseIconActive : null]}>
@@ -47,7 +93,7 @@ export function WorkoutSessionPreview() {
             <View style={styles.exerciseCopy}>
               <AppText variant="bodyStrong">{exercise.name}</AppText>
               <AppText variant="label" dimmed>
-                {exercise.sets} • {exercise.repRange}
+                {exercise.completedSets}/{exercise.targetSets} sets • {exercise.repRange}
               </AppText>
             </View>
             <View style={styles.iconRow}>
@@ -62,27 +108,37 @@ export function WorkoutSessionPreview() {
           {exercise.active ? (
             <>
               <View style={styles.metricGrid}>
-                <SetMetric label="Prev" value={exercise.previous} />
-                <SetMetric label="Lbs" value={exercise.current} highlight />
-                <SetMetric label="Reps" value={exercise.reps} />
+                <SetMetric label="Prev" value={exercise.previousLoadLabel} />
+                <SetMetric label="Lbs" value={String(exercise.currentLoad)} highlight />
+                <SetMetric label="Reps" value={String(exercise.targetReps)} />
               </View>
-              <ActionButton label="Log Set" compact />
+              <ActionButton label="Log Set" compact onPress={() => logSet(exercise.id)} />
             </>
           ) : null}
         </SurfaceCard>
-      ))}
+      )))}
 
-      <SurfaceCard tone="low" style={styles.bottomCard}>
-        <View style={styles.bottomRow}>
-          <View>
-            <AppText variant="micro" dimmed>
-              Rest timer
-            </AppText>
-            <AppText variant="title">01:30 ready</AppText>
+      {activeWorkout ? (
+        <SurfaceCard tone="low" style={styles.bottomCard}>
+          <View style={styles.bottomRow}>
+            <View>
+              <AppText variant="micro" dimmed>
+                Rest timer
+              </AppText>
+              <AppText variant="title">01:30 ready</AppText>
+            </View>
+            <ActionButton
+              label="Finish Workout"
+              variant="secondary"
+              compact
+              onPress={() => {
+                finishWorkoutSession(activeWorkout.session.id);
+                router.back();
+              }}
+            />
           </View>
-          <ActionButton label="Finish Workout" variant="secondary" compact />
-        </View>
-      </SurfaceCard>
+        </SurfaceCard>
+      ) : null}
     </AppScreen>
   );
 }
@@ -139,6 +195,9 @@ const styles = StyleSheet.create({
     backgroundColor: AppColors.surfaceLowest,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptyCard: {
+    gap: Spacing.md,
   },
   exerciseCard: {
     gap: Spacing.md,

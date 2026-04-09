@@ -17,6 +17,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
+import { AppDataProvider } from '@/providers/app-data-provider';
 import { NavigationTheme } from '@/constants/theme';
 
 void SplashScreen.preventAutoHideAsync();
@@ -43,18 +44,20 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={NavigationTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="workout/session"
-            options={{
-              animation: 'slide_from_right',
-            }}
-          />
-        </Stack>
-        <StatusBar style="dark" />
-      </ThemeProvider>
+      <AppDataProvider>
+        <ThemeProvider value={NavigationTheme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen
+              name="workout/session"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+          </Stack>
+          <StatusBar style="dark" />
+        </ThemeProvider>
+      </AppDataProvider>
     </GestureHandlerRootView>
   );
 }

@@ -10,16 +10,21 @@ import {
   View,
 } from 'react-native';
 
+import { getWeeklyActivityCards, getWeeklySummary } from '@/data/local/selectors';
+import { useAppData } from '@/providers/app-data-provider';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { profilePreview } from '@/constants/preview-data';
 import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
 
 export function ProfileScreenPreview() {
   const { width } = useWindowDimensions();
-  const visibleWeeks = profilePreview.weeks.filter((week) => new Date(week.startDate) <= new Date());
+  const { state } = useAppData();
+  const visibleWeeks = getWeeklyActivityCards(state).filter(
+    (week) => new Date(week.startDate) <= new Date(),
+  );
+  const summary = getWeeklySummary(state);
   const [activeWeek, setActiveWeek] = useState(Math.max(visibleWeeks.length - 1, 0));
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
 
@@ -50,10 +55,33 @@ export function ProfileScreenPreview() {
                   Diet
                 </AppText>
                 <View style={styles.goalMetricsRow}>
-                  <GoalMetric icon="flame-outline" color="#1D1F24" label="Calories" value={profilePreview.goals.calories} />
-                  <GoalMetric icon="food-drumstick" color="#E76F6A" label="Protein" value={profilePreview.goals.protein} material />
-                  <GoalMetric icon="peanut" color="#5B8EE6" label="Fats" value={profilePreview.goals.fats} material />
-                  <GoalMetric icon="bread-slice" color="#E2A061" label="Carbs" value={profilePreview.goals.carbs} material />
+                  <GoalMetric
+                    icon="flame-outline"
+                    color="#1D1F24"
+                    label="Calories"
+                    value={`${state.goals.calories.toLocaleString()} kcal`}
+                  />
+                  <GoalMetric
+                    icon="food-drumstick"
+                    color="#E76F6A"
+                    label="Protein"
+                    value={`${state.goals.protein}g`}
+                    material
+                  />
+                  <GoalMetric
+                    icon="peanut"
+                    color="#5B8EE6"
+                    label="Fats"
+                    value={`${state.goals.fats}g`}
+                    material
+                  />
+                  <GoalMetric
+                    icon="bread-slice"
+                    color="#E2A061"
+                    label="Carbs"
+                    value={`${state.goals.carbs}g`}
+                    material
+                  />
                 </View>
               </View>
 
@@ -70,7 +98,7 @@ export function ProfileScreenPreview() {
                       Workouts
                     </AppText>
                   </View>
-                  <AppText variant="bodyStrong">{profilePreview.goals.workouts}</AppText>
+                  <AppText variant="bodyStrong">{state.goals.workoutsPerWeek} / week</AppText>
                 </View>
               </View>
             </View>
@@ -99,7 +127,7 @@ export function ProfileScreenPreview() {
                 </View>
 
                 <View style={styles.summaryGrid}>
-                  {profilePreview.summary.map((item) => (
+                  {summary.map((item) => (
                     <View key={item.id} style={styles.summaryStat}>
                       <AppText variant="micro" dimmed>
                         {item.label}
@@ -140,7 +168,7 @@ export function ProfileScreenPreview() {
       <View style={styles.stack}>
         <AppText variant="title">Achievements</AppText>
         <View style={styles.achievementGrid}>
-          {profilePreview.achievements.map((achievement) => (
+          {state.achievements.map((achievement) => (
             <SurfaceCard key={achievement.id} style={styles.achievementCard}>
               <View style={styles.achievementTopLine}>
                 <View

@@ -1,0 +1,21 @@
+import { diningPreview, gymPreview } from '@/constants/preview-data';
+import type { GymCapacitySnapshot, PublicDiningHall } from '@/types/app-data';
+
+export const fallbackDiningHalls: PublicDiningHall[] = diningPreview.halls.map(
+  ({ imageSource: _imageSource, ...hall }) => hall,
+);
+
+export const fallbackGymCapacities: GymCapacitySnapshot[] = gymPreview.capacities.map(
+  (location) => ({
+    ...location,
+    capturedAt: new Date().toISOString(),
+  }),
+);
+
+const diningHallImageSources = Object.fromEntries(
+  diningPreview.halls.map((hall) => [hall.id, hall.imageSource as number]),
+) as Record<string, number>;
+
+export function getDiningHallImageSource(hallId: string) {
+  return diningHallImageSources[hallId] ?? diningHallImageSources['bruin-plate'];
+}

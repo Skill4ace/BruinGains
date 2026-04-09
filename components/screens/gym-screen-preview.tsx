@@ -2,23 +2,28 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { getWorkoutTemplateSummaries } from '@/data/local/selectors';
+import { formatPublicDataStatus, useGymCapacities } from '@/hooks/use-campus-data';
+import { useAppData } from '@/providers/app-data-provider';
 import { ActionButton } from '@/components/ui/action-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
-import { SectionHeader } from '@/components/ui/section-header';
 import { PressScale } from '@/components/ui/press-scale';
+import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { gymPreview } from '@/constants/preview-data';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
 
 export function GymScreenPreview() {
   const router = useRouter();
-  const templateMeta: Record<string, { count: number; focus: string }> = {
-    Push: { count: 5, focus: 'Upper body' },
-    Legs: { count: 5, focus: 'Lower body' },
-    Pull: { count: 5, focus: 'Pull focus' },
-    Upper: { count: 5, focus: 'Mixed split' },
-  };
+  const { createWorkoutTemplate, startEmptyWorkout, startWorkoutFromTemplate, state } =
+    useAppData();
+  const capacityState = useGymCapacities();
+  const templates = getWorkoutTemplateSummaries(state);
+  const capacityStatus = formatPublicDataStatus(
+    capacityState.updatedAt,
+    capacityState.source,
+    capacityState.isStale,
+  );
 
   return (
     <AppScreen contentContainerStyle={styles.content}>
@@ -29,14 +34,19 @@ export function GymScreenPreview() {
       </View>
 
       <SurfaceCard floating style={styles.topCard}>
-        <SectionHeader title="Capacity" />
+        <SectionHeader eyebrow={capacityStatus} title="Capacity" />
+        {capacityState.error ? (
+          <AppText variant="micro" color="#A56D00">
+            Refresh unavailable. Showing the best local snapshot.
+          </AppText>
+        ) : null}
         <View style={styles.capacityCompactCard}>
-          {gymPreview.capacities.map((location, index) => (
+          {capacityState.data.map((location, index) => (
             <View
               key={location.id}
               style={[
                 styles.capacityCompactRow,
-                index < gymPreview.capacities.length - 1 ? styles.capacityCompactDivider : null,
+                index < capacityState.data.length - 1 ? styles.capacityCompactDivider : null,
               ]}>
               <View style={styles.capacityCompactCopy}>
                 <View style={styles.capacityTopLine}>
@@ -70,21 +80,30 @@ export function GymScreenPreview() {
       <View style={styles.stack}>
         <View style={styles.templatesHeader}>
           <AppText variant="title">Templates</AppText>
-          <PressScale haptic="none">
+          <PressScale haptic="none" onPress={createWorkoutTemplate}>
             <View style={styles.addTemplateButton}>
               <Ionicons name="add" size={20} color={AppColors.white} />
             </View>
           </PressScale>
         </View>
         <View style={styles.templateGrid}>
-          {gymPreview.templates.map((template) => (
-            <PressScale key={template} onPress={() => router.push('/workout/session')} containerStyle={styles.templateCell}>
+          {templates.map((template) => (
+            <PressScale
+              key={template.id}
+              onPress={() => {
+                startWorkoutFromTemplate(template.id);
+                router.push('/workout/session');
+              }}
+              containerStyle={styles.templateCell}>
               <SurfaceCard style={styles.templateCard}>
                 <View style={styles.templateTopLine}>
-                  <AppText variant="title">{template}</AppText>
+                  <AppText variant="title">{template.name}</AppText>
                 </View>
                 <AppText variant="body" dimmed>
-                  {templateMeta[template]?.count ?? 0} exercises
+                  {template.exerciseCount} exercises
+                </AppText>
+                <AppText variant="micro" dimmed>
+                  {template.focus}
                 </AppText>
                 <View style={styles.templateFooter}>
                   <Ionicons name="play-circle" size={18} color={AppColors.primary} />
@@ -97,7 +116,13 @@ export function GymScreenPreview() {
           ))}
         </View>
         <View style={styles.emptyWorkoutButton}>
-          <ActionButton label="Start Empty Workout" onPress={() => router.push('/workout/session')} />
+          <ActionButton
+            label="Start Empty Workout"
+            onPress={() => {
+              startEmptyWorkout();
+              router.push('/workout/session');
+            }}
+          />
         </View>
       </View>
     </AppScreen>

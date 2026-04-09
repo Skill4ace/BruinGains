@@ -11,13 +11,21 @@ import {
   View,
 } from 'react-native';
 
+import { getDiningHallImageSource } from '@/data/public/campus-fallbacks';
+import {
+  formatMealLogMeta,
+  getNutritionSummaryForDate,
+  getRecentMealLogs,
+} from '@/data/local/selectors';
+import { formatPublicDataStatus, useDiningHalls } from '@/hooks/use-campus-data';
+import { useAppData } from '@/providers/app-data-provider';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { diningPreview } from '@/constants/preview-data';
 import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
+import type { MealPeriod, PublicDiningHall } from '@/types/app-data';
 
 const PERIODS = [
   { key: 'breakfast', label: 'Breakfast' },
@@ -38,13 +46,24 @@ const MACRO_META = {
 
 export function DiningScreenPreview() {
   const { width } = useWindowDimensions();
-  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>(getCurrentPeriod());
+  const { addQuickMealLog, setPreferredDiningPeriod, state } = useAppData();
+  const diningHallState = useDiningHalls();
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>(
+    state.userPreferences.preferredDiningPeriod,
+  );
   const [activeSlide, setActiveSlide] = useState(0);
+  const nutritionSummary = getNutritionSummaryForDate(state);
+  const recentMeals = getRecentMealLogs(state);
+  const diningStatus = formatPublicDataStatus(
+    diningHallState.updatedAt,
+    diningHallState.source,
+    diningHallState.isStale,
+  );
 
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
 
   const hallsForPeriod = useMemo(() => {
-    return diningPreview.halls
+    return diningHallState.data
       .filter((hall) => Boolean(hall.hours[selectedPeriod]))
       .sort((a, b) => {
       const aPriority = DINING_HALL_PRIORITY.indexOf(a.id as (typeof DINING_HALL_PRIORITY)[number]);
@@ -58,7 +77,7 @@ export function DiningScreenPreview() {
 
       return a.name.localeCompare(b.name);
       });
-  }, [selectedPeriod]);
+  }, [diningHallState.data, selectedPeriod]);
 
   const handleSlideEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const page = Math.round(event.nativeEvent.contentOffset.x / cardWidth);
@@ -69,6 +88,9 @@ export function DiningScreenPreview() {
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <AppText variant="headline">Dining</AppText>
+        <AppText variant="micro" dimmed>
+          {diningStatus}
+        </AppText>
       </View>
 
       <View style={styles.carouselWrap}>
@@ -87,11 +109,11 @@ export function DiningScreenPreview() {
                     Calories
                   </AppText>
                   <AppText variant="headline">
-                    {diningPreview.calories.toLocaleString()}/{diningPreview.calorieGoal.toLocaleString()}
+                    {nutritionSummary.calories.toLocaleString()}/{state.goals.calories.toLocaleString()}
                   </AppText>
                 </View>
                 <IconRing
-                  progress={diningPreview.calories / diningPreview.calorieGoal}
+                  progress={nutritionSummary.calories / state.goals.calories}
                   color={AppColors.text}
                   icon="flame"
                   size={74}
@@ -102,22 +124,22 @@ export function DiningScreenPreview() {
               <View style={styles.breakdownRows}>
                 <BreakdownRow
                   label="Protein"
-                  value={`${diningPreview.protein}/${diningPreview.proteinGoal}g`}
-                  progress={diningPreview.protein / diningPreview.proteinGoal}
+                  value={`${nutritionSummary.protein}/${state.goals.protein}g`}
+                  progress={nutritionSummary.protein / state.goals.protein}
                   iconKey={MACRO_META.protein.key}
                   color={MACRO_META.protein.color}
                 />
                 <BreakdownRow
                   label="Carbs"
-                  value={`${diningPreview.carbs}/${diningPreview.carbGoal}g`}
-                  progress={diningPreview.carbs / diningPreview.carbGoal}
+                  value={`${nutritionSummary.carbs}/${state.goals.carbs}g`}
+                  progress={nutritionSummary.carbs / state.goals.carbs}
                   iconKey={MACRO_META.carbs.key}
                   color={MACRO_META.carbs.color}
                 />
                 <BreakdownRow
                   label="Fats"
-                  value={`${diningPreview.fats}/${diningPreview.fatGoal}g`}
-                  progress={diningPreview.fats / diningPreview.fatGoal}
+                  value={`${nutritionSummary.fats}/${state.goals.fats}g`}
+                  progress={nutritionSummary.fats / state.goals.fats}
                   iconKey={MACRO_META.fats.key}
                   color={MACRO_META.fats.color}
                 />
@@ -132,23 +154,26 @@ export function DiningScreenPreview() {
                   <AppText variant="title">Logged meals</AppText>
                   <View style={styles.loggedMealsBadge}>
                     <AppText variant="label" color={AppColors.primary}>
-                      {diningPreview.recentMeals.length} today
+                      {recentMeals.length} today
                     </AppText>
                   </View>
                 </View>
-                <PressScale haptic="none">
+                <PressScale
+                  haptic="none"
+                  onPress={() => addQuickMealLog(selectedPeriod)}
+                >
                   <View style={styles.customMealButton}>
                     <Ionicons name="add" size={18} color={AppColors.primary} />
                   </View>
                 </PressScale>
               </View>
               <View style={styles.loggedMealsList}>
-                {diningPreview.recentMeals.map((meal, index) => (
-                  <View key={meal.id} style={[styles.loggedMealRow, index < diningPreview.recentMeals.length - 1 ? styles.rowSpacing : null]}>
+                {recentMeals.map((meal, index) => (
+                  <View key={meal.id} style={[styles.loggedMealRow, index < recentMeals.length - 1 ? styles.rowSpacing : null]}>
                     <View style={styles.loggedMealCopy}>
                       <AppText variant="bodyStrong">{meal.title}</AppText>
                       <AppText variant="micro" dimmed>
-                        {meal.meta}
+                        {formatMealLogMeta(meal)}
                       </AppText>
                     </View>
                     <AppText variant="title" color={AppColors.primary}>
@@ -175,7 +200,10 @@ export function DiningScreenPreview() {
               key={period.key}
               label={period.label}
               selected={period.key === selectedPeriod}
-              onPress={() => setSelectedPeriod(period.key)}
+              onPress={() => {
+                setSelectedPeriod(period.key);
+                setPreferredDiningPeriod(period.key as MealPeriod);
+              }}
             />
           ))}
         </View>
@@ -297,7 +325,7 @@ function HallRow({
   hall,
   selectedPeriod,
 }: {
-  hall: (typeof diningPreview.halls)[number];
+  hall: PublicDiningHall;
   selectedPeriod: PeriodKey;
 }) {
   const hours = hall.hours[selectedPeriod];
@@ -305,7 +333,12 @@ function HallRow({
   return (
     <PressScale haptic="none">
       <SurfaceCard style={styles.hallCard}>
-        <Image source={hall.imageSource} style={styles.hallImage} contentFit="contain" transition={150} />
+        <Image
+          source={getDiningHallImageSource(hall.id)}
+          style={styles.hallImage}
+          contentFit="contain"
+          transition={150}
+        />
         <View style={styles.hallCopy}>
           <AppText variant="title">{hall.name}</AppText>
           <AppText dimmed>{hours}</AppText>
@@ -326,24 +359,6 @@ function HallRow({
       </SurfaceCard>
     </PressScale>
   );
-}
-
-function getCurrentPeriod(date = new Date()): PeriodKey {
-  const hour = date.getHours() + date.getMinutes() / 60;
-
-  if (hour >= 6 && hour < 10.5) {
-    return 'breakfast';
-  }
-
-  if (hour >= 10.5 && hour < 15.5) {
-    return 'lunch';
-  }
-
-  if (hour >= 15.5 && hour < 21) {
-    return 'dinner';
-  }
-
-  return 'lateNight';
 }
 
 const styles = StyleSheet.create({
