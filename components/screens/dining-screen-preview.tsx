@@ -519,16 +519,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   hallImage: {
-    width: 64,
-    height: 64,
-    borderRadius: Radii.lg,
+    width: 52,
+    height: 52,
+    borderRadius: Radii.md,
     backgroundColor: AppColors.surfaceLow,
   },
   hallCopy: {
     flex: 1,
-    gap: 6,
+    gap: 4,
   },
   hallMeta: {
     alignItems: 'flex-end',

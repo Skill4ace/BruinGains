@@ -43,7 +43,7 @@ export function GymScreenPreview() {
                   <AppText variant="bodyStrong">{location.name}</AppText>
                   <AppText
                     variant="title"
-                    color={location.load >= 0.8 ? '#A56D00' : AppColors.primary}>
+                    color={location.load >= 0.7 ? '#A56D00' : AppColors.primary}>
                     {location.percent}% full
                   </AppText>
                 </View>
@@ -51,7 +51,15 @@ export function GymScreenPreview() {
                   {location.hours}
                 </AppText>
                 <View style={styles.capacityBarTrack}>
-                  <View style={[styles.capacityBarFill, { width: `${location.load * 100}%` }]} />
+                  <View
+                    style={[
+                      styles.capacityBarFill,
+                      {
+                        width: `${location.load * 100}%`,
+                        backgroundColor: location.load >= 0.7 ? '#E2A061' : AppColors.primary,
+                      },
+                    ]}
+                  />
                 </View>
               </View>
             </View>
@@ -76,7 +84,7 @@ export function GymScreenPreview() {
                   <AppText variant="title">{template}</AppText>
                 </View>
                 <AppText variant="body" dimmed>
-                  {templateMeta[template]?.count ?? 0} exercises · {templateMeta[template]?.focus ?? 'Split'}
+                  {templateMeta[template]?.count ?? 0} exercises
                 </AppText>
                 <View style={styles.templateFooter}>
                   <Ionicons name="play-circle" size={18} color={AppColors.primary} />
