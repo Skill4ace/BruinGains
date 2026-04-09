@@ -43,23 +43,35 @@ export function ProfileScreenPreview() {
               <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
             </View>
 
-            <View style={styles.goalMetricsRow}>
-              <GoalMetric icon="flame-outline" color="#1D1F24" label="Calories" value={profilePreview.goals.calories} />
-              <GoalMetric icon="food-drumstick" color="#E76F6A" label="Protein" value={profilePreview.goals.protein} material />
-              <GoalMetric icon="peanut" color="#5B8EE6" label="Fats" value={profilePreview.goals.fats} material />
-              <GoalMetric icon="bread-slice" color="#E2A061" label="Carbs" value={profilePreview.goals.carbs} material />
-            </View>
-
-            <View style={styles.goalDivider} />
-
-            <View style={styles.gymGoalRow}>
-              <View style={styles.gymGoalLeft}>
-                <Ionicons name="barbell-outline" size={16} color={AppColors.primary} />
-                <AppText variant="body" dimmed>
-                  Gym goals
+            <View style={styles.goalSections}>
+              <View style={styles.goalSection}>
+                <AppText variant="label" dimmed>
+                  Diet
                 </AppText>
+                <View style={styles.goalMetricsRow}>
+                  <GoalMetric icon="flame-outline" color="#1D1F24" label="Calories" value={profilePreview.goals.calories} />
+                  <GoalMetric icon="food-drumstick" color="#E76F6A" label="Protein" value={profilePreview.goals.protein} material />
+                  <GoalMetric icon="peanut" color="#5B8EE6" label="Fats" value={profilePreview.goals.fats} material />
+                  <GoalMetric icon="bread-slice" color="#E2A061" label="Carbs" value={profilePreview.goals.carbs} material />
+                </View>
               </View>
-              <AppText variant="bodyStrong">{profilePreview.goals.workouts}</AppText>
+
+              <View style={styles.goalDivider} />
+
+              <View style={styles.goalSection}>
+                <AppText variant="label" dimmed>
+                  Gym
+                </AppText>
+                <View style={styles.gymGoalRow}>
+                  <View style={styles.gymGoalLeft}>
+                    <Ionicons name="barbell-outline" size={16} color={AppColors.primary} />
+                    <AppText variant="body" dimmed>
+                      Workouts
+                    </AppText>
+                  </View>
+                  <AppText variant="bodyStrong">{profilePreview.goals.workouts}</AppText>
+                </View>
+              </View>
             </View>
           </SurfaceCard>
         </PressScale>
@@ -126,30 +138,45 @@ export function ProfileScreenPreview() {
 
       <View style={styles.stack}>
         <AppText variant="title">Achievements</AppText>
-        {profilePreview.achievements.map((achievement) => (
-          <SurfaceCard key={achievement.id} style={styles.achievementCard}>
-            <View
-              style={[
-                styles.achievementIcon,
-                achievement.tone === 'nutrition' ? styles.achievementIconNutrition : styles.achievementIconWorkout,
-              ]}>
-              <Ionicons
-                name={achievement.icon as keyof typeof Ionicons.glyphMap}
-                size={16}
-                color={AppColors.white}
-              />
-            </View>
-            <View style={styles.achievementCopy}>
-              <AppText variant="bodyStrong">{achievement.title}</AppText>
-              <AppText variant="body" dimmed>
-                {achievement.detail}
-              </AppText>
-              <AppText variant="micro" dimmed>
-                Earned {achievement.date}
-              </AppText>
-            </View>
-          </SurfaceCard>
-        ))}
+        <View style={styles.achievementGrid}>
+          {profilePreview.achievements.map((achievement) => (
+            <SurfaceCard key={achievement.id} style={styles.achievementCard}>
+              <View style={styles.achievementTopLine}>
+                <View
+                  style={[
+                    styles.achievementIcon,
+                    achievement.tone === 'nutrition' ? styles.achievementIconNutrition : styles.achievementIconWorkout,
+                  ]}>
+                  <Ionicons
+                    name={achievement.icon as keyof typeof Ionicons.glyphMap}
+                    size={16}
+                    color={AppColors.white}
+                  />
+                </View>
+                <View
+                  style={[
+                    styles.achievementBadge,
+                    achievement.tone === 'nutrition' ? styles.achievementBadgeNutrition : styles.achievementBadgeWorkout,
+                  ]}>
+                  <AppText
+                    variant="micro"
+                    color={achievement.tone === 'nutrition' ? '#8A6500' : AppColors.primary}>
+                    {achievement.tone === 'nutrition' ? 'Nutrition' : 'Workout'}
+                  </AppText>
+                </View>
+              </View>
+              <View style={styles.achievementCopy}>
+                <AppText variant="bodyStrong">{achievement.title}</AppText>
+                <AppText variant="body" dimmed>
+                  {achievement.detail}
+                </AppText>
+                <AppText variant="micro" dimmed>
+                  Earned {achievement.date}
+                </AppText>
+              </View>
+            </SurfaceCard>
+          ))}
+        </View>
       </View>
     </AppScreen>
   );
@@ -232,6 +259,12 @@ const styles = StyleSheet.create({
   goalsCard: {
     gap: Spacing.lg,
   },
+  goalSections: {
+    gap: Spacing.lg,
+  },
+  goalSection: {
+    gap: Spacing.md,
+  },
   goalHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -241,11 +274,11 @@ const styles = StyleSheet.create({
   goalMetricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
     flexWrap: 'wrap',
   },
   goalMetric: {
-    minWidth: '23%',
+    flex: 1,
     gap: Spacing.xs,
   },
   goalMetricTop: {
@@ -336,10 +369,21 @@ const styles = StyleSheet.create({
   pageDotActive: {
     backgroundColor: AppColors.text,
   },
-  achievementCard: {
+  achievementGrid: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexWrap: 'wrap',
     gap: Spacing.md,
+  },
+  achievementCard: {
+    width: '48%',
+    gap: Spacing.md,
+    minHeight: 188,
+  },
+  achievementTopLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
   },
   achievementIcon: {
     width: 40,
@@ -354,8 +398,20 @@ const styles = StyleSheet.create({
   achievementIconNutrition: {
     backgroundColor: AppColors.secondary,
   },
+  achievementBadge: {
+    minHeight: 24,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  achievementBadgeWorkout: {
+    backgroundColor: 'rgba(39, 116, 174, 0.12)',
+  },
+  achievementBadgeNutrition: {
+    backgroundColor: 'rgba(254, 204, 0, 0.22)',
+  },
   achievementCopy: {
-    flex: 1,
     gap: Spacing.xs,
   },
 });

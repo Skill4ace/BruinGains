@@ -222,7 +222,7 @@ export const profilePreview = {
     workouts: '4 / week',
   },
   summary: [
-    { id: 'workouts', label: 'Avg workouts', value: '5' },
+    { id: 'workouts', label: 'Workouts', value: '5' },
     { id: 'calories', label: 'Avg calories', value: '2,210' },
   ],
   weeks: [
