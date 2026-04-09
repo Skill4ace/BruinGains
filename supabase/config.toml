@@ -1,0 +1,10 @@
+project_id = "afxptjzzctiowrqqcyzh"
+
+[api]
+enabled = true
+port = 54321
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+deno_version = 2

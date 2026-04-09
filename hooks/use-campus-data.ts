@@ -8,14 +8,17 @@ import {
 import { hasSupabasePublicEnv, supabasePublicClient } from '@/lib/supabase/client';
 import type { Database } from '@/types/supabase';
 import type {
+  DiningMenuItem,
   GymCapacitySnapshot,
   PublicDiningHall,
   PublicResourceState,
 } from '@/types/app-data';
 
 const DINING_CACHE_KEY = '@bruingains/public-dining-halls';
+const DINING_MENU_ITEMS_CACHE_KEY = '@bruingains/public-dining-menu-items';
 const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities';
 const PUBLIC_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+const EMPTY_DINING_MENU_ITEMS: DiningMenuItem[] = [];
 
 type CacheEnvelope<T> = {
   data: T;
@@ -26,6 +29,24 @@ type DiningHallRow = Database['public']['Tables']['dining_halls']['Row'];
 type GymLocationRow = Database['public']['Tables']['gym_locations']['Row'];
 type GymCapacitySnapshotRow = Database['public']['Tables']['gym_capacity_snapshots']['Row'] & {
   gym_locations: GymLocationRow | null;
+};
+type LatestDiningMenuItemRow = {
+  hall_id: string;
+  hall_name: string;
+  hall_sort_order: number;
+  service_date: string;
+  meal_period: DiningMenuItem['mealPeriod'];
+  snapshot_status: string;
+  fetched_at: string;
+  recipe_id: number | null;
+  station_name: string | null;
+  item_name: string;
+  serving_size: string | null;
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fats_g: number | null;
+  item_order: number;
 };
 
 function isStale(updatedAt: string) {
@@ -96,6 +117,27 @@ function mapGymCapacityRow(row: GymCapacitySnapshotRow): GymCapacitySnapshot | n
   };
 }
 
+function mapLatestDiningMenuItemRow(row: LatestDiningMenuItemRow): DiningMenuItem {
+  return {
+    hallId: row.hall_id,
+    hallName: row.hall_name,
+    hallSortOrder: row.hall_sort_order,
+    serviceDate: row.service_date,
+    mealPeriod: row.meal_period,
+    snapshotStatus: row.snapshot_status,
+    fetchedAt: row.fetched_at,
+    recipeId: row.recipe_id,
+    stationName: row.station_name ?? 'Station',
+    itemName: row.item_name,
+    servingSize: row.serving_size,
+    calories: row.calories,
+    proteinG: row.protein_g,
+    carbsG: row.carbs_g,
+    fatsG: row.fats_g,
+    itemOrder: row.item_order,
+  };
+}
+
 async function fetchDiningHallsFromSupabase() {
   if (!hasSupabasePublicEnv || !supabasePublicClient) {
     return null;
@@ -146,6 +188,28 @@ async function fetchGymCapacitiesFromSupabase() {
 
   const snapshots = [...deduped.values()];
   return snapshots.length > 0 ? snapshots : null;
+}
+
+async function fetchLatestDiningMenuItemsFromSupabase() {
+  if (!hasSupabasePublicEnv || !supabasePublicClient) {
+    return null;
+  }
+
+  const { data, error } = await supabasePublicClient
+    .from('latest_menu_items')
+    .select(
+      'hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,item_order',
+    )
+    .order('hall_sort_order', { ascending: true })
+    .order('meal_period', { ascending: true })
+    .order('item_order', { ascending: true });
+
+  if (error || !data) {
+    throw error ?? new Error('Unable to load dining menu items');
+  }
+
+  const items = (data as LatestDiningMenuItemRow[]).map(mapLatestDiningMenuItemRow);
+  return items.length > 0 ? items : null;
 }
 
 function useCachedCampusResource<T>(
@@ -283,6 +347,14 @@ export function useGymCapacities() {
     GYM_CAPACITY_CACHE_KEY,
     fallbackGymCapacities,
     fetchGymCapacitiesFromSupabase,
+  );
+}
+
+export function useDiningMenuItems() {
+  return useCachedCampusResource(
+    DINING_MENU_ITEMS_CACHE_KEY,
+    EMPTY_DINING_MENU_ITEMS,
+    fetchLatestDiningMenuItemsFromSupabase,
   );
 }
 

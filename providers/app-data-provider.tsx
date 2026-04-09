@@ -9,6 +9,8 @@ import {
 
 import { loadLocalAppData, saveLocalAppData } from '@/data/local/storage';
 import type {
+  CreateCustomMealLogInput,
+  CreateDiningMealLogInput,
   LocalAppData,
   MealLog,
   MealLogPeriod,
@@ -22,6 +24,8 @@ type AppDataContextValue = {
   isHydrated: boolean;
   state: LocalAppData;
   addQuickMealLog: (period: MealLogPeriod) => void;
+  addCustomMealLog: (input: CreateCustomMealLogInput) => void;
+  addDiningMealLog: (input: CreateDiningMealLogInput) => void;
   createWorkoutTemplate: () => void;
   finishWorkoutSession: (sessionId: string) => void;
   logSet: (sessionExerciseId: string) => void;
@@ -80,6 +84,10 @@ const QUICK_MEAL_PRESETS: Record<
 
 function createId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createMealLogId() {
+  return createId('meal');
 }
 
 function buildSessionExercisesFromTemplate(
@@ -176,10 +184,69 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         mealLogs: [
           ...currentState.mealLogs,
           {
-            id: createId('meal'),
+            id: createMealLogId(),
             period,
             loggedAt: new Date().toISOString(),
             ...preset,
+          },
+        ],
+      };
+    });
+  }
+
+  function addCustomMealLog(input: CreateCustomMealLogInput) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        mealLogs: [
+          ...currentState.mealLogs,
+          {
+            id: createMealLogId(),
+            title: input.title.trim(),
+            period: input.period,
+            loggedAt: new Date().toISOString(),
+            calories: input.calories,
+            protein: input.protein,
+            carbs: input.carbs,
+            fats: input.fats,
+            source: 'manual',
+          },
+        ],
+      };
+    });
+  }
+
+  function addDiningMealLog(input: CreateDiningMealLogInput) {
+    const servings = Math.max(1, Math.round(input.servings));
+
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        mealLogs: [
+          ...currentState.mealLogs,
+          {
+            id: createMealLogId(),
+            title: input.item.itemName,
+            period: input.item.mealPeriod,
+            loggedAt: new Date().toISOString(),
+            calories: Math.round((input.item.calories ?? 0) * servings),
+            protein: Math.round((input.item.proteinG ?? 0) * servings),
+            carbs: Math.round((input.item.carbsG ?? 0) * servings),
+            fats: Math.round((input.item.fatsG ?? 0) * servings),
+            source: 'dining',
+            hallId: input.item.hallId,
+            hallName: input.item.hallName,
+            recipeId: input.item.recipeId ?? undefined,
+            servingSize: input.item.servingSize ?? undefined,
+            servings,
           },
         ],
       };
@@ -383,6 +450,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         isHydrated: true,
         state,
         addQuickMealLog,
+        addCustomMealLog,
+        addDiningMealLog,
         createWorkoutTemplate,
         finishWorkoutSession,
         logSet,

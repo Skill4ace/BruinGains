@@ -215,7 +215,50 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      latest_menu_items: {
+        Row: {
+          calories: number | null
+          carbs_g: number | null
+          fats_g: number | null
+          fetched_at: string | null
+          hall_id: string | null
+          hall_name: string | null
+          hall_sort_order: number | null
+          item_name: string | null
+          item_order: number | null
+          meal_period: string | null
+          protein_g: number | null
+          recipe_id: number | null
+          serving_size: string | null
+          snapshot_id: number | null
+          snapshot_status: string | null
+          service_date: string | null
+          station_name: string | null
+        }
+        Relationships: []
+      }
+      menu_items_expanded: {
+        Row: {
+          calories: number | null
+          carbs_g: number | null
+          fats_g: number | null
+          fetched_at: string | null
+          hall_id: string | null
+          hall_name: string | null
+          hall_sort_order: number | null
+          item_name: string | null
+          item_order: number | null
+          meal_period: string | null
+          protein_g: number | null
+          recipe_id: number | null
+          serving_size: string | null
+          snapshot_id: number | null
+          snapshot_status: string | null
+          service_date: string | null
+          station_name: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never

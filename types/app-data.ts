@@ -46,6 +46,10 @@ export type MealLog = {
   fats: number;
   source: 'dining' | 'manual';
   hallId?: string;
+  hallName?: string;
+  recipeId?: number;
+  servingSize?: string;
+  servings?: number;
 };
 
 export type ExerciseLibraryEntry = {
@@ -196,4 +200,37 @@ export type PublicResourceState<T> = {
   isStale: boolean;
   source: PublicResourceSource;
   updatedAt: string | null;
+};
+
+export type DiningMenuItem = {
+  hallId: string;
+  hallName: string;
+  hallSortOrder: number;
+  serviceDate: string;
+  mealPeriod: MealPeriod;
+  snapshotStatus: string;
+  fetchedAt: string;
+  recipeId: number | null;
+  stationName: string;
+  itemName: string;
+  servingSize: string | null;
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatsG: number | null;
+  itemOrder: number;
+};
+
+export type CreateCustomMealLogInput = {
+  title: string;
+  period: MealLogPeriod;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+};
+
+export type CreateDiningMealLogInput = {
+  item: DiningMenuItem;
+  servings: number;
 };

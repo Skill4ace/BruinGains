@@ -229,11 +229,23 @@ export function getActiveWorkoutSessionView(
 }
 
 export function formatMealLogMeta(meal: MealLog) {
+  const parts = [];
+
   if (meal.period === 'lateNight') {
-    return 'Late Night';
+    parts.push('Late Night');
+  } else {
+    parts.push(`${meal.period.slice(0, 1).toUpperCase()}${meal.period.slice(1)}`);
   }
 
-  return `${meal.period.slice(0, 1).toUpperCase()}${meal.period.slice(1)}`;
+  if (meal.hallName) {
+    parts.push(meal.hallName);
+  }
+
+  if (meal.servings && meal.servings > 1) {
+    parts.push(`${meal.servings} servings`);
+  }
+
+  return parts.join(' • ');
 }
 
 export function formatWorkoutTimerLabel(startedAt: string, referenceDate = new Date()) {
