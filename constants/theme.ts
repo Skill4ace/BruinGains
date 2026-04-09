@@ -178,7 +178,7 @@ export const Typography = {
 
 export const Layout = {
   pagePadding: Spacing.lg,
-  tabBarHeight: 72,
+  tabBarHeight: 84,
   maxContentWidth: 560,
 } as const;
 

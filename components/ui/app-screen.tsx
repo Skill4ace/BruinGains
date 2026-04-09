@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Layout.pagePadding,
   },
   contentContainerTabbed: {
-    paddingBottom: Layout.tabBarHeight + 72,
+    paddingBottom: Layout.tabBarHeight + 20,
   },
   contentContainerStack: {
     paddingBottom: 48,

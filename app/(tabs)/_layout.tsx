@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
+import { StyleSheet } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { AppColors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
+import { AppColors, Radii, Typography } from '@/constants/theme';
 
 export default function TabLayout() {
   return (
@@ -25,27 +26,28 @@ export default function TabLayout() {
           marginTop: 2,
         },
         tabBarItemStyle: {
-          borderRadius: Radii.pill,
-          marginHorizontal: 3,
-          marginVertical: 3,
+          borderRadius: Radii.md,
+          marginHorizontal: 6,
+          marginVertical: 6,
           minHeight: 52,
           overflow: 'hidden',
         },
         tabBarActiveBackgroundColor: AppColors.primary,
         tabBarStyle: {
           position: 'absolute',
-          left: Spacing.md,
-          right: Spacing.md,
-          bottom: Spacing.md,
-          height: 72,
-          paddingTop: 7,
-          paddingBottom: 7,
-          paddingHorizontal: 7,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 84,
+          paddingTop: 6,
+          paddingBottom: 10,
+          paddingHorizontal: 10,
           backgroundColor: AppColors.surfaceLowest,
-          borderTopWidth: 0,
-          borderRadius: Radii.pill,
-          overflow: 'hidden',
-          ...Shadows.floating,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: AppColors.outlineVariant,
+          borderRadius: 0,
+          elevation: 0,
+          shadowOpacity: 0,
         },
       }}
     >

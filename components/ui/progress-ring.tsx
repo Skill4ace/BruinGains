@@ -23,6 +23,7 @@ type ProgressRingProps = {
   compact?: boolean;
   color?: string;
   trackColor?: string;
+  hideLabel?: boolean;
 };
 
 export function ProgressRing({
@@ -35,6 +36,7 @@ export function ProgressRing({
   compact = false,
   color = AppColors.primary,
   trackColor = AppColors.surfaceHighest,
+  hideLabel = false,
 }: ProgressRingProps) {
   const clampedProgress = Math.max(0, Math.min(progress, 1));
   const animatedProgress = useSharedValue(0);
@@ -79,19 +81,21 @@ export function ProgressRing({
           originY={size / 2}
         />
       </Svg>
-      <View style={styles.label}>
-        <AppText variant={compact ? 'display' : 'heroNumber'}>{value}</AppText>
-        {unit ? (
-          <AppText variant="label" dimmed>
-            {unit}
-          </AppText>
-        ) : null}
-        {caption ? (
-          <AppText variant="micro" dimmed>
-            {caption}
-          </AppText>
-        ) : null}
-      </View>
+      {!hideLabel ? (
+        <View style={styles.label}>
+          <AppText variant={compact ? 'display' : 'heroNumber'}>{value}</AppText>
+          {unit ? (
+            <AppText variant="label" dimmed>
+              {unit}
+            </AppText>
+          ) : null}
+          {caption ? (
+            <AppText variant="micro" dimmed>
+              {caption}
+            </AppText>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
