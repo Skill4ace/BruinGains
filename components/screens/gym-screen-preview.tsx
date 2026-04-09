@@ -1,159 +1,98 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ActionButton } from '@/components/ui/action-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
-import { CapacityMeter } from '@/components/ui/capacity-meter';
 import { SectionHeader } from '@/components/ui/section-header';
-import { SegmentedChip } from '@/components/ui/segmented-chip';
+import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { gymPreview } from '@/constants/preview-data';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
 
 export function GymScreenPreview() {
   const router = useRouter();
+  const templateMeta: Record<string, { count: number; focus: string }> = {
+    Push: { count: 5, focus: 'Upper body' },
+    Legs: { count: 5, focus: 'Lower body' },
+    Pull: { count: 5, focus: 'Pull focus' },
+    Upper: { count: 5, focus: 'Mixed split' },
+  };
 
   return (
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View style={styles.headerCopy}>
-          <AppText variant="eyebrow" color={AppColors.textMuted}>
-            Gym
-          </AppText>
-          <AppText variant="headline">Crowding + training</AppText>
-        </View>
-        <View style={styles.headerAction}>
-          <Ionicons name="barbell" size={16} color={AppColors.primary} />
+          <AppText variant="headline">Gym</AppText>
         </View>
       </View>
 
-      <SurfaceCard floating style={styles.capacityCard}>
-        <SectionHeader title="Gym Capacity" />
-        <View style={styles.capacityStack}>
-          {gymPreview.capacities.map((location) => (
-            <CapacityMeter
+      <SurfaceCard floating style={styles.topCard}>
+        <SectionHeader title="Capacity" />
+        <View style={styles.capacityCompactCard}>
+          {gymPreview.capacities.map((location, index) => (
+            <View
               key={location.id}
-              name={location.name}
-              status={location.status}
-              percent={location.percent}
-              load={location.load}
-              tone={location.tone}
-            />
-          ))}
-        </View>
-        <ActionButton label="View Live Schedules" variant="ghost" compact />
-      </SurfaceCard>
-
-      <SurfaceCard style={styles.prCard}>
-        <View style={styles.prIcon}>
-          <Ionicons name="trophy" size={16} color={AppColors.white} />
-        </View>
-        <View style={styles.prCopy}>
-          <AppText variant="micro" dimmed>
-            Latest PR
-          </AppText>
-          <AppText variant="title">Bench Press: 225 lbs</AppText>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
-      </SurfaceCard>
-
-      <View style={styles.stack}>
-        <SectionHeader title="Activity Streak" />
-        <SurfaceCard tone="low" style={styles.streakCard}>
-          <View style={styles.weekRow}>
-            {gymPreview.weekStrip.map((day) => {
-              const isActive = 'active' in day && day.active;
-              const isHighlighted = 'highlighted' in day && day.highlighted;
-
-              return (
-                <View key={day.id} style={styles.weekItem}>
-                  <AppText variant="micro" dimmed>
-                    {day.label}
+              style={[
+                styles.capacityCompactRow,
+                index < gymPreview.capacities.length - 1 ? styles.capacityCompactDivider : null,
+              ]}>
+              <View style={styles.capacityCompactCopy}>
+                <View style={styles.capacityTopLine}>
+                  <AppText variant="bodyStrong">{location.name}</AppText>
+                  <AppText
+                    variant="title"
+                    color={location.load >= 0.8 ? '#A56D00' : AppColors.primary}>
+                    {location.percent}% full
                   </AppText>
-                  <View
-                    style={[
-                      styles.weekDot,
-                      isActive ? styles.weekDotActive : null,
-                      isHighlighted ? styles.weekDotHighlight : null,
-                      !isActive && !isHighlighted ? styles.weekDotFuture : null,
-                    ]}
-                  >
-                    {isActive ? <Ionicons name="checkmark" size={12} color={AppColors.white} /> : null}
-                    {isHighlighted ? <Ionicons name="flash" size={12} color="#5C4B00" /> : null}
-                  </View>
                 </View>
-              );
-            })}
-          </View>
-        </SurfaceCard>
-      </View>
-
-      <View style={styles.stack}>
-        <ActionButton label="Start Workout" onPress={() => router.push('/workout/session')} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {gymPreview.templates.map((template) => (
-            <SegmentedChip key={template} label={template} />
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.stack}>
-        <SectionHeader title="Current logging" />
-        {gymPreview.exercises.map((exercise) => (
-          <SurfaceCard key={exercise.id} style={[styles.exerciseCard, exercise.active ? styles.exerciseCardActive : null]}>
-            <View style={styles.exerciseTop}>
-              <View style={[styles.exerciseIcon, exercise.active ? styles.exerciseIconActive : null]}>
-                <Ionicons
-                  name={exercise.active ? 'play' : 'barbell-outline'}
-                  size={14}
-                  color={exercise.active ? AppColors.white : AppColors.primary}
-                />
-              </View>
-              <View style={styles.exerciseCopy}>
-                <AppText variant="bodyStrong">{exercise.name}</AppText>
-                <AppText variant="label" dimmed>
-                  {exercise.sets} • {exercise.repRange}
+                <AppText variant="micro" dimmed>
+                  {location.hours}
                 </AppText>
-              </View>
-              <Ionicons name="ellipsis-vertical" size={16} color={AppColors.textSubtle} />
-            </View>
-            {exercise.active ? (
-              <>
-                <View style={styles.metricGrid}>
-                  <Metric label="Prev" value={exercise.previous} />
-                  <Metric label="Lbs" value={exercise.current} highlight />
-                  <Metric label="Reps" value={exercise.reps} />
+                <View style={styles.capacityBarTrack}>
+                  <View style={[styles.capacityBarFill, { width: `${location.load * 100}%` }]} />
                 </View>
-                <ActionButton label="Log Set" compact />
-              </>
-            ) : null}
-          </SurfaceCard>
-        ))}
+              </View>
+            </View>
+          ))}
+        </View>
+      </SurfaceCard>
+
+      <View style={styles.stack}>
+        <View style={styles.templatesHeader}>
+          <AppText variant="title">Templates</AppText>
+          <PressScale haptic="none">
+            <View style={styles.addTemplateButton}>
+              <Ionicons name="add" size={20} color={AppColors.white} />
+            </View>
+          </PressScale>
+        </View>
+        <View style={styles.templateGrid}>
+          {gymPreview.templates.map((template) => (
+            <PressScale key={template} onPress={() => router.push('/workout/session')} containerStyle={styles.templateCell}>
+              <SurfaceCard style={styles.templateCard}>
+                <View style={styles.templateTopLine}>
+                  <AppText variant="title">{template}</AppText>
+                </View>
+                <AppText variant="body" dimmed>
+                  {templateMeta[template]?.count ?? 0} exercises · {templateMeta[template]?.focus ?? 'Split'}
+                </AppText>
+                <View style={styles.templateFooter}>
+                  <Ionicons name="play-circle" size={18} color={AppColors.primary} />
+                  <AppText variant="label" color={AppColors.primary}>
+                    Start workout
+                  </AppText>
+                </View>
+              </SurfaceCard>
+            </PressScale>
+          ))}
+        </View>
+        <View style={styles.emptyWorkoutButton}>
+          <ActionButton label="Start Empty Workout" onPress={() => router.push('/workout/session')} />
+        </View>
       </View>
     </AppScreen>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  highlight = false,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <View style={styles.metricCell}>
-      <AppText variant="micro" dimmed>
-        {label}
-      </AppText>
-      <AppText variant="title" color={highlight ? AppColors.primary : AppColors.text}>
-        {value}
-      </AppText>
-    </View>
   );
 }
 
@@ -170,113 +109,80 @@ const styles = StyleSheet.create({
   headerCopy: {
     gap: Spacing.xs,
   },
-  headerAction: {
-    width: 34,
-    height: 34,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLowest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   stack: {
     gap: Spacing.md,
   },
-  capacityCard: {
-    gap: Spacing.lg,
-  },
-  capacityStack: {
-    gap: Spacing.lg,
-  },
-  prCard: {
+  templatesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.md,
   },
-  prIcon: {
-    width: 42,
-    height: 42,
+  addTemplateButton: {
+    width: 36,
+    height: 36,
     borderRadius: Radii.pill,
-    backgroundColor: '#A66F00',
+    backgroundColor: AppColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  prCopy: {
-    flex: 1,
+  topCard: {
+    gap: Spacing.lg,
+  },
+  capacityCompactCard: {
+    gap: Spacing.lg,
+  },
+  capacityCompactRow: {
+    gap: Spacing.sm,
+  },
+  capacityCompactDivider: {
+    paddingBottom: Spacing.md,
+  },
+  capacityCompactCopy: {
     gap: Spacing.xs,
+    flex: 1,
   },
-  streakCard: {
-    gap: Spacing.md,
-  },
-  weekRow: {
+  capacityTopLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  weekItem: {
     alignItems: 'center',
-    gap: Spacing.sm,
-    flex: 1,
+    gap: Spacing.md,
   },
-  weekDot: {
-    width: 30,
-    height: 30,
+  capacityBarTrack: {
+    height: 6,
     borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
     backgroundColor: AppColors.surfaceHighest,
+    marginTop: Spacing.xs,
   },
-  weekDotActive: {
-    backgroundColor: AppColors.primaryContainer,
-  },
-  weekDotHighlight: {
-    backgroundColor: AppColors.secondary,
-  },
-  weekDotFuture: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: AppColors.textSubtle,
-  },
-  chipRow: {
-    gap: Spacing.sm,
-    paddingRight: Spacing.md,
-  },
-  exerciseCard: {
-    gap: Spacing.md,
-  },
-  exerciseCardActive: {
-    borderWidth: 2,
-    borderColor: AppColors.primaryContainer,
-  },
-  exerciseTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  exerciseIcon: {
-    width: 40,
-    height: 40,
+  capacityBarFill: {
+    height: '100%',
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: AppColors.primary,
   },
-  exerciseIconActive: {
-    backgroundColor: AppColors.primaryContainer,
-  },
-  exerciseCopy: {
-    flex: 1,
-    gap: Spacing.xs,
-  },
-  metricGrid: {
+  templateGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.md,
   },
-  metricCell: {
-    flex: 1,
-    gap: Spacing.xs,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 2,
-    borderBottomColor: AppColors.surfaceHighest,
+  templateCell: {
+    width: '48%',
+  },
+  templateCard: {
+    gap: Spacing.md,
+    minHeight: 128,
+  },
+  templateTopLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  templateFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  emptyWorkoutButton: {
+    marginTop: Spacing.lg,
   },
 });

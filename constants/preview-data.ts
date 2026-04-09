@@ -11,7 +11,7 @@ export const diningPreview = {
     {
       id: 'bruin-plate',
       name: 'Bruin Plate',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/BP_Cookbook_Spreads3858-bruin-plate.jpg',
+      imageSource: require('../Ucla dining hall logos /bruin plate.png'),
       fitPercent: 94,
       hours: {
         breakfast: '7:00 AM - 9:00 AM',
@@ -23,7 +23,7 @@ export const diningPreview = {
     {
       id: 'epicuria-covel',
       name: 'Epicuria at Covel',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/Antipasto-Platter-2100x600-ai.jpg',
+      imageSource: require('../Ucla dining hall logos /epicuria at covel.png'),
       fitPercent: 92,
       hours: {
         breakfast: null,
@@ -34,8 +34,8 @@ export const diningPreview = {
     },
     {
       id: 'de-neve',
-      name: 'De Neve Dining',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/5DM45162-de-neve-hero-alt.jpg',
+      name: 'De Neve',
+      imageSource: require('../Ucla dining hall logos /De Neve.png'),
       fitPercent: 88,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -47,7 +47,7 @@ export const diningPreview = {
     {
       id: 'feast-rieber',
       name: 'Feast at Rieber',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/Antipasto-Platter-2100x600-ai.jpg',
+      imageSource: require('../Ucla dining hall logos /Feast.png'),
       fitPercent: 90,
       hours: {
         breakfast: null,
@@ -59,7 +59,7 @@ export const diningPreview = {
     {
       id: 'bruin-cafe',
       name: 'Bruin Cafe',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/Sandwich_RoastBeef_MG_1663-3000x800-1-scaled.jpg',
+      imageSource: require('../Ucla dining hall logos /bruin cafe.png'),
       fitPercent: 81,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -71,7 +71,7 @@ export const diningPreview = {
     {
       id: 'cafe-1919',
       name: 'Cafe 1919',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/05/Il-Carnivora_MG_9177-2100x600v2-1024x293.jpg',
+      imageSource: require('../Ucla dining hall logos /cafe 1919.png'),
       fitPercent: 76,
       hours: {
         breakfast: null,
@@ -82,8 +82,8 @@ export const diningPreview = {
     },
     {
       id: 'study-hedrick',
-      name: 'The Study at Hedrick',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/The-Study-Day-2-219_MV-hero.jpg',
+      name: 'The Study',
+      imageSource: require('../Ucla dining hall logos /the study.png'),
       fitPercent: 84,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -95,7 +95,7 @@ export const diningPreview = {
     {
       id: 'the-drey',
       name: 'The Drey',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/the-drey-hero-Beef-Pho_MG_1174.jpg',
+      imageSource: require('../Ucla dining hall logos /drey.png'),
       fitPercent: 79,
       hours: {
         breakfast: null,
@@ -107,7 +107,7 @@ export const diningPreview = {
     {
       id: 'rendezvous',
       name: 'Rendezvous',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/BBQ-Chicken-Quesadilla_MG_1035-rendezvous-alt-hero-3-1.jpg',
+      imageSource: require('../Ucla dining hall logos /rende.png'),
       fitPercent: 86,
       hours: {
         breakfast: null,
@@ -119,7 +119,7 @@ export const diningPreview = {
     {
       id: 'bruin-bowl',
       name: 'Bruin Bowl',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/04/bruin-bowl-hero-ai-Mediterranean_8R9A6378.jpg',
+      imageSource: require('../Ucla dining hall logos /Bruin Bowl.png'),
       fitPercent: 91,
       hours: {
         breakfast: null,
@@ -131,7 +131,7 @@ export const diningPreview = {
     {
       id: 'epicuria-ackerman',
       name: 'Epicuria at Ackerman',
-      imageUrl: 'https://dining.ucla.edu/wp-content/uploads/2025/03/Epicuria-at-Ackerman-Shoot-135-2100x800-1.jpg',
+      imageSource: require('../Ucla dining hall logos /epic at akermann.png'),
       fitPercent: 83,
       hours: {
         breakfast: null,
@@ -162,21 +162,21 @@ export const gymPreview = {
     {
       id: 'wooden',
       name: 'Wooden Center',
-      status: 'Open until 11PM',
-      load: 0.82,
-      percent: 82,
+      hours: '6:00 AM - 11:00 PM',
+      load: 0.3,
+      percent: 30,
       tone: 'blue' as const,
     },
     {
       id: 'bfit',
       name: 'BFit Gym',
-      status: 'Busy right now',
-      load: 0.94,
-      percent: 94,
+      hours: '6:00 AM - 10:00 PM',
+      load: 0.75,
+      percent: 75,
       tone: 'gold' as const,
     },
   ],
-  templates: ['Push Day', 'Leg Day', 'Pull', 'Upper'],
+  templates: ['Push', 'Legs', 'Pull', 'Upper'],
   exercises: [
     {
       id: 'ex-1',

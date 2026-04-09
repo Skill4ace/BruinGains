@@ -14,13 +14,7 @@ export function ProfileScreenPreview() {
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View style={styles.headerCopy}>
-          <AppText variant="eyebrow" color={AppColors.textMuted}>
-            Profile
-          </AppText>
-          <AppText variant="headline">Weekly summary</AppText>
-        </View>
-        <View style={styles.headerAction}>
-          <Ionicons name="person" size={16} color={AppColors.primary} />
+          <AppText variant="headline">Profile</AppText>
         </View>
       </View>
 
@@ -141,14 +135,6 @@ const styles = StyleSheet.create({
   },
   headerCopy: {
     gap: Spacing.xs,
-  },
-  headerAction: {
-    width: 34,
-    height: 34,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLowest,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   stack: {
     gap: Spacing.md,

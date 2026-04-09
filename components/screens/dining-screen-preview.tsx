@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
 import {
@@ -10,12 +11,10 @@ import {
   View,
 } from 'react-native';
 
-import { ActionButton } from '@/components/ui/action-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { ProgressRing } from '@/components/ui/progress-ring';
-import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { diningPreview } from '@/constants/preview-data';
 import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
@@ -27,12 +26,14 @@ const PERIODS = [
   { key: 'lateNight', label: 'Late Night' },
 ] as const;
 
+const DINING_HALL_PRIORITY = ['bruin-plate', 'de-neve', 'epicuria-covel'] as const;
+
 type PeriodKey = (typeof PERIODS)[number]['key'];
 
 const MACRO_META = {
-  protein: { icon: 'flame', color: '#E76F6A' },
-  carbs: { icon: 'leaf', color: '#E2A061' },
-  fats: { icon: 'water', color: '#5B8EE6' },
+  protein: { key: 'protein', color: '#E76F6A' },
+  carbs: { key: 'carbs', color: '#E2A061' },
+  fats: { key: 'fats', color: '#5B8EE6' },
 } as const;
 
 export function DiningScreenPreview() {
@@ -41,19 +42,22 @@ export function DiningScreenPreview() {
   const [activeSlide, setActiveSlide] = useState(0);
 
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
-  const caloriesLeft = Math.max(diningPreview.calorieGoal - diningPreview.calories, 0);
 
   const hallsForPeriod = useMemo(() => {
-    return [...diningPreview.halls].sort((a, b) => {
-      const aOpen = Boolean(a.hours[selectedPeriod]);
-      const bOpen = Boolean(b.hours[selectedPeriod]);
+    return diningPreview.halls
+      .filter((hall) => Boolean(hall.hours[selectedPeriod]))
+      .sort((a, b) => {
+      const aPriority = DINING_HALL_PRIORITY.indexOf(a.id as (typeof DINING_HALL_PRIORITY)[number]);
+      const bPriority = DINING_HALL_PRIORITY.indexOf(b.id as (typeof DINING_HALL_PRIORITY)[number]);
+      const normalizedAPriority = aPriority === -1 ? Number.MAX_SAFE_INTEGER : aPriority;
+      const normalizedBPriority = bPriority === -1 ? Number.MAX_SAFE_INTEGER : bPriority;
 
-      if (aOpen !== bOpen) {
-        return Number(bOpen) - Number(aOpen);
+      if (normalizedAPriority !== normalizedBPriority) {
+        return normalizedAPriority - normalizedBPriority;
       }
 
-      return b.fitPercent - a.fitPercent;
-    });
+      return a.name.localeCompare(b.name);
+      });
   }, [selectedPeriod]);
 
   const handleSlideEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -75,87 +79,6 @@ export function DiningScreenPreview() {
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handleSlideEnd}
         >
-          <View style={[styles.page, { width: cardWidth }]}>
-            <SurfaceCard floating style={styles.calorieCard}>
-              <View style={styles.calorieSideStat}>
-                <AppText variant="headline">{caloriesLeft}</AppText>
-                <AppText variant="micro" dimmed>
-                  Calories left
-                </AppText>
-              </View>
-              <View style={styles.calorieCenter}>
-                <IconRing
-                  progress={diningPreview.calories / diningPreview.calorieGoal}
-                  color={AppColors.text}
-                  icon="flame"
-                  size={108}
-                />
-                <AppText variant="headline">{diningPreview.calories}</AppText>
-                <AppText variant="micro" dimmed>
-                  Consumed
-                </AppText>
-              </View>
-              <View style={styles.calorieSideStat}>
-                <AppText variant="headline">{diningPreview.calorieGoal}</AppText>
-                <AppText variant="micro" dimmed>
-                  Target
-                </AppText>
-              </View>
-            </SurfaceCard>
-
-            <View style={styles.macroRow}>
-              <MacroMiniCard
-                label="Protein left"
-                value={`${Math.max(diningPreview.proteinGoal - diningPreview.protein, 0)}g`}
-                progress={diningPreview.protein / diningPreview.proteinGoal}
-                icon={MACRO_META.protein.icon}
-                color={MACRO_META.protein.color}
-              />
-              <MacroMiniCard
-                label="Carbs left"
-                value={`${Math.max(diningPreview.carbGoal - diningPreview.carbs, 0)}g`}
-                progress={diningPreview.carbs / diningPreview.carbGoal}
-                icon={MACRO_META.carbs.icon}
-                color={MACRO_META.carbs.color}
-              />
-              <MacroMiniCard
-                label="Fat left"
-                value={`${Math.max(diningPreview.fatGoal - diningPreview.fats, 0)}g`}
-                progress={diningPreview.fats / diningPreview.fatGoal}
-                icon={MACRO_META.fats.icon}
-                color={MACRO_META.fats.color}
-              />
-            </View>
-          </View>
-
-          <View style={[styles.page, { width: cardWidth }]}>
-            <SurfaceCard floating style={styles.loggedMealsCard}>
-              <View style={styles.loggedMealsHeader}>
-                <AppText variant="title">Logged meals</AppText>
-                <View style={styles.loggedMealsBadge}>
-                  <AppText variant="label" color={AppColors.primary}>
-                    {diningPreview.recentMeals.length} today
-                  </AppText>
-                </View>
-              </View>
-              <View style={styles.loggedMealsList}>
-                {diningPreview.recentMeals.map((meal, index) => (
-                  <View key={meal.id} style={[styles.loggedMealRow, index < diningPreview.recentMeals.length - 1 ? styles.rowSpacing : null]}>
-                    <View style={styles.loggedMealCopy}>
-                      <AppText variant="bodyStrong">{meal.title}</AppText>
-                      <AppText variant="micro" dimmed>
-                        {meal.meta}
-                      </AppText>
-                    </View>
-                    <AppText variant="title" color={AppColors.primary}>
-                      {meal.calories}
-                    </AppText>
-                  </View>
-                ))}
-              </View>
-            </SurfaceCard>
-          </View>
-
           <View style={[styles.page, { width: cardWidth }]}>
             <SurfaceCard floating style={styles.breakdownCard}>
               <View style={styles.breakdownTop}>
@@ -180,37 +103,72 @@ export function DiningScreenPreview() {
                 <BreakdownRow
                   label="Protein"
                   value={`${diningPreview.protein}/${diningPreview.proteinGoal}g`}
-                  icon={MACRO_META.protein.icon}
+                  progress={diningPreview.protein / diningPreview.proteinGoal}
+                  iconKey={MACRO_META.protein.key}
                   color={MACRO_META.protein.color}
                 />
                 <BreakdownRow
                   label="Carbs"
                   value={`${diningPreview.carbs}/${diningPreview.carbGoal}g`}
-                  icon={MACRO_META.carbs.icon}
+                  progress={diningPreview.carbs / diningPreview.carbGoal}
+                  iconKey={MACRO_META.carbs.key}
                   color={MACRO_META.carbs.color}
                 />
                 <BreakdownRow
                   label="Fats"
                   value={`${diningPreview.fats}/${diningPreview.fatGoal}g`}
-                  icon={MACRO_META.fats.icon}
+                  progress={diningPreview.fats / diningPreview.fatGoal}
+                  iconKey={MACRO_META.fats.key}
                   color={MACRO_META.fats.color}
                 />
               </View>
+            </SurfaceCard>
+          </View>
 
-              <ActionButton label="Edit Daily Goals" variant="ghost" />
+          <View style={[styles.page, { width: cardWidth }]}>
+            <SurfaceCard floating style={styles.loggedMealsCard}>
+              <View style={styles.loggedMealsHeader}>
+                <View style={styles.loggedMealsHeaderCopy}>
+                  <AppText variant="title">Logged meals</AppText>
+                  <View style={styles.loggedMealsBadge}>
+                    <AppText variant="label" color={AppColors.primary}>
+                      {diningPreview.recentMeals.length} today
+                    </AppText>
+                  </View>
+                </View>
+                <PressScale haptic="none">
+                  <View style={styles.customMealButton}>
+                    <Ionicons name="add" size={18} color={AppColors.primary} />
+                  </View>
+                </PressScale>
+              </View>
+              <View style={styles.loggedMealsList}>
+                {diningPreview.recentMeals.map((meal, index) => (
+                  <View key={meal.id} style={[styles.loggedMealRow, index < diningPreview.recentMeals.length - 1 ? styles.rowSpacing : null]}>
+                    <View style={styles.loggedMealCopy}>
+                      <AppText variant="bodyStrong">{meal.title}</AppText>
+                      <AppText variant="micro" dimmed>
+                        {meal.meta}
+                      </AppText>
+                    </View>
+                    <AppText variant="title" color={AppColors.primary}>
+                      {meal.calories}
+                    </AppText>
+                  </View>
+                ))}
+              </View>
             </SurfaceCard>
           </View>
         </ScrollView>
 
         <View style={styles.pageDots}>
-          {[0, 1, 2].map((index) => (
+          {[0, 1].map((index) => (
             <View key={index} style={[styles.pageDot, activeSlide === index ? styles.pageDotActive : null]} />
           ))}
         </View>
       </View>
 
       <View style={styles.stack}>
-        <SectionHeader title="Dining Halls" />
         <View style={styles.periodGrid}>
           {PERIODS.map((period) => (
             <PeriodChip
@@ -241,63 +199,13 @@ function PeriodChip({
   onPress: () => void;
 }) {
   return (
-    <PressScale onPress={onPress}>
+    <PressScale onPress={onPress} containerStyle={styles.periodChipPress}>
       <View style={[styles.periodChip, selected ? styles.periodChipSelected : styles.periodChipDefault]}>
         <AppText variant="label" color={selected ? AppColors.white : AppColors.textMuted}>
           {label}
         </AppText>
       </View>
     </PressScale>
-  );
-}
-
-function MacroMiniCard({
-  label,
-  value,
-  progress,
-  icon,
-  color,
-}: {
-  label: string;
-  value: string;
-  progress: number;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-}) {
-  return (
-    <SurfaceCard style={styles.macroMiniCard}>
-      <View style={styles.macroMiniCopy}>
-        <AppText variant="headline">{value}</AppText>
-        <AppText variant="body" dimmed>
-          {label}
-        </AppText>
-      </View>
-      <IconRing progress={progress} color={color} icon={icon} size={72} strokeWidth={8} />
-    </SurfaceCard>
-  );
-}
-
-function BreakdownRow({
-  label,
-  value,
-  icon,
-  color,
-}: {
-  label: string;
-  value: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-}) {
-  return (
-    <View style={styles.breakdownRow}>
-      <View style={styles.breakdownLeft}>
-        <Ionicons name={icon} size={14} color={color} />
-        <AppText variant="body" dimmed>
-          {label}
-        </AppText>
-      </View>
-      <AppText variant="body">{value}</AppText>
-    </View>
   );
 }
 
@@ -334,6 +242,57 @@ function IconRing({
   );
 }
 
+function BreakdownRow({
+  label,
+  value,
+  progress,
+  iconKey,
+  color,
+}: {
+  label: string;
+  value: string;
+  progress: number;
+  iconKey: keyof typeof MACRO_META;
+  color: string;
+}) {
+  return (
+    <View style={styles.breakdownRow}>
+      <View style={styles.breakdownMain}>
+        <View style={styles.breakdownTopRow}>
+          <View style={styles.breakdownLeft}>
+            <MacroIcon iconKey={iconKey} color={color} />
+            <AppText variant="body" dimmed>
+              {label}
+            </AppText>
+          </View>
+          <AppText variant="body">{value}</AppText>
+        </View>
+        <View style={styles.breakdownBarTrack}>
+          <View style={[styles.breakdownBarFill, { width: `${Math.max(0, Math.min(progress, 1)) * 100}%`, backgroundColor: color }]} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function MacroIcon({
+  iconKey,
+  color,
+}: {
+  iconKey: keyof typeof MACRO_META;
+  color: string;
+}) {
+  if (iconKey === 'protein') {
+    return <MaterialCommunityIcons name="food-drumstick" size={14} color={color} />;
+  }
+
+  if (iconKey === 'carbs') {
+    return <MaterialCommunityIcons name="bread-slice" size={14} color={color} />;
+  }
+
+  return <MaterialCommunityIcons name="peanut" size={14} color={color} />;
+}
+
 function HallRow({
   hall,
   selectedPeriod,
@@ -342,23 +301,27 @@ function HallRow({
   selectedPeriod: PeriodKey;
 }) {
   const hours = hall.hours[selectedPeriod];
-  const isOpen = Boolean(hours);
 
   return (
     <PressScale haptic="none">
       <SurfaceCard style={styles.hallCard}>
-        <Image source={{ uri: hall.imageUrl }} style={styles.hallImage} contentFit="cover" transition={150} />
+        <Image source={hall.imageSource} style={styles.hallImage} contentFit="contain" transition={150} />
         <View style={styles.hallCopy}>
           <AppText variant="title">{hall.name}</AppText>
-          <AppText dimmed>{hours ?? 'Closed'}</AppText>
+          <AppText dimmed>{hours}</AppText>
         </View>
         <View style={styles.hallMeta}>
-          <AppText variant="headline" color={isOpen ? AppColors.primary : AppColors.textSubtle}>
-            {hall.fitPercent}%
-          </AppText>
-          <AppText variant="micro" dimmed>
-            fit
-          </AppText>
+          <View style={styles.hallMetaValue}>
+            <View style={styles.hallMetaCopy}>
+              <AppText variant="headline" color={AppColors.primary}>
+                {hall.fitPercent}%
+              </AppText>
+              <AppText variant="micro" dimmed>
+                full
+              </AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
+          </View>
         </View>
       </SurfaceCard>
     </PressScale>
@@ -402,28 +365,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.lg,
   },
-  calorieSideStat: {
-    gap: Spacing.xs,
-    width: 76,
-  },
-  calorieCenter: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    gap: Spacing.sm,
-  },
-  macroRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  macroMiniCard: {
-    flex: 1,
-    gap: Spacing.md,
-    minHeight: 138,
-  },
-  macroMiniCopy: {
-    gap: Spacing.xs,
-  },
   iconRingWrap: {
     alignSelf: 'center',
     alignItems: 'center',
@@ -448,10 +389,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
+  loggedMealsHeaderCopy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+    flex: 1,
+  },
   loggedMealsBadge: {
     minHeight: 32,
     borderRadius: Radii.pill,
     paddingHorizontal: Spacing.md,
+    backgroundColor: AppColors.surfaceLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customMealButton: {
+    width: 36,
+    height: 36,
+    borderRadius: Radii.pill,
     backgroundColor: AppColors.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
@@ -470,22 +426,30 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   breakdownCard: {
-    gap: Spacing.lg,
+    gap: Spacing.xl,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
   },
   breakdownTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: Spacing.md,
+    gap: Spacing.lg,
   },
   breakdownCopy: {
-    gap: Spacing.xs,
+    gap: Spacing.sm,
     flex: 1,
   },
   breakdownRows: {
-    gap: Spacing.md,
+    gap: Spacing.lg,
   },
   breakdownRow: {
+    gap: Spacing.sm,
+  },
+  breakdownMain: {
+    gap: Spacing.md,
+  },
+  breakdownTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -495,6 +459,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+  },
+  breakdownBarTrack: {
+    height: 4,
+    borderRadius: Radii.pill,
+    overflow: 'hidden',
+    backgroundColor: '#ECECF4',
+  },
+  breakdownBarFill: {
+    height: '100%',
+    borderRadius: Radii.pill,
   },
   pageDots: {
     flexDirection: 'row',
@@ -517,11 +491,14 @@ const styles = StyleSheet.create({
   periodGrid: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.sm,
   },
-  periodChip: {
+  periodChipPress: {
     flex: 1,
+  },
+  periodChip: {
+    width: '100%',
     minHeight: 50,
     borderRadius: Radii.pill,
     alignItems: 'center',
@@ -540,19 +517,30 @@ const styles = StyleSheet.create({
   hallCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
   },
   hallImage: {
-    width: 68,
-    height: 68,
+    width: 64,
+    height: 64,
     borderRadius: Radii.lg,
     backgroundColor: AppColors.surfaceLow,
   },
   hallCopy: {
     flex: 1,
-    gap: Spacing.xs,
+    gap: 6,
   },
   hallMeta: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minWidth: 102,
+  },
+  hallMetaValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  hallMetaCopy: {
     alignItems: 'flex-end',
     gap: 2,
   },

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { AppColors, Radii, Spacing } from '@/constants/theme';
@@ -7,7 +8,7 @@ import { AppText } from '@/components/ui/app-text';
 
 type CapacityMeterProps = {
   name: string;
-  status: string;
+  hours: string;
   percent: number;
   load: number;
   tone?: 'blue' | 'gold';
@@ -15,7 +16,7 @@ type CapacityMeterProps = {
 
 export function CapacityMeter({
   name,
-  status,
+  hours,
   percent,
   load,
   tone = 'blue',
@@ -33,24 +34,64 @@ export function CapacityMeter({
     width: `${width.value * 100}%`,
   }));
 
+  const statusPill = getOccupancyLabel(load);
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.header}>
         <View style={styles.copy}>
           <AppText variant="bodyStrong">{name}</AppText>
-          <AppText variant="micro" color={tone === 'gold' ? '#A56D00' : AppColors.success}>
-            {status}
-          </AppText>
+          <View style={styles.metaRow}>
+            <AppText variant="micro" dimmed>
+              {hours}
+            </AppText>
+            <View style={[styles.statusPill, { backgroundColor: statusPill.backgroundColor }]}>
+              <AppText variant="micro" color={statusPill.textColor}>
+                {statusPill.label}
+              </AppText>
+            </View>
+          </View>
         </View>
         <AppText variant="title" color={tone === 'gold' ? '#A56D00' : AppColors.primary}>
-          {percent}%
+          {percent}% full
         </AppText>
       </View>
       <View style={styles.track}>
-        <Animated.View style={[styles.fill, tone === 'gold' ? styles.fillGold : styles.fillBlue, animatedStyle]} />
+        <Animated.View style={[styles.fill, animatedStyle]}>
+          <LinearGradient
+            colors={['#2774AE', '#FECC00', '#E7645C']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.gradientFill}
+          />
+        </Animated.View>
       </View>
     </View>
   );
+}
+
+function getOccupancyLabel(load: number) {
+  if (load >= 0.9) {
+    return {
+      label: 'Very busy',
+      backgroundColor: 'rgba(231, 100, 92, 0.12)',
+      textColor: '#B13830',
+    };
+  }
+
+  if (load >= 0.7) {
+    return {
+      label: 'Moderate',
+      backgroundColor: 'rgba(244, 180, 0, 0.16)',
+      textColor: '#8A6500',
+    };
+  }
+
+  return {
+    label: 'Light',
+    backgroundColor: 'rgba(39, 116, 174, 0.12)',
+    textColor: '#1E6298',
+  };
 }
 
 const styles = StyleSheet.create({
@@ -67,6 +108,19 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     flex: 1,
   },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  statusPill: {
+    minHeight: 22,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   track: {
     height: 6,
     borderRadius: Radii.pill,
@@ -76,11 +130,10 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: Radii.pill,
+    overflow: 'hidden',
   },
-  fillBlue: {
-    backgroundColor: AppColors.primaryContainer,
-  },
-  fillGold: {
-    backgroundColor: AppColors.secondary,
+  gradientFill: {
+    width: '100%',
+    height: '100%',
   },
 });
