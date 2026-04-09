@@ -31,12 +31,17 @@ type SyncRequest = {
   force?: boolean
   hallIds?: string[]
   mealPeriods?: MealPeriod[]
+  skipNutritionFetch?: boolean
   targetDate?: string
   trigger?: string
 }
 
 type DiningHallRow = {
+  breakfast_hours?: string | null
+  dinner_hours?: string | null
   id: string
+  late_night_hours?: string | null
+  lunch_hours?: string | null
   name: string
   source_path: string | null
 }
@@ -228,6 +233,10 @@ function buildAtAGlanceUrl(targetDate: string) {
   return `${UCLA_DINING_BASE_URL}${DINING_MENU_AGLANCE_PATH}/?date=${targetDate}`
 }
 
+function buildHoursUrl() {
+  return `${UCLA_DINING_BASE_URL}/hours/`
+}
+
 function extractRecipeIdFromHref(href: string | undefined) {
   if (!href) {
     return null
@@ -304,6 +313,72 @@ function parseHallMenuPage(
     throw new Error(
       `Menu page date mismatch for ${hall.id}: expected ${targetDate}, received ${pageDateLabel ?? 'unknown'}`,
     )
+  }
+
+  const openMealPeriods = getOpenMealPeriodsForHall(hall, selectedMealPeriods)
+  const combinedServiceRoot = $('#dinnermenu').length ? $('#dinnermenu').nextAll('div').first() : null
+  const combinedServiceLabel = cleanText(
+    combinedServiceRoot?.find('.category-heading h2').first().text(),
+  )
+
+  if (
+    combinedServiceRoot &&
+    !$('#lunchmenu').length &&
+    combinedServiceLabel.toLowerCase().includes('lunch / dinner')
+  ) {
+    const combinedItems: ParsedMenuItem[] = []
+    let combinedItemOrder = 0
+
+    combinedServiceRoot.find('.meal-station').each((_, stationElement) => {
+      const stationName = cleanText(
+        $(stationElement).find('.category-heading h2').first().text(),
+      ) || 'Station'
+
+      $(stationElement)
+        .find('section.recipe-card, .recipe-card')
+        .each((__, recipeCard) => {
+          const itemName = cleanText($(recipeCard).find('.menu-item-title h3').first().text())
+          const recipeId = extractRecipeIdFromHref(
+            $(recipeCard).find('.recipe-detail-link').attr('href'),
+          )
+
+          if (!itemName || recipeId === null) {
+            return
+          }
+
+          const badgeLabels = $(recipeCard)
+            .find('.menu-item-meta-data img')
+            .map((___, badgeImage) =>
+              normalizeBadgeLabel(
+                $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
+              ),
+            )
+            .get()
+            .filter((badge): badge is string => Boolean(badge))
+
+          combinedItems.push({
+            badgeLabels: [...new Set(badgeLabels)],
+            itemName,
+            itemOrder: combinedItemOrder,
+            recipeId,
+            stationName,
+          })
+          combinedItemOrder += 1
+        })
+    })
+
+    return {
+      hallId: hall.id,
+      hallName: hall.name,
+      pageDateLabel,
+      sourceUrl: buildHallUrl(hall.source_path ?? hall.id, targetDate),
+      sections: openMealPeriods
+        .filter((mealPeriod) => mealPeriod !== 'breakfast')
+        .map((mealPeriod) => ({
+          items: combinedItems,
+          mealPeriod,
+        })),
+    }
   }
 
   const sections: ParsedMealSection[] = []
@@ -387,6 +462,117 @@ function parseHallMenuPage(
   }
 }
 
+function getOpenMealPeriodsForHall(
+  hall: DiningHallRow,
+  selectedMealPeriods: MealPeriod[] | undefined,
+) {
+  const candidatePeriods = selectedMealPeriods?.length
+    ? selectedMealPeriods
+    : PERIOD_CONFIG.map((period) => period.key)
+
+  return candidatePeriods.filter((mealPeriod) => {
+    if (mealPeriod === 'breakfast') {
+      return Boolean(hall.breakfast_hours)
+    }
+
+    if (mealPeriod === 'lunch') {
+      return Boolean(hall.lunch_hours)
+    }
+
+    if (mealPeriod === 'dinner') {
+      return Boolean(hall.dinner_hours)
+    }
+
+    return Boolean(hall.late_night_hours)
+  })
+}
+
+function parseAllDayMenuPage(
+  html: string,
+  hall: DiningHallRow,
+  targetDate: string,
+  selectedMealPeriods: MealPeriod[] | undefined,
+) {
+  const $ = cheerio.load(html)
+  const pageDateLabel = extractDateLabel(
+    cleanText($('p.at-a-glance-page-title').first().text()),
+  )
+
+  if (!isExpectedPageDate(pageDateLabel, targetDate)) {
+    throw new Error(
+      `All-day page date mismatch for ${hall.id}: expected ${targetDate}, received ${pageDateLabel ?? 'unknown'}`,
+    )
+  }
+
+  const allDayAnchor = $("#alldaymenu, #all-day-menu").first()
+
+  if (!allDayAnchor.length) {
+    return null
+  }
+
+  const stationRoots = $('.force-left-full-width.meal-station')
+
+  if (!stationRoots.length) {
+    return null
+  }
+
+  const items: ParsedMenuItem[] = []
+  let itemOrder = 0
+
+  stationRoots.each((_, stationElement) => {
+    const stationName = cleanText(
+      $(stationElement).find('.category-heading h2').first().text(),
+    ) || 'Station'
+
+    $(stationElement)
+      .find('section.recipe-card')
+      .each((__, recipeCard) => {
+        const itemName = cleanText($(recipeCard).find('.menu-item-title h3').first().text())
+        const recipeId = extractRecipeIdFromHref(
+          $(recipeCard).find('.recipe-detail-link').attr('href'),
+        )
+
+        if (!itemName || recipeId === null) {
+          return
+        }
+
+        const badgeLabels = $(recipeCard)
+          .find('.menu-item-meta-data img')
+          .map((___, badgeImage) =>
+            normalizeBadgeLabel(
+              $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
+            ),
+          )
+          .get()
+          .filter((badge): badge is string => Boolean(badge))
+
+        items.push({
+          badgeLabels: [...new Set(badgeLabels)],
+          itemName,
+          itemOrder,
+          recipeId,
+          stationName,
+        })
+        itemOrder += 1
+      })
+  })
+
+  if (!items.length) {
+    return null
+  }
+
+  return {
+    hallId: hall.id,
+    hallName: hall.name,
+    pageDateLabel,
+    sourceUrl: buildHallUrl(hall.source_path ?? hall.id, targetDate),
+    sections: getOpenMealPeriodsForHall(hall, selectedMealPeriods).map((mealPeriod) => ({
+      items,
+      mealPeriod,
+    })),
+  }
+}
+
 function buildHallLookup(halls: DiningHallRow[]) {
   const byName = new Map<string, DiningHallRow>()
   const bySourcePath = new Map<string, DiningHallRow>()
@@ -403,13 +589,192 @@ function buildHallLookup(halls: DiningHallRow[]) {
     }
   })
 
-  byName.set(normalizeComparableValue('De Neve Dining'), halls.find((hall) => hall.id === 'de-neve') ?? halls[0])
-  byName.set(
-    normalizeComparableValue('The Study at Hedrick'),
-    halls.find((hall) => hall.id === 'study-hedrick') ?? halls[0],
-  )
+  const deNeveHall = halls.find((hall) => hall.id === 'de-neve')
+  const studyHedrickHall = halls.find((hall) => hall.id === 'study-hedrick')
+
+  if (deNeveHall) {
+    byName.set(normalizeComparableValue('De Neve Dining'), deNeveHall)
+  }
+
+  if (studyHedrickHall) {
+    byName.set(
+      normalizeComparableValue('The Study at Hedrick'),
+      studyHedrickHall,
+    )
+  }
 
   return { byName, bySourcePath }
+}
+
+function findSectionStartIndex(html: string, anchorId: string) {
+  const singleQuoteIndex = html.indexOf(`<div id='${anchorId}'`)
+  const doubleQuoteIndex = html.indexOf(`<div id="${anchorId}"`)
+
+  if (singleQuoteIndex === -1) {
+    return doubleQuoteIndex
+  }
+
+  if (doubleQuoteIndex === -1) {
+    return singleQuoteIndex
+  }
+
+  return Math.min(singleQuoteIndex, doubleQuoteIndex)
+}
+
+function extractAtAGlanceSectionHtml(html: string, anchorId: string) {
+  const sectionStart = findSectionStartIndex(html, anchorId)
+
+  if (sectionStart === -1) {
+    return null
+  }
+
+  const nextBoundaryIndexes = [
+    ...PERIOD_CONFIG.map((period) => period.anchorId)
+      .filter((candidateAnchorId) => candidateAnchorId !== anchorId)
+      .map((candidateAnchorId) => findSectionStartIndex(html, candidateAnchorId))
+      .filter((index) => index > sectionStart),
+    html.indexOf("<div class='at-a-glance-menu'><h2>Icon Legend"),
+    html.indexOf('<div class="at-a-glance-menu"><h2>Icon Legend'),
+  ].filter((index) => index > sectionStart)
+
+  const sectionEnd =
+    nextBoundaryIndexes.length > 0 ? Math.min(...nextBoundaryIndexes) : html.length
+
+  return html.slice(sectionStart, sectionEnd)
+}
+
+function extractHallBlocks(sectionHtml: string) {
+  const hallBlockPattern =
+    /<div class=['"][^'"]*at-a-glance-menu__dining-location[^'"]*['"][^>]*>/g
+  const matches = [...sectionHtml.matchAll(hallBlockPattern)]
+
+  return matches.map((match, index) => {
+    const startIndex = match.index ?? 0
+    const endIndex =
+      index < matches.length - 1
+        ? matches[index + 1].index ?? sectionHtml.length
+        : sectionHtml.length
+
+    return sectionHtml.slice(startIndex, endIndex)
+  })
+}
+
+function extractFragmentText(fragment: string | null | undefined) {
+  if (!fragment) {
+    return ''
+  }
+
+  return cleanText(cheerio.load(`<div>${fragment}</div>`).text())
+}
+
+function extractStationBlocks(hallBlockHtml: string) {
+  const stationBlockPattern = /<div class=['"]at-a-glance-menu__meal-station['"]>/g
+  const matches = [...hallBlockHtml.matchAll(stationBlockPattern)]
+
+  return matches.map((match, index) => {
+    const startIndex = match.index ?? 0
+    const endIndex =
+      index < matches.length - 1
+        ? matches[index + 1].index ?? hallBlockHtml.length
+        : hallBlockHtml.length
+
+    return hallBlockHtml.slice(startIndex, endIndex)
+  })
+}
+
+function parseAtAGlanceHallBlock(
+  hallBlockHtml: string,
+  lookup: ReturnType<typeof buildHallLookup>,
+  mealPeriod: MealPeriod,
+  pageDateLabel: string | null,
+  targetDate: string,
+) {
+  const hallName = extractFragmentText(hallBlockHtml.match(/<h3>(.*?)<\/h3>/s)?.[1] ?? null)
+  const detailHref =
+    hallBlockHtml.match(/<h3>.*?<\/h3>\s*<a href=['"]([^'"]+)['"]/s)?.[1] ??
+    hallBlockHtml.match(/<a href=['"]([^'"]+)['"][^>]*>\s*Detailed Menu\s*<\/a>/s)?.[1]
+  const hall =
+    (detailHref
+      ? lookup.bySourcePath.get(normalizeComparableValue(detailHref.replace(/\/$/, '')))
+      : null) ??
+    lookup.byName.get(normalizeComparableValue(hallName))
+
+  if (!hall) {
+    return null
+  }
+
+  const noServiceMessage = extractFragmentText(hallBlockHtml.match(/<p>(.*?)<\/p>/s)?.[1] ?? null)
+
+  if (noServiceMessage.toLowerCase().includes('there is no')) {
+    return {
+      hallId: hall.id,
+      hallName: hall.name,
+      pageDateLabel,
+      sourceUrl: detailHref
+        ? `${UCLA_DINING_BASE_URL}${detailHref}`
+        : buildAtAGlanceUrl(targetDate),
+      sections: [] as ParsedMealSection[],
+    }
+  }
+
+  const items: ParsedMenuItem[] = []
+  let itemOrder = 0
+
+  for (const stationBlockHtml of extractStationBlocks(hallBlockHtml)) {
+    const $ = cheerio.load(`<div id="station-root">${stationBlockHtml}</div>`)
+    const stationRoot = $('#station-root').children().first()
+    const rawStationName = cleanText(stationRoot.find('h4').first().text())
+    const stationName = rawStationName && rawStationName !== '.' ? rawStationName : 'Station'
+
+    stationRoot
+      .find('li')
+      .each((__, itemElement) => {
+        const recipeLink = $(itemElement).find("a[href*='recipe=']").first()
+        const itemName = cleanText(recipeLink.text())
+        const recipeId = extractRecipeIdFromHref(recipeLink.attr('href'))
+
+        if (!itemName || recipeId === null) {
+          return
+        }
+
+        const badgeLabels = $(itemElement)
+          .find('img')
+          .map((___, badgeImage) =>
+            normalizeBadgeLabel(
+              $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
+            ),
+          )
+          .get()
+          .filter((badge): badge is string => Boolean(badge))
+
+        items.push({
+          badgeLabels: [...new Set(badgeLabels)],
+          itemName,
+          itemOrder,
+          recipeId,
+          stationName,
+        })
+        itemOrder += 1
+      })
+  }
+
+  return {
+    hallId: hall.id,
+    hallName: hall.name,
+    pageDateLabel,
+    sourceUrl: detailHref
+      ? `${UCLA_DINING_BASE_URL}${detailHref}`
+      : buildAtAGlanceUrl(targetDate),
+    sections:
+      items.length > 0
+        ? [
+            {
+              items,
+              mealPeriod,
+            },
+          ]
+        : [],
+  }
 }
 
 function parseAtAGlancePage(
@@ -437,104 +802,102 @@ function parseAtAGlancePage(
       continue
     }
 
-    const sectionRoot = $(`#${period.anchorId}`)
+    const sectionHtml = extractAtAGlanceSectionHtml(html, period.anchorId)
 
-    if (!sectionRoot.length) {
+    if (!sectionHtml) {
       continue
     }
 
-    sectionRoot
-      .children('.wp-block-columns')
-      .first()
-      .find('.at-a-glance-menu__dining-location')
-      .each((_, locationElement) => {
-        const hallName = cleanText($(locationElement).find('h3').first().text())
-        const detailHref = $(locationElement)
-          .children("a[href^='/']")
-          .first()
-          .attr('href')
-        const hall =
-          (detailHref
-            ? lookup.bySourcePath.get(
-                normalizeComparableValue(detailHref.replace(/\/$/, '')),
-              )
-            : null) ??
-          lookup.byName.get(normalizeComparableValue(hallName))
+    for (const hallBlockHtml of extractHallBlocks(sectionHtml)) {
+      const parsedHall = parseAtAGlanceHallBlock(
+        hallBlockHtml,
+        lookup,
+        period.key,
+        pageDateLabel,
+        targetDate,
+      )
 
-        if (!hall) {
-          return
-        }
+      if (!parsedHall) {
+        continue
+      }
 
-        const noServiceMessage = cleanText($(locationElement).children('p').first().text())
+      const existing = parsedHalls.get(parsedHall.hallId)
 
-        if (noServiceMessage.toLowerCase().includes('there is no')) {
-          return
-        }
-
-        const items: ParsedMenuItem[] = []
-        let itemOrder = 0
-
-        $(locationElement)
-          .children('.at-a-glance-menu__meal-station')
-          .each((__, stationElement) => {
-            const rawStationName = cleanText($(stationElement).find('h4').first().text())
-            const stationName = rawStationName && rawStationName !== '.' ? rawStationName : 'Station'
-
-            $(stationElement)
-              .find('li')
-              .each((___, itemElement) => {
-                const recipeLink = $(itemElement).find("a[href*='recipe=']").first()
-                const itemName = cleanText(recipeLink.text())
-                const recipeId = extractRecipeIdFromHref(recipeLink.attr('href'))
-
-                if (!itemName || recipeId === null) {
-                  return
-                }
-
-                const badgeLabels = $(itemElement)
-                  .find('img')
-                  .map((____, badgeImage) =>
-                    normalizeBadgeLabel(
-                      $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
-                    ),
-                  )
-                  .get()
-                  .filter((badge): badge is string => Boolean(badge))
-
-                items.push({
-                  badgeLabels: [...new Set(badgeLabels)],
-                  itemName,
-                  itemOrder,
-                  recipeId,
-                  stationName,
-                })
-                itemOrder += 1
-              })
-          })
-
-        if (!items.length) {
-          return
-        }
-
-        const existing = parsedHalls.get(hall.id)
-        const nextSection = {
-          items,
-          mealPeriod: period.key,
-        }
-
-        parsedHalls.set(hall.id, {
-          hallId: hall.id,
-          hallName: hall.name,
-          pageDateLabel,
-          sourceUrl: detailHref
-            ? `${UCLA_DINING_BASE_URL}${detailHref}`
-            : buildAtAGlanceUrl(targetDate),
-          sections: existing ? [...existing.sections, nextSection] : [nextSection],
-        })
+      parsedHalls.set(parsedHall.hallId, {
+        ...parsedHall,
+        sections: existing
+          ? [...existing.sections, ...parsedHall.sections]
+          : parsedHall.sections,
       })
+    }
   }
 
   return parsedHalls
+}
+
+function normalizeHoursValue(value: string) {
+  const cleanedValue = cleanText(value)
+
+  if (!cleanedValue || cleanedValue.toLowerCase() === 'closed') {
+    return null
+  }
+
+  return cleanedValue
+}
+
+async function syncDiningHallHours(
+  admin: ReturnType<typeof createAdminClient>,
+  halls: DiningHallRow[],
+) {
+  const html = await fetchHtml(buildHoursUrl())
+  const $ = cheerio.load(html)
+  const lookup = buildHallLookup(halls)
+  const updates: Array<Record<string, string | null>> = []
+
+  $('.dining-hours-table tbody tr').each((_, row) => {
+    const cells = $(row).find('td')
+
+    if (cells.length < 5) {
+      return
+    }
+
+    const locationLink = cells.eq(0).find("a[href^='http'], a[href^='/']").first()
+    const locationHref = locationLink.attr('href')
+    const locationName = cleanText(locationLink.text()) || cleanText(cells.eq(0).text())
+    const hall =
+      (locationHref
+        ? lookup.bySourcePath.get(normalizeComparableValue(locationHref.replace(/\/$/, '')))
+        : null) ??
+      lookup.byName.get(normalizeComparableValue(locationName))
+
+    if (!hall) {
+      return
+    }
+
+    updates.push({
+      id: hall.id,
+      breakfast_hours: normalizeHoursValue(cells.eq(1).text()),
+      lunch_hours: normalizeHoursValue(cells.eq(2).text()),
+      dinner_hours: normalizeHoursValue(cells.eq(3).text()),
+      late_night_hours: normalizeHoursValue(cells.eq(4).text()),
+    })
+  })
+
+  for (const update of updates) {
+    const { error } = await admin
+      .from('dining_halls')
+      .update({
+        breakfast_hours: update.breakfast_hours ?? null,
+        lunch_hours: update.lunch_hours ?? null,
+        dinner_hours: update.dinner_hours ?? null,
+        late_night_hours: update.late_night_hours ?? null,
+      })
+      .eq('id', update.id as string)
+
+    if (error) {
+      throw error
+    }
+  }
 }
 
 function parseNutritionPage(html: string): NutritionDetail {
@@ -629,13 +992,76 @@ async function mapLimit<TInput, TOutput>(
   return results
 }
 
-async function populateRecipeNutritionCache(
+async function hydrateRecipeNutritionCacheFromDatabase(
+  admin: ReturnType<typeof createAdminClient>,
   cache: Map<number, NutritionDetail | null>,
   recipeIds: number[],
 ) {
+  const recipeIdsToLoad = [...new Set(recipeIds)].filter((recipeId) => !cache.has(recipeId))
+
+  if (!recipeIdsToLoad.length) {
+    return
+  }
+
+  const { data, error } = await admin
+    .from('menu_items_expanded')
+    .select(
+      'recipe_id,item_name,serving_size,calories,protein_g,carbs_g,fats_g,ingredients,nutrition_facts,allergen_labels,fetched_at',
+    )
+    .in('recipe_id', recipeIdsToLoad)
+    .order('fetched_at', { ascending: false })
+
+  if (error || !data) {
+    throw error ?? new Error('Unable to load cached nutrition from database')
+  }
+
+  for (const row of data) {
+    const recipeId = row.recipe_id
+
+    if (typeof recipeId !== 'number' || cache.has(recipeId)) {
+      continue
+    }
+
+    cache.set(recipeId, {
+      allergenLabels: Array.isArray(row.allergen_labels)
+        ? row.allergen_labels.filter((label): label is string => typeof label === 'string')
+        : [],
+      calories: row.calories,
+      carbsG: row.carbs_g,
+      fatsG: row.fats_g,
+      ingredients: Array.isArray(row.ingredients)
+        ? row.ingredients.filter((ingredient): ingredient is string => typeof ingredient === 'string')
+        : [],
+      itemName: row.item_name,
+      nutritionFacts: Array.isArray(row.nutrition_facts)
+        ? (row.nutrition_facts as ParsedNutritionFact[])
+        : [],
+      proteinG: row.protein_g,
+      servingSize: row.serving_size,
+    })
+  }
+}
+
+async function populateRecipeNutritionCache(
+  admin: ReturnType<typeof createAdminClient>,
+  cache: Map<number, NutritionDetail | null>,
+  recipeIds: number[],
+  options?: {
+    skipNetworkFetch?: boolean
+  },
+) {
+  await hydrateRecipeNutritionCacheFromDatabase(admin, cache, recipeIds)
+
   const missingRecipeIds = [...new Set(recipeIds)].filter((recipeId) => !cache.has(recipeId))
 
-  const entries = await mapLimit(missingRecipeIds, 4, async (recipeId) => {
+  if (options?.skipNetworkFetch) {
+    missingRecipeIds.forEach((recipeId) => {
+      cache.set(recipeId, null)
+    })
+    return
+  }
+
+  const entries = await mapLimit(missingRecipeIds, 1, async (recipeId) => {
     try {
       const html = await fetchHtml(`${UCLA_DINING_BASE_URL}/menu-item/?recipe=${recipeId}`)
       return [recipeId, parseNutritionPage(html)] as const
@@ -749,10 +1175,13 @@ async function syncDiningMenus(
   selectedHallIds: string[] | undefined,
   selectedMealPeriods: MealPeriod[] | undefined,
   triggerSource: string,
+  options?: {
+    skipNutritionFetch?: boolean
+  },
 ) {
   const { data: halls, error: hallsError } = await admin
     .from('dining_halls')
-    .select('id,name,source_path')
+    .select('id,name,source_path,breakfast_hours,lunch_hours,dinner_hours,late_night_hours')
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
 
@@ -771,6 +1200,10 @@ async function syncDiningMenus(
   let errorCount = 0
   const nutritionCache = new Map<number, NutritionDetail | null>()
   let atAGlanceMenus: Map<string, ParsedHallMenu> | null = null
+
+  if (targetDate === getLosAngelesToday()) {
+    await syncDiningHallHours(admin, halls as DiningHallRow[])
+  }
 
   async function getAtAGlanceMenus() {
     if (atAGlanceMenus) {
@@ -800,31 +1233,39 @@ async function syncDiningMenus(
       const sourceUrl = buildHallUrl(hall.source_path, targetDate)
 
       try {
-        const html = await fetchHtml(sourceUrl)
-        let parsedHall = parseHallMenuPage(
-          html,
-          hall,
-          targetDate,
-          selectedMealPeriods,
-        )
+        const sourceHtml = await fetchHtml(sourceUrl)
         const isBoutiqueHall = BOUTIQUE_HALL_IDS.includes(
           hall.id as (typeof BOUTIQUE_HALL_IDS)[number],
         )
+        const forceAtAGlance = hall.id === 'feast-rieber'
+        const allDayHall = forceAtAGlance
+          ? null
+          : parseAllDayMenuPage(
+              sourceHtml,
+              hall,
+              targetDate,
+              selectedMealPeriods,
+            )
+        const shouldUseAtAGlance =
+          forceAtAGlance || (!allDayHall && !isBoutiqueHall)
+        const atAGlanceHall = shouldUseAtAGlance
+          ? (await getAtAGlanceMenus()).get(hall.id)
+          : null
+        let parsedHall = allDayHall ?? atAGlanceHall ?? {
+          hallId: hall.id,
+          hallName: hall.name,
+          pageDateLabel: null,
+          sourceUrl: buildAtAGlanceUrl(targetDate),
+          sections: [] as ParsedMealSection[],
+        }
 
-        if (parsedHall.sections.length === 0 || isBoutiqueHall) {
-          const atAGlanceHall = (await getAtAGlanceMenus()).get(hall.id)
-
-          if (atAGlanceHall) {
-            parsedHall = atAGlanceHall
-          } else if (isBoutiqueHall) {
-            parsedHall = {
-              hallId: hall.id,
-              hallName: hall.name,
-              pageDateLabel: null,
-              sourceUrl: buildAtAGlanceUrl(targetDate),
-              sections: [],
-            }
-          }
+        if (!forceAtAGlance && !allDayHall && !atAGlanceHall) {
+          parsedHall = parseHallMenuPage(
+            sourceHtml,
+            hall,
+            targetDate,
+            selectedMealPeriods,
+          )
         }
 
         const expectedMealPeriods =
@@ -850,7 +1291,9 @@ async function syncDiningMenus(
         const recipeIds = parsedHall.sections.flatMap((section) =>
           section.items.map((item) => item.recipeId),
         )
-        await populateRecipeNutritionCache(nutritionCache, recipeIds)
+        await populateRecipeNutritionCache(admin, nutritionCache, recipeIds, {
+          skipNetworkFetch: options?.skipNutritionFetch,
+        })
 
         for (const section of parsedHall.sections) {
           const { data: snapshot, error: snapshotError } = await admin
@@ -861,7 +1304,7 @@ async function syncDiningMenus(
                 hall_id: hall.id,
                 meal_period: section.mealPeriod,
                 service_date: targetDate,
-                source_url: sourceUrl,
+                source_url: parsedHall.sourceUrl,
                 status: 'ready',
               },
               {
@@ -930,7 +1373,7 @@ async function syncDiningMenus(
             0,
           ),
           mealPeriods: parsedHall.sections.map((section) => section.mealPeriod),
-          sourceUrl,
+          sourceUrl: parsedHall.sourceUrl,
           status: 'success',
         })
       } catch (error) {
@@ -1013,6 +1456,9 @@ Deno.serve(async (req) => {
       body.hallIds,
       body.mealPeriods,
       triggerSource,
+      {
+        skipNutritionFetch: body.skipNutritionFetch,
+      },
     )
 
     return jsonResponse(200, {
