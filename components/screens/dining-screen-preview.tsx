@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -20,11 +20,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDiningHallImageSource } from '@/data/public/campus-fallbacks';
 import {
   formatMealLogMeta,
+  getMealLogsForDate,
   getNutritionSummaryForDate,
-  getRecentMealLogs,
 } from '@/data/local/selectors';
 import {
-  formatPublicDataStatus,
   useDiningHalls,
   useDiningMenuItems,
 } from '@/hooks/use-campus-data';
@@ -38,6 +37,8 @@ import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
 import type {
   DiningMenuItem,
+  DiningNutritionFact,
+  MealLog,
   MealLogPeriod,
   MealPeriod,
   PublicDiningHall,
@@ -56,9 +57,11 @@ const CUSTOM_MEAL_PERIODS = [
 ] as const;
 
 const DINING_HALL_PRIORITY = ['bruin-plate', 'de-neve', 'epicuria-covel'] as const;
+const UCLA_BADGE_ICON_BASE_URL = 'https://dining.ucla.edu/wp-content/uploads/2025/05';
 
 type PeriodKey = (typeof PERIODS)[number]['key'];
 type CustomMealDraft = {
+  id?: string;
   title: string;
   calories: string;
   protein: string;
@@ -78,13 +81,44 @@ const MACRO_META = {
   fats: { key: 'fats', color: '#5B8EE6' },
 } as const;
 
+const OFFICIAL_BADGE_ICON_MAP = {
+  alcohol: `${UCLA_BADGE_ICON_BASE_URL}/alcohol.png`,
+  customizable: `${UCLA_BADGE_ICON_BASE_URL}/customizable.png`,
+  crustacean: `${UCLA_BADGE_ICON_BASE_URL}/crustacean-shellfish2.png`,
+  dairy: `${UCLA_BADGE_ICON_BASE_URL}/dairy.png`,
+  egg: `${UCLA_BADGE_ICON_BASE_URL}/eggs.png`,
+  fish: `${UCLA_BADGE_ICON_BASE_URL}/fish.png`,
+  gluten: `${UCLA_BADGE_ICON_BASE_URL}/gluten.png`,
+  halal: `${UCLA_BADGE_ICON_BASE_URL}/halal.png`,
+  highCarbon: `${UCLA_BADGE_ICON_BASE_URL}/high-carbon.png`,
+  lowCarbon: `${UCLA_BADGE_ICON_BASE_URL}/low-carbon.png`,
+  peanut: `${UCLA_BADGE_ICON_BASE_URL}/peanut.png`,
+  sesame: `${UCLA_BADGE_ICON_BASE_URL}/sesame.png`,
+  soy: `${UCLA_BADGE_ICON_BASE_URL}/soy.png`,
+  treeNuts: `${UCLA_BADGE_ICON_BASE_URL}/tree-nuts.png`,
+  vegan: `${UCLA_BADGE_ICON_BASE_URL}/vegan.png`,
+  vegetarian: `${UCLA_BADGE_ICON_BASE_URL}/vegetarian.png`,
+  wheat: `${UCLA_BADGE_ICON_BASE_URL}/wheat.png`,
+} as const;
+
+type BadgePresentation = {
+  foregroundColor: string;
+  iconFamily?: 'ion' | 'material';
+  iconName?: string;
+  imageUri?: string;
+  text: string;
+};
+
 export function DiningScreenPreview() {
   const { width } = useWindowDimensions();
   const {
     addCustomMealLog,
     addDiningMealLog,
+    clearTodayMealLogs,
+    deleteMealLog,
     setPreferredDiningPeriod,
     state,
+    updateMealLog,
   } = useAppData();
   const diningHallState = useDiningHalls();
   const diningMenuState = useDiningMenuItems();
@@ -96,6 +130,7 @@ export function DiningScreenPreview() {
   const [customMealDraft, setCustomMealDraft] = useState<CustomMealDraft>(
     createCustomMealDraft(state.userPreferences.preferredDiningPeriod),
   );
+  const [editingMealLog, setEditingMealLog] = useState<MealLog | null>(null);
   const [activeHallId, setActiveHallId] = useState<string | null>(null);
   const [activeHallPeriod, setActiveHallPeriod] = useState<PeriodKey>(selectedPeriod);
   const [hallSearchQuery, setHallSearchQuery] = useState('');
@@ -103,17 +138,23 @@ export function DiningScreenPreview() {
   const [selectedServings, setSelectedServings] = useState(1);
   const deferredHallSearchQuery = useDeferredValue(hallSearchQuery.trim().toLowerCase());
   const nutritionSummary = getNutritionSummaryForDate(state);
-  const recentMeals = getRecentMealLogs(state);
-  const diningStatus = formatPublicDataStatus(
-    diningHallState.updatedAt,
-    diningHallState.source,
-    diningHallState.isStale,
-  );
-  const menuStatus = formatPublicDataStatus(
-    diningMenuState.updatedAt,
-    diningMenuState.source,
-    diningMenuState.isStale,
-  );
+  const todaysMeals = getMealLogsForDate(state);
+  const latestMenuServiceDate = useMemo(() => {
+    return diningMenuState.data.reduce<string | null>((latest, item) => {
+      if (!latest || item.serviceDate > latest) {
+        return item.serviceDate;
+      }
+
+      return latest;
+    }, null);
+  }, [diningMenuState.data]);
+  const currentMenuItems = useMemo(() => {
+    if (!latestMenuServiceDate) {
+      return diningMenuState.data;
+    }
+
+    return diningMenuState.data.filter((item) => item.serviceDate === latestMenuServiceDate);
+  }, [diningMenuState.data, latestMenuServiceDate]);
 
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
 
@@ -140,17 +181,6 @@ export function DiningScreenPreview() {
       });
   }, [diningHallState.data, selectedPeriod]);
 
-  const menuItemCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-
-    diningMenuState.data.forEach((item) => {
-      const key = `${item.hallId}:${item.mealPeriod}`;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    });
-
-    return counts;
-  }, [diningMenuState.data]);
-
   const activeHall = useMemo(
     () => diningHallState.data.find((hall) => hall.id === activeHallId) ?? null,
     [activeHallId, diningHallState.data],
@@ -159,26 +189,14 @@ export function DiningScreenPreview() {
   const activeHallItems = useMemo(
     () =>
       activeHallId
-        ? diningMenuState.data.filter((item) => item.hallId === activeHallId)
+        ? currentMenuItems.filter((item) => item.hallId === activeHallId)
         : [],
-    [activeHallId, diningMenuState.data],
+    [activeHallId, currentMenuItems],
   );
-
-  const availableHallPeriods = useMemo(() => {
-    return PERIODS.filter((period) =>
-      activeHallItems.some((item) => item.mealPeriod === period.key),
-    );
-  }, [activeHallItems]);
-
-  const resolvedHallPeriod = availableHallPeriods.some(
-    (period) => period.key === activeHallPeriod,
-  )
-    ? activeHallPeriod
-    : availableHallPeriods[0]?.key ?? selectedPeriod;
 
   const activeHallSections = useMemo(() => {
     const scopedItems = activeHallItems.filter((item) => {
-      if (item.mealPeriod !== resolvedHallPeriod) {
+      if (item.mealPeriod !== activeHallPeriod) {
         return false;
       }
 
@@ -186,10 +204,7 @@ export function DiningScreenPreview() {
         return true;
       }
 
-      return (
-        item.itemName.toLowerCase().includes(deferredHallSearchQuery) ||
-        item.stationName.toLowerCase().includes(deferredHallSearchQuery)
-      );
+      return matchesDiningMenuQuery(item, deferredHallSearchQuery);
     });
 
     const sections = new Map<string, DiningMenuItem[]>();
@@ -204,15 +219,7 @@ export function DiningScreenPreview() {
       stationName,
       items: items.sort((left, right) => left.itemOrder - right.itemOrder),
     }));
-  }, [activeHallItems, deferredHallSearchQuery, resolvedHallPeriod]);
-
-  const activeHallDateLabel = useMemo(() => {
-    const referenceItem =
-      activeHallItems.find((item) => item.mealPeriod === resolvedHallPeriod) ??
-      activeHallItems[0];
-
-    return referenceItem ? formatMenuServiceDate(referenceItem.serviceDate) : 'Menu unavailable';
-  }, [activeHallItems, resolvedHallPeriod]);
+  }, [activeHallItems, activeHallPeriod, deferredHallSearchQuery]);
 
   const selectedItemTotals = useMemo(() => {
     if (!selectedMenuItem) {
@@ -229,6 +236,13 @@ export function DiningScreenPreview() {
 
   const handleCustomMealOpen = () => {
     setCustomMealDraft(createCustomMealDraft(selectedPeriod));
+    setEditingMealLog(null);
+    setCustomMealOpen(true);
+  };
+
+  const handleMealLogEdit = (mealLog: MealLog) => {
+    setEditingMealLog(mealLog);
+    setCustomMealDraft(createCustomMealDraft(mealLog.period, mealLog));
     setCustomMealOpen(true);
   };
 
@@ -254,15 +268,73 @@ export function DiningScreenPreview() {
       return;
     }
 
-    addCustomMealLog({
-      title,
-      period: customMealDraft.period,
-      calories,
-      protein,
-      carbs,
-      fats,
-    });
+    if (editingMealLog) {
+      updateMealLog({
+        mealLogId: editingMealLog.id,
+        title,
+        period: customMealDraft.period,
+        calories,
+        protein,
+        carbs,
+        fats,
+      });
+    } else {
+      addCustomMealLog({
+        title,
+        period: customMealDraft.period,
+        calories,
+        protein,
+        carbs,
+        fats,
+      });
+    }
+
     setCustomMealOpen(false);
+    setEditingMealLog(null);
+  };
+
+  const handleMealLogDelete = () => {
+    if (!editingMealLog) {
+      return;
+    }
+
+    Alert.alert(
+      'Delete meal?',
+      `Remove ${editingMealLog.title} from today's log?`,
+      [
+        {
+          style: 'cancel',
+          text: 'Cancel',
+        },
+        {
+          style: 'destructive',
+          text: 'Delete',
+          onPress: () => {
+            deleteMealLog(editingMealLog.id);
+            setCustomMealOpen(false);
+            setEditingMealLog(null);
+          },
+        },
+      ],
+    );
+  };
+
+  const handleClearAllMeals = () => {
+    Alert.alert('Clear all meals?', `Remove all ${todaysMeals.length} logged meals from today?`, [
+      {
+        style: 'cancel',
+        text: 'Cancel',
+      },
+      {
+        style: 'destructive',
+        text: 'Clear all',
+        onPress: () => {
+          clearTodayMealLogs();
+          setEditingMealLog(null);
+          setCustomMealOpen(false);
+        },
+      },
+    ]);
   };
 
   const handleHallOpen = (hall: PublicDiningHall) => {
@@ -286,14 +358,18 @@ export function DiningScreenPreview() {
     setSelectedServings(1);
   };
 
+  const handleQuickDiningItemSave = (item: DiningMenuItem) => {
+    addDiningMealLog({
+      item,
+      servings: 1,
+    });
+  };
+
   return (
     <>
       <AppScreen contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <AppText variant="headline">Dining</AppText>
-          <AppText variant="micro" dimmed>
-            {diningStatus}
-          </AppText>
         </View>
 
         <View style={styles.carouselWrap}>
@@ -357,9 +433,18 @@ export function DiningScreenPreview() {
                     <AppText variant="title">Logged meals</AppText>
                     <View style={styles.loggedMealsBadge}>
                       <AppText variant="label" color={AppColors.primary}>
-                        {recentMeals.length} today
+                        {todaysMeals.length} today
                       </AppText>
                     </View>
+                    {todaysMeals.length > 0 ? (
+                      <PressScale haptic="none" onPress={handleClearAllMeals}>
+                        <View style={styles.clearAllMealsButton}>
+                          <AppText variant="label" color={AppColors.danger}>
+                            Clear all
+                          </AppText>
+                        </View>
+                      </PressScale>
+                    ) : null}
                   </View>
                   <PressScale haptic="none" onPress={handleCustomMealOpen}>
                     <View style={styles.customMealButton}>
@@ -367,27 +452,43 @@ export function DiningScreenPreview() {
                     </View>
                   </PressScale>
                 </View>
-                {recentMeals.length > 0 ? (
-                  <View style={styles.loggedMealsList}>
-                    {recentMeals.map((meal, index) => (
-                      <View
+                {todaysMeals.length > 0 ? (
+                  <ScrollView
+                    style={styles.loggedMealsScroller}
+                    contentContainerStyle={styles.loggedMealsList}
+                    showsVerticalScrollIndicator={false}>
+                    {todaysMeals.map((meal, index) => (
+                      <PressScale
                         key={meal.id}
-                        style={[
-                          styles.loggedMealRow,
-                          index < recentMeals.length - 1 ? styles.rowSpacing : null,
-                        ]}>
-                        <View style={styles.loggedMealCopy}>
-                          <AppText variant="bodyStrong">{meal.title}</AppText>
-                          <AppText variant="micro" dimmed>
-                            {formatMealLogMeta(meal)}
-                          </AppText>
+                        haptic="none"
+                        onPress={() => handleMealLogEdit(meal)}>
+                        <View
+                          style={[
+                            styles.loggedMealRow,
+                            index < todaysMeals.length - 1 ? styles.rowSpacing : null,
+                          ]}>
+                          <View style={styles.loggedMealCopy}>
+                            <AppText variant="bodyStrong">{meal.title}</AppText>
+                            <AppText variant="micro" dimmed>
+                              {formatMealLogMeta(meal)}
+                            </AppText>
+                          </View>
+                          <View style={styles.loggedMealActions}>
+                            <AppText variant="title" color={AppColors.primary}>
+                              {meal.calories}
+                            </AppText>
+                            <View style={styles.loggedMealActionButton}>
+                              <Ionicons
+                                name="create-outline"
+                                size={18}
+                                color={AppColors.textSubtle}
+                              />
+                            </View>
+                          </View>
                         </View>
-                        <AppText variant="title" color={AppColors.primary}>
-                          {meal.calories}
-                        </AppText>
-                      </View>
+                      </PressScale>
                     ))}
-                  </View>
+                  </ScrollView>
                 ) : (
                   <View style={styles.loggedMealsEmpty}>
                     <AppText variant="bodyStrong">Nothing logged yet</AppText>
@@ -433,7 +534,6 @@ export function DiningScreenPreview() {
               <HallRow
                 key={hall.id}
                 hall={hall}
-                menuItemCount={menuItemCounts.get(`${hall.id}:${selectedPeriod}`) ?? 0}
                 onPress={() => handleHallOpen(hall)}
                 selectedPeriod={selectedPeriod}
               />
@@ -444,13 +544,11 @@ export function DiningScreenPreview() {
 
       <DiningHallModal
         activeItem={selectedMenuItem}
-        activePeriod={resolvedHallPeriod}
-        dateLabel={activeHallDateLabel}
+        activePeriod={activeHallPeriod}
         hall={activeHall}
         isLoading={diningMenuState.isLoading && activeHallItems.length === 0}
         menuError={diningMenuState.error}
         menuSections={activeHallSections}
-        menuStatus={menuStatus}
         onClose={() => {
           setActiveHallId(null);
           setSelectedMenuItem(null);
@@ -465,15 +563,10 @@ export function DiningScreenPreview() {
           setSelectedMenuItem(null);
           setSelectedServings(1);
         }}
-        onPeriodChange={(period) => {
-          setActiveHallPeriod(period);
-          setSelectedMenuItem(null);
-          setSelectedServings(1);
-        }}
+        onQuickAddItem={handleQuickDiningItemSave}
         onSaveItem={handleDiningItemSave}
         onSearchChange={setHallSearchQuery}
         onServingsChange={setSelectedServings}
-        periods={availableHallPeriods}
         searchQuery={hallSearchQuery}
         selectedItemTotals={selectedItemTotals}
         servings={selectedServings}
@@ -481,9 +574,14 @@ export function DiningScreenPreview() {
 
       <CustomMealComposer
         draft={customMealDraft}
+        editingMeal={editingMealLog}
         isOpen={customMealOpen}
         onChange={setCustomMealDraft}
-        onClose={() => setCustomMealOpen(false)}
+        onDelete={handleMealLogDelete}
+        onClose={() => {
+          setCustomMealOpen(false);
+          setEditingMealLog(null);
+        }}
         onSave={handleCustomMealSave}
       />
     </>
@@ -493,93 +591,81 @@ export function DiningScreenPreview() {
 function DiningHallModal({
   activeItem,
   activePeriod,
-  dateLabel,
   hall,
   isLoading,
   menuError,
   menuSections,
-  menuStatus,
   onClose,
   onOpenItem,
   onCloseItem,
-  onPeriodChange,
+  onQuickAddItem,
   onSaveItem,
   onSearchChange,
   onServingsChange,
-  periods,
   searchQuery,
   selectedItemTotals,
   servings,
 }: {
   activeItem: DiningMenuItem | null;
   activePeriod: PeriodKey;
-  dateLabel: string;
   hall: PublicDiningHall | null;
   isLoading: boolean;
   menuError: string | null;
   menuSections: DiningMenuSection[];
-  menuStatus: string;
   onClose: () => void;
   onOpenItem: (item: DiningMenuItem) => void;
   onCloseItem: () => void;
-  onPeriodChange: (period: PeriodKey) => void;
+  onQuickAddItem: (item: DiningMenuItem) => void;
   onSaveItem: () => void;
   onSearchChange: (value: string) => void;
   onServingsChange: (value: number) => void;
-  periods: readonly (typeof PERIODS)[number][];
   searchQuery: string;
   selectedItemTotals: ReturnType<typeof getMenuItemTotals> | null;
   servings: number;
 }) {
+  const [showAllIngredients, setShowAllIngredients] = useState(false);
+  const [showAllNutritionFacts, setShowAllNutritionFacts] = useState(false);
+  const activePeriodLabel = getPeriodLabel(activePeriod);
+  const nutritionFacts = activeItem ? getDetailNutritionFacts(activeItem) : [];
+  const visibleNutritionFacts = showAllNutritionFacts
+    ? nutritionFacts
+    : nutritionFacts.slice(0, 6);
+  const visibleIngredients = showAllIngredients
+    ? activeItem?.ingredients ?? []
+    : (activeItem?.ingredients ?? []).slice(0, 4);
+
+  useEffect(() => {
+    setShowAllIngredients(false);
+    setShowAllNutritionFacts(false);
+  }, [activeItem?.itemName, activeItem?.recipeId]);
+
   return (
     <Modal
+      allowSwipeDismissal={Platform.OS === 'ios'}
       animationType="slide"
       onRequestClose={onClose}
-      transparent
+      presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'fullScreen'}
+      transparent={false}
       visible={Boolean(hall)}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.menuModalRoot}>
-        <View style={styles.menuModalBackdrop} />
         <View style={styles.menuModalCard}>
           <View style={styles.menuModalHeader}>
             <View style={styles.menuHeaderTop}>
+              <View style={styles.menuHeaderCopy}>
+                <AppText variant="headline">{hall?.name ?? 'Dining hall'}</AppText>
+              </View>
               <PressScale haptic="none" onPress={onClose}>
                 <View style={styles.menuHeaderButton}>
-                  <Ionicons name="close" size={22} color={AppColors.white} />
+                  <Ionicons name="close" size={22} color={AppColors.text} />
                 </View>
               </PressScale>
-              <View style={styles.menuHeaderCopy}>
-                <AppText variant="headline" color={AppColors.white}>
-                  {hall?.name ?? 'Dining hall'}
-                </AppText>
-                <AppText variant="body" color="rgba(255,255,255,0.72)">
-                  {dateLabel}
-                </AppText>
-              </View>
-              <View style={styles.menuHeaderSpacer} />
             </View>
 
-            <View style={styles.menuHeaderMeta}>
-              <AppText variant="micro" color="rgba(255,255,255,0.72)">
-                {menuStatus}
-              </AppText>
-            </View>
-
-            <View style={styles.menuPeriodRow}>
-              {periods.map((period) => (
-                <ModalPeriodChip
-                  key={period.key}
-                  label={period.label}
-                  onPress={() => onPeriodChange(period.key)}
-                  selected={period.key === activePeriod}
-                />
-              ))}
-            </View>
-
-            <View style={styles.menuSearchShell}>
-              <Ionicons name="search" size={18} color="rgba(255,255,255,0.52)" />
+            <View style={styles.menuSearchShellCompact}>
+              <Ionicons name="search" size={18} color={AppColors.textSubtle} />
               <TextInput
-                placeholder="Search items or stations"
-                placeholderTextColor="rgba(255,255,255,0.4)"
+                placeholder={`Filter ${activePeriodLabel.toLowerCase()} items`}
+                placeholderTextColor={AppColors.textSubtle}
                 style={styles.menuSearchInput}
                 value={searchQuery}
                 onChangeText={onSearchChange}
@@ -592,15 +678,15 @@ function DiningHallModal({
             showsVerticalScrollIndicator={false}>
             {isLoading ? (
               <SurfaceCard style={styles.menuEmptyState}>
-                <AppText variant="bodyStrong">Loading live menu</AppText>
-                <AppText color="rgba(255,255,255,0.72)">
-                  Pulling the latest UCLA items and macros from Supabase.
+                <AppText variant="bodyStrong">Loading menu</AppText>
+                <AppText dimmed>
+                  Loading today&apos;s UCLA menu.
                 </AppText>
               </SurfaceCard>
             ) : menuSections.length > 0 ? (
               menuSections.map((section) => (
                 <View key={section.stationName} style={styles.menuSection}>
-                  <AppText variant="headline" color={AppColors.white}>
+                  <AppText style={styles.menuSectionLabel} variant="label" dimmed>
                     {section.stationName}
                   </AppText>
                   <View style={styles.menuItemsList}>
@@ -610,29 +696,38 @@ function DiningHallModal({
                         haptic="none"
                         onPress={() => onOpenItem(item)}>
                         <SurfaceCard style={styles.menuItemCard}>
-                          <View style={styles.menuItemCopy}>
-                            <AppText variant="title" color={AppColors.white}>
-                              {item.itemName}
-                            </AppText>
-                            <AppText variant="body" color="rgba(255,255,255,0.64)">
+                          <View style={styles.menuItemTopRow}>
+                            <View style={styles.menuItemCopy}>
+                              <AppText numberOfLines={2} variant="bodyStrong">
+                                {item.itemName}
+                              </AppText>
+                              <AppText numberOfLines={1} variant="micro" dimmed>
+                                {formatMenuItemMeta(item)}
+                              </AppText>
+                            </View>
+                            <PressScale
+                              haptic="none"
+                              onPress={() => onQuickAddItem(item)}>
+                              <View style={styles.menuAddButtonCompact}>
+                                <Ionicons name="add" size={18} color={AppColors.primary} />
+                              </View>
+                            </PressScale>
+                          </View>
+                          <View style={styles.menuItemBottomRow}>
+                            <AppText
+                              numberOfLines={1}
+                              style={styles.menuItemNutritionLabel}
+                              variant="micro"
+                              dimmed>
                               {formatInlineMacros(item)}
                             </AppText>
-                          </View>
-                          <View style={styles.menuItemRight}>
-                            <PressScale haptic="none" onPress={() => onOpenItem(item)}>
-                              <View style={styles.menuInfoButton}>
-                                <Ionicons
-                                  name="information-circle-outline"
-                                  size={20}
-                                  color="rgba(255,255,255,0.52)"
-                                />
+                            {item.badgeLabels.length > 0 ? (
+                              <View style={styles.menuBadgeRow}>
+                                {item.badgeLabels.slice(0, 5).map((badge) => (
+                                  <MenuBadge key={`${item.itemName}-${badge}`} label={badge} />
+                                ))}
                               </View>
-                            </PressScale>
-                            <PressScale haptic="none" onPress={() => onOpenItem(item)}>
-                              <View style={styles.menuAddButton}>
-                                <Ionicons name="add" size={20} color={AppColors.white} />
-                              </View>
-                            </PressScale>
+                            ) : null}
                           </View>
                         </SurfaceCard>
                       </PressScale>
@@ -643,7 +738,7 @@ function DiningHallModal({
             ) : (
               <SurfaceCard style={styles.menuEmptyState}>
                 <AppText variant="bodyStrong">No menu items here yet</AppText>
-                <AppText color="rgba(255,255,255,0.72)">
+                <AppText dimmed>
                   {menuError
                     ? 'The app has no fresh menu snapshot to show for this hall and period yet.'
                     : 'Try another meal period or wait for the next ingestion run.'}
@@ -663,49 +758,132 @@ function DiningHallModal({
               <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={styles.itemSheetCard}>
-                <View style={styles.sheetGrabber} />
-                <View style={styles.itemSheetHeader}>
-                  <View style={styles.itemSheetCopy}>
-                    <AppText variant="headline">{activeItem.itemName}</AppText>
-                    <AppText dimmed>
-                      {activeItem.hallName} • {activeItem.stationName}
-                    </AppText>
-                    <AppText dimmed>
-                      {activeItem.servingSize
-                        ? `Per serving: ${activeItem.servingSize}`
-                        : 'Per serving'}
-                    </AppText>
-                  </View>
-                  <PressScale haptic="none" onPress={onCloseItem}>
-                    <View style={styles.sheetCloseButton}>
-                      <Ionicons name="close" size={20} color={AppColors.text} />
+                <ScrollView
+                  bounces={false}
+                  contentContainerStyle={styles.itemSheetContent}
+                  showsVerticalScrollIndicator={false}>
+                  <View style={styles.sheetGrabber} />
+                  <View style={styles.itemSheetHeader}>
+                    <View style={styles.itemSheetCopy}>
+                      <AppText variant="headline">{activeItem.itemName}</AppText>
+                      <AppText dimmed>
+                        {activeItem.hallName} • {activeItem.stationName}
+                      </AppText>
                     </View>
-                  </PressScale>
-                </View>
-
-                <View style={styles.servingsRow}>
-                  <AppText variant="title">Servings</AppText>
-                  <View style={styles.stepper}>
-                    <StepperButton
-                      icon="remove"
-                      onPress={() => onServingsChange(Math.max(1, servings - 1))}
-                    />
-                    <AppText variant="headline">{servings}</AppText>
-                    <StepperButton icon="add" onPress={() => onServingsChange(servings + 1)} />
+                    <PressScale haptic="none" onPress={onCloseItem}>
+                      <View style={styles.sheetCloseButton}>
+                        <Ionicons name="close" size={20} color={AppColors.text} />
+                      </View>
+                    </PressScale>
                   </View>
-                </View>
 
-                <View style={styles.sheetMacroGrid}>
-                  <MacroMetric label="Calories" value={`${selectedItemTotals.calories} kcal`} />
-                  <MacroMetric label="Protein" value={`${selectedItemTotals.protein}g`} />
-                  <MacroMetric label="Carbs" value={`${selectedItemTotals.carbs}g`} />
-                  <MacroMetric label="Fat" value={`${selectedItemTotals.fats}g`} />
-                </View>
+                  <View style={styles.itemSheetMetaWrap}>
+                    <DetailTag label={activePeriodLabel} tone="primary" />
+                    <AppText variant="micro" dimmed>
+                      {activeItem.servingSize
+                        ? `Serving • ${activeItem.servingSize}`
+                        : 'Serving details unavailable'}
+                    </AppText>
+                  </View>
 
-                <ActionButton
-                  label={`Add ${servings} serving${servings > 1 ? 's' : ''} to Meal`}
-                  onPress={onSaveItem}
-                />
+                  {activeItem.badgeLabels.length > 0 ? (
+                    <View style={styles.itemSheetBadgeRow}>
+                      {activeItem.badgeLabels.map((badge) => (
+                        <MenuBadge key={`${activeItem.itemName}-${badge}-detail`} label={badge} />
+                      ))}
+                    </View>
+                  ) : null}
+
+                  <View style={styles.servingsRow}>
+                    <AppText variant="title">Servings</AppText>
+                    <View style={styles.stepper}>
+                      <StepperButton
+                        icon="remove"
+                        onPress={() => onServingsChange(Math.max(1, servings - 1))}
+                      />
+                      <AppText variant="headline">{servings}</AppText>
+                      <StepperButton icon="add" onPress={() => onServingsChange(servings + 1)} />
+                    </View>
+                  </View>
+
+                  <View style={styles.sheetMacroGrid}>
+                    <MacroMetric label="Calories" value={`${selectedItemTotals.calories} cal`} />
+                    <MacroMetric label="Protein" value={`${selectedItemTotals.protein}g`} />
+                    <MacroMetric label="Carbs" value={`${selectedItemTotals.carbs}g`} />
+                    <MacroMetric label="Fat" value={`${selectedItemTotals.fats}g`} />
+                  </View>
+
+                  {nutritionFacts.length > 0 ? (
+                    <View style={styles.detailSection}>
+                      <View style={styles.detailSectionHeader}>
+                        <AppText variant="title">Nutrition facts</AppText>
+                        {nutritionFacts.length > 6 ? (
+                          <DetailToggleButton
+                            label={
+                              showAllNutritionFacts
+                                ? 'Show less'
+                                : `Show all ${nutritionFacts.length}`
+                            }
+                            onPress={() =>
+                              setShowAllNutritionFacts((currentValue) => !currentValue)
+                            }
+                          />
+                        ) : null}
+                      </View>
+                      <View style={styles.nutritionFactGrid}>
+                        {visibleNutritionFacts.map((fact) => (
+                          <NutritionFactChip key={fact.id} fact={fact} />
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {activeItem.allergenLabels.length > 0 ? (
+                    <View style={styles.detailSection}>
+                      <AppText variant="title">Allergens</AppText>
+                      <View style={styles.detailTagWrap}>
+                        {activeItem.allergenLabels.map((label) => (
+                          <DetailTag key={`${activeItem.itemName}-${label}`} label={label} tone="warning" />
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {activeItem.ingredients.length > 0 ? (
+                    <View style={styles.detailSection}>
+                      <View style={styles.detailSectionHeader}>
+                        <AppText variant="title">Ingredients</AppText>
+                        {activeItem.ingredients.length > 4 ? (
+                          <DetailToggleButton
+                            label={
+                              showAllIngredients
+                                ? 'Show less'
+                                : `Show all ${activeItem.ingredients.length}`
+                            }
+                            onPress={() =>
+                              setShowAllIngredients((currentValue) => !currentValue)
+                            }
+                          />
+                        ) : null}
+                      </View>
+                      <View style={styles.ingredientList}>
+                        {visibleIngredients.map((ingredient) => (
+                          <View
+                            key={`${activeItem.itemName}-${ingredient}`}
+                            style={styles.ingredientRow}>
+                            <View style={styles.ingredientBullet} />
+                            <AppText style={styles.ingredientText}>{ingredient}</AppText>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <ActionButton
+                    label={`Add ${servings} serving${servings > 1 ? 's' : ''} to Meal`}
+                    onPress={onSaveItem}
+                  />
+                </ScrollView>
               </KeyboardAvoidingView>
             </View>
           ) : null}
@@ -717,14 +895,18 @@ function DiningHallModal({
 
 function CustomMealComposer({
   draft,
+  editingMeal,
   isOpen,
   onChange,
+  onDelete,
   onClose,
   onSave,
 }: {
   draft: CustomMealDraft;
+  editingMeal: MealLog | null;
   isOpen: boolean;
   onChange: (draft: CustomMealDraft) => void;
+  onDelete: () => void;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -739,8 +921,14 @@ function CustomMealComposer({
             <View style={styles.sheetGrabber} />
             <View style={styles.sheetHeader}>
               <View style={styles.sheetHeaderCopy}>
-                <AppText variant="headline">Custom meal</AppText>
-                <AppText dimmed>Log something that isn’t on the UCLA menu.</AppText>
+                <AppText variant="headline">
+                  {editingMeal ? 'Edit meal' : 'Custom meal'}
+                </AppText>
+                <AppText dimmed>
+                  {editingMeal
+                    ? 'Adjust this meal log or remove it from today.'
+                    : 'Log something that isn’t on the UCLA menu.'}
+                </AppText>
               </View>
               <PressScale haptic="none" onPress={onClose}>
                 <View style={styles.sheetCloseButton}>
@@ -803,7 +991,23 @@ function CustomMealComposer({
               />
             </View>
 
-            <ActionButton label="Save custom meal" onPress={onSave} />
+            {editingMeal ? (
+              <View style={styles.mealEditorActions}>
+                <PressScale haptic="none" onPress={onDelete}>
+                  <View style={styles.deleteMealButton}>
+                    <Ionicons name="trash-outline" size={18} color={AppColors.danger} />
+                    <AppText variant="label" color={AppColors.danger}>
+                      Delete
+                    </AppText>
+                  </View>
+                </PressScale>
+                <View style={styles.mealEditorSaveButton}>
+                  <ActionButton label="Save changes" onPress={onSave} />
+                </View>
+              </View>
+            ) : (
+              <ActionButton label="Save custom meal" onPress={onSave} />
+            )}
           </SurfaceCard>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -872,6 +1076,96 @@ function MacroMetric({
   );
 }
 
+function NutritionFactChip({ fact }: { fact: DiningNutritionFact }) {
+  return (
+    <View style={styles.nutritionFactChip}>
+      <AppText variant="bodyStrong">{fact.value}</AppText>
+      <AppText variant="micro" dimmed>
+        {fact.label}
+        {fact.dailyValuePercent !== null ? ` • ${fact.dailyValuePercent}% DV` : ''}
+      </AppText>
+    </View>
+  );
+}
+
+function MenuBadge({ label }: { label: string }) {
+  const presentation = getBadgePresentation(label);
+
+  return (
+    <View style={styles.menuBadge}>
+      {presentation.imageUri ? (
+        <Image source={{ uri: presentation.imageUri }} style={styles.menuBadgeImage} contentFit="contain" />
+      ) : presentation.iconFamily === 'ion' && presentation.iconName ? (
+        <Ionicons
+          name={presentation.iconName as keyof typeof Ionicons.glyphMap}
+          size={12}
+          color={presentation.foregroundColor}
+        />
+      ) : presentation.iconFamily === 'material' && presentation.iconName ? (
+        <MaterialCommunityIcons
+          name={presentation.iconName as never}
+          size={12}
+          color={presentation.foregroundColor}
+        />
+      ) : (
+        <AppText variant="micro" color={presentation.foregroundColor} style={styles.menuBadgeText}>
+          {presentation.text}
+        </AppText>
+      )}
+    </View>
+  );
+}
+
+function DetailTag({
+  label,
+  tone = 'default',
+}: {
+  label: string;
+  tone?: 'default' | 'primary' | 'warning';
+}) {
+  return (
+    <View
+      style={[
+        styles.detailTag,
+        tone === 'primary'
+          ? styles.detailTagPrimary
+          : tone === 'warning'
+            ? styles.detailTagWarning
+            : null,
+      ]}>
+      <AppText
+        variant="label"
+        color={
+          tone === 'primary'
+            ? AppColors.primary
+            : tone === 'warning'
+              ? '#8A6500'
+              : AppColors.textMuted
+        }>
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
+function DetailToggleButton({
+  label,
+  onPress,
+}: {
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <PressScale haptic="none" onPress={onPress}>
+      <View style={styles.detailToggleButton}>
+        <AppText variant="label" color={AppColors.primary}>
+          {label}
+        </AppText>
+      </View>
+    </PressScale>
+  );
+}
+
 function PeriodChip({
   label,
   selected,
@@ -891,32 +1185,6 @@ function PeriodChip({
         <AppText
           variant="label"
           color={selected ? AppColors.white : AppColors.textMuted}>
-          {label}
-        </AppText>
-      </View>
-    </PressScale>
-  );
-}
-
-function ModalPeriodChip({
-  label,
-  onPress,
-  selected,
-}: {
-  label: string;
-  onPress: () => void;
-  selected: boolean;
-}) {
-  return (
-    <PressScale onPress={onPress} containerStyle={styles.modalPeriodPress}>
-      <View
-        style={[
-          styles.modalPeriodChip,
-          selected ? styles.modalPeriodChipSelected : null,
-        ]}>
-        <AppText
-          variant="label"
-          color={selected ? AppColors.text : 'rgba(255,255,255,0.68)'}>
           {label}
         </AppText>
       </View>
@@ -1044,12 +1312,10 @@ function MacroIcon({
 
 function HallRow({
   hall,
-  menuItemCount,
   onPress,
   selectedPeriod,
 }: {
   hall: PublicDiningHall;
-  menuItemCount: number;
   onPress: () => void;
   selectedPeriod: PeriodKey;
 }) {
@@ -1067,11 +1333,6 @@ function HallRow({
         <View style={styles.hallCopy}>
           <AppText variant="title">{hall.name}</AppText>
           <AppText dimmed>{hours}</AppText>
-          <AppText variant="micro" dimmed>
-            {menuItemCount > 0
-              ? `${menuItemCount} live items`
-              : 'Menu sync still pending'}
-          </AppText>
         </View>
         <View style={styles.hallMeta}>
           <View style={styles.hallMetaValue}>
@@ -1091,14 +1352,15 @@ function HallRow({
   );
 }
 
-function createCustomMealDraft(period: MealLogPeriod): CustomMealDraft {
+function createCustomMealDraft(period: MealLogPeriod, mealLog?: MealLog): CustomMealDraft {
   return {
-    title: '',
-    calories: '',
-    protein: '',
-    carbs: '',
-    fats: '',
-    period,
+    id: mealLog?.id,
+    title: mealLog?.title ?? '',
+    calories: mealLog ? String(mealLog.calories) : '',
+    protein: mealLog ? String(mealLog.protein) : '',
+    carbs: mealLog ? String(mealLog.carbs) : '',
+    fats: mealLog ? String(mealLog.fats) : '',
+    period: mealLog?.period ?? period,
   };
 }
 
@@ -1122,6 +1384,27 @@ function getMenuItemTotals(item: DiningMenuItem, servings: number) {
   };
 }
 
+function getPeriodLabel(period: PeriodKey) {
+  return PERIODS.find((candidate) => candidate.key === period)?.label ?? 'Menu';
+}
+
+function matchesDiningMenuQuery(item: DiningMenuItem, query: string) {
+  const searchableFields = [
+    item.itemName,
+    item.stationName,
+    item.servingSize ?? '',
+    ...item.badgeLabels,
+    ...item.allergenLabels,
+    ...item.ingredients,
+  ];
+
+  return searchableFields.some((value) => value.toLowerCase().includes(query));
+}
+
+function formatMenuItemMeta(item: DiningMenuItem) {
+  return item.servingSize ?? 'Tap for details';
+}
+
 function formatInlineMacros(item: DiningMenuItem) {
   if (
     item.calories === null &&
@@ -1132,24 +1415,116 @@ function formatInlineMacros(item: DiningMenuItem) {
     return 'Nutrition unavailable';
   }
 
-  return `${item.calories ?? 0} kcal • P ${item.proteinG ?? 0}g • C ${item.carbsG ?? 0}g • F ${item.fatsG ?? 0}g`;
+  return `${item.calories ?? 0} cal • P ${item.proteinG ?? 0}g • C ${item.carbsG ?? 0}g • F ${item.fatsG ?? 0}g`;
 }
 
-function formatMenuServiceDate(value: string) {
-  const date = new Date(`${value}T12:00:00`);
-  const formatted = new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    day: 'numeric',
-  }).format(date);
-  const todayParts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const todayValues = Object.fromEntries(todayParts.map((part) => [part.type, part.value]));
-  const today = `${todayValues.year}-${todayValues.month}-${todayValues.day}`;
+function getDetailNutritionFacts(item: DiningMenuItem) {
+  const prioritizedFacts = [
+    'saturatedFat',
+    'cholesterol',
+    'sodium',
+    'dietaryFiber',
+    'sugars',
+    'includesAddedSugars',
+    'calcium',
+    'iron',
+    'potassium',
+    'vitaminA',
+    'vitaminB6',
+    'vitaminB12',
+    'vitaminC',
+    'vitaminD',
+  ];
+  const factOrder = new Map(prioritizedFacts.map((id, index) => [id, index]));
 
-  return value === today ? `Today, ${formatted}` : formatted;
+  return item.nutritionFacts
+    .filter(
+      (fact) =>
+        !['calories', 'totalFat', 'totalCarbohydrate', 'protein'].includes(fact.id),
+    )
+    .sort((left, right) => {
+      const leftRank = factOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = factOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+
+      return left.label.localeCompare(right.label);
+    });
+}
+
+function getBadgePresentation(label: string): BadgePresentation {
+  const normalizedLabel = label.toLowerCase().replace(/_/g, ' ');
+
+  if (normalizedLabel.includes('vegetarian')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.vegetarian, text: '' };
+  }
+
+  if (normalizedLabel.includes('vegan')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.vegan, text: '' };
+  }
+
+  if (normalizedLabel.includes('halal')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.halal, text: '' };
+  }
+
+  if (normalizedLabel.includes('low carbon') || normalizedLabel.includes('low-carbon')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.lowCarbon, text: '' };
+  }
+
+  if (normalizedLabel.includes('high carbon') || normalizedLabel.includes('high-carbon')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.highCarbon, text: '' };
+  }
+
+  if (normalizedLabel.includes('gluten')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.gluten, text: '' };
+  }
+
+  if (normalizedLabel.includes('wheat')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.wheat, text: '' };
+  }
+
+  if (normalizedLabel.includes('dairy') || normalizedLabel.includes('milk')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.dairy, text: '' };
+  }
+
+  if (normalizedLabel.includes('egg')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.egg, text: '' };
+  }
+
+  if (normalizedLabel.includes('fish')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.fish, text: '' };
+  }
+
+  if (normalizedLabel.includes('shellfish') || normalizedLabel.includes('crustacean')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.crustacean, text: '' };
+  }
+
+  if (normalizedLabel.includes('soy')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.soy, text: '' };
+  }
+
+  if (normalizedLabel.includes('tree-nut') || normalizedLabel.includes('tree nut')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.treeNuts, text: '' };
+  }
+
+  if (normalizedLabel.includes('peanut')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.peanut, text: '' };
+  }
+
+  if (normalizedLabel.includes('sesame')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.sesame, text: '' };
+  }
+
+  if (normalizedLabel.includes('alcohol')) {
+    return { foregroundColor: AppColors.white, imageUri: OFFICIAL_BADGE_ICON_MAP.alcohol, text: '' };
+  }
+
+  return {
+    foregroundColor: AppColors.text,
+    text: label.slice(0, 1).toUpperCase(),
+  };
 }
 
 const styles = StyleSheet.create({
@@ -1184,7 +1559,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loggedMealsCard: {
-    minHeight: 280,
+    height: 320,
     gap: Spacing.lg,
   },
   loggedMealsHeader: {
@@ -1208,6 +1583,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  clearAllMealsButton: {
+    minHeight: 32,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: '#FDEDEC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   customMealButton: {
     width: 36,
     height: 36,
@@ -1216,8 +1599,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  loggedMealsScroller: {
+    flex: 1,
+  },
   loggedMealsList: {
     gap: Spacing.md,
+    paddingRight: Spacing.xs,
   },
   loggedMealsEmpty: {
     minHeight: 160,
@@ -1238,6 +1625,18 @@ const styles = StyleSheet.create({
   loggedMealCopy: {
     flex: 1,
     gap: Spacing.xs,
+  },
+  loggedMealActions: {
+    alignItems: 'flex-end',
+    gap: Spacing.sm,
+  },
+  loggedMealActionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: Radii.pill,
+    backgroundColor: AppColors.surfaceLow,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   breakdownCard: {
     gap: Spacing.xl,
@@ -1319,10 +1718,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   periodChipSelected: {
-    backgroundColor: AppColors.text,
+    backgroundColor: AppColors.primary,
   },
   periodChipDefault: {
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: AppColors.surfaceLow,
   },
   list: {
     gap: Spacing.md,
@@ -1339,6 +1738,8 @@ const styles = StyleSheet.create({
   hallCopy: {
     flex: 1,
     gap: Spacing.xs,
+    justifyContent: 'center',
+    paddingTop: 4,
   },
   hallMeta: {
     alignItems: 'flex-end',
@@ -1353,11 +1754,7 @@ const styles = StyleSheet.create({
   },
   menuModalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(7, 10, 13, 0.92)',
-  },
-  menuModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(7, 10, 13, 0.92)',
+    backgroundColor: AppColors.background,
   },
   menuModalCard: {
     flex: 1,
@@ -1370,107 +1767,108 @@ const styles = StyleSheet.create({
   },
   menuHeaderTop: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     gap: Spacing.md,
   },
   menuHeaderButton: {
     width: 42,
     height: 42,
     borderRadius: Radii.pill,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: AppColors.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
   menuHeaderCopy: {
     flex: 1,
     gap: Spacing.xs,
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  menuHeaderSpacer: {
-    width: 42,
-    height: 42,
-  },
-  menuHeaderMeta: {
-    alignItems: 'center',
-  },
-  menuPeriodRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  modalPeriodPress: {
-    flex: 1,
-  },
-  modalPeriodChip: {
-    minHeight: 42,
-    borderRadius: Radii.pill,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalPeriodChipSelected: {
-    backgroundColor: AppColors.surfaceLowest,
-  },
-  menuSearchShell: {
-    minHeight: 52,
+  menuSearchShellCompact: {
+    minHeight: 44,
     borderRadius: Radii.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    paddingHorizontal: Spacing.lg,
+    borderColor: AppColors.outlineVariant,
+    backgroundColor: AppColors.surfaceLowest,
+    paddingHorizontal: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   menuSearchInput: {
     flex: 1,
-    color: AppColors.white,
-    fontSize: 16,
+    color: AppColors.text,
+    fontSize: 15,
     paddingVertical: 0,
   },
   menuModalScrollContent: {
     paddingHorizontal: Layout.pagePadding,
     paddingBottom: 220,
-    gap: Spacing.xxl,
+    gap: Spacing.xl,
   },
   menuSection: {
-    gap: Spacing.md,
+    gap: Spacing.sm,
+  },
+  menuSectionLabel: {
+    paddingHorizontal: Spacing.xs,
+    letterSpacing: 0.5,
   },
   menuItemsList: {
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   menuItemCard: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: AppColors.surfaceLowest,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+  },
+  menuItemTopRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.md,
   },
   menuItemCopy: {
     flex: 1,
-    gap: Spacing.xs,
+    gap: 6,
   },
-  menuItemRight: {
+  menuItemBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    justifyContent: 'space-between',
   },
-  menuInfoButton: {
-    width: 38,
-    height: 38,
-    borderRadius: Radii.pill,
+  menuBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+    flexWrap: 'wrap',
+  },
+  menuBadge: {
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  menuAddButton: {
-    width: 44,
-    height: 44,
+  menuBadgeImage: {
+    width: 22,
+    height: 22,
+  },
+  menuBadgeText: {
+    letterSpacing: 0,
+  },
+  menuItemNutritionLabel: {
+    flex: 1,
+  },
+  menuAddButtonCompact: {
+    width: 38,
+    height: 38,
     borderRadius: Radii.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AppColors.primary,
+    backgroundColor: AppColors.secondaryContainer,
   },
   menuEmptyState: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: AppColors.surfaceLowest,
     gap: Spacing.sm,
   },
   itemSheetOverlay: {
@@ -1484,6 +1882,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radii.xl,
     borderTopRightRadius: Radii.xl,
     backgroundColor: AppColors.surfaceLowest,
+    maxHeight: '82%',
+  },
+  itemSheetContent: {
     paddingHorizontal: Layout.pagePadding,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.xxl,
@@ -1505,6 +1906,17 @@ const styles = StyleSheet.create({
   itemSheetCopy: {
     flex: 1,
     gap: Spacing.xs,
+  },
+  itemSheetMetaWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  itemSheetBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   sheetCloseButton: {
     width: 36,
@@ -1544,6 +1956,73 @@ const styles = StyleSheet.create({
     borderRadius: Radii.lg,
     padding: Spacing.lg,
     gap: Spacing.xs,
+  },
+  detailSection: {
+    gap: Spacing.sm,
+  },
+  detailSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  nutritionFactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  nutritionFactChip: {
+    width: '47%',
+    backgroundColor: AppColors.surfaceLow,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: 2,
+  },
+  detailTagWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  detailTag: {
+    minHeight: 32,
+    borderRadius: Radii.pill,
+    backgroundColor: AppColors.surfaceLow,
+    paddingHorizontal: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailTagPrimary: {
+    backgroundColor: AppColors.secondaryContainer,
+  },
+  detailTagWarning: {
+    backgroundColor: '#FFF0C6',
+  },
+  detailToggleButton: {
+    minHeight: 32,
+    borderRadius: Radii.pill,
+    backgroundColor: AppColors.surfaceLow,
+    paddingHorizontal: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ingredientList: {
+    gap: Spacing.sm,
+  },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  ingredientBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: Radii.pill,
+    marginTop: 7,
+    backgroundColor: AppColors.primary,
+  },
+  ingredientText: {
+    flex: 1,
   },
   sheetModalRoot: {
     flex: 1,
@@ -1606,5 +2085,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.md,
+  },
+  mealEditorActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  deleteMealButton: {
+    minHeight: 48,
+    borderRadius: Radii.lg,
+    backgroundColor: '#FDEDEC',
+    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  mealEditorSaveButton: {
+    flex: 1,
   },
 });

@@ -9,6 +9,7 @@ import { hasSupabasePublicEnv, supabasePublicClient } from '@/lib/supabase/clien
 import type { Database } from '@/types/supabase';
 import type {
   DiningMenuItem,
+  DiningNutritionFact,
   GymCapacitySnapshot,
   PublicDiningHall,
   PublicResourceState,
@@ -31,6 +32,8 @@ type GymCapacitySnapshotRow = Database['public']['Tables']['gym_capacity_snapsho
   gym_locations: GymLocationRow | null;
 };
 type LatestDiningMenuItemRow = {
+  allergen_labels: unknown;
+  badge_labels: unknown;
   hall_id: string;
   hall_name: string;
   hall_sort_order: number;
@@ -46,8 +49,50 @@ type LatestDiningMenuItemRow = {
   protein_g: number | null;
   carbs_g: number | null;
   fats_g: number | null;
+  ingredients: unknown;
   item_order: number;
+  nutrition_facts: unknown;
 };
+
+function parseJsonStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+function parseNutritionFacts(value: unknown): DiningNutritionFact[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return [];
+    }
+
+    const candidate = entry as Record<string, unknown>;
+
+    if (
+      typeof candidate.id !== 'string' ||
+      typeof candidate.label !== 'string' ||
+      typeof candidate.value !== 'string'
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        id: candidate.id,
+        label: candidate.label,
+        value: candidate.value,
+        dailyValuePercent:
+          typeof candidate.dailyValuePercent === 'number'
+            ? candidate.dailyValuePercent
+            : null,
+      },
+    ];
+  });
+}
 
 function isStale(updatedAt: string) {
   return Date.now() - new Date(updatedAt).getTime() > PUBLIC_CACHE_MAX_AGE_MS;
@@ -119,6 +164,8 @@ function mapGymCapacityRow(row: GymCapacitySnapshotRow): GymCapacitySnapshot | n
 
 function mapLatestDiningMenuItemRow(row: LatestDiningMenuItemRow): DiningMenuItem {
   return {
+    allergenLabels: parseJsonStringArray(row.allergen_labels),
+    badgeLabels: parseJsonStringArray(row.badge_labels),
     hallId: row.hall_id,
     hallName: row.hall_name,
     hallSortOrder: row.hall_sort_order,
@@ -134,7 +181,9 @@ function mapLatestDiningMenuItemRow(row: LatestDiningMenuItemRow): DiningMenuIte
     proteinG: row.protein_g,
     carbsG: row.carbs_g,
     fatsG: row.fats_g,
+    ingredients: parseJsonStringArray(row.ingredients),
     itemOrder: row.item_order,
+    nutritionFacts: parseNutritionFacts(row.nutrition_facts),
   };
 }
 
@@ -198,7 +247,7 @@ async function fetchLatestDiningMenuItemsFromSupabase() {
   const { data, error } = await supabasePublicClient
     .from('latest_menu_items')
     .select(
-      'hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,item_order',
+      'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,ingredients,item_order,nutrition_facts',
     )
     .order('hall_sort_order', { ascending: true })
     .order('meal_period', { ascending: true })

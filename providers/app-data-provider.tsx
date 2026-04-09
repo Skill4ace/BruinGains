@@ -15,6 +15,7 @@ import type {
   MealLog,
   MealLogPeriod,
   MealPeriod,
+  UpdateMealLogInput,
   WorkoutSession,
   WorkoutSessionExercise,
   WorkoutTemplate,
@@ -26,12 +27,15 @@ type AppDataContextValue = {
   addQuickMealLog: (period: MealLogPeriod) => void;
   addCustomMealLog: (input: CreateCustomMealLogInput) => void;
   addDiningMealLog: (input: CreateDiningMealLogInput) => void;
+  clearTodayMealLogs: () => void;
   createWorkoutTemplate: () => void;
+  deleteMealLog: (mealLogId: string) => void;
   finishWorkoutSession: (sessionId: string) => void;
   logSet: (sessionExerciseId: string) => void;
   setPreferredDiningPeriod: (period: MealPeriod) => void;
   startEmptyWorkout: () => string;
   startWorkoutFromTemplate: (templateId: string) => string;
+  updateMealLog: (input: UpdateMealLogInput) => void;
 };
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
@@ -132,6 +136,17 @@ function getNextActiveExerciseId(
   }
 
   return null;
+}
+
+function isMealLoggedToday(loggedAt: string) {
+  const loggedDate = new Date(loggedAt);
+  const today = new Date();
+
+  return (
+    loggedDate.getFullYear() === today.getFullYear() &&
+    loggedDate.getMonth() === today.getMonth() &&
+    loggedDate.getDate() === today.getDate()
+  );
 }
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
@@ -294,6 +309,57 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function clearTodayMealLogs() {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        mealLogs: currentState.mealLogs.filter((mealLog) => !isMealLoggedToday(mealLog.loggedAt)),
+      };
+    });
+  }
+
+  function updateMealLog(input: UpdateMealLogInput) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        mealLogs: currentState.mealLogs.map((mealLog) =>
+          mealLog.id === input.mealLogId
+            ? {
+                ...mealLog,
+                title: input.title.trim(),
+                period: input.period,
+                calories: input.calories,
+                protein: input.protein,
+                carbs: input.carbs,
+                fats: input.fats,
+              }
+            : mealLog,
+        ),
+      };
+    });
+  }
+
+  function deleteMealLog(mealLogId: string) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        mealLogs: currentState.mealLogs.filter((mealLog) => mealLog.id !== mealLogId),
+      };
+    });
+  }
+
   function startWorkoutFromTemplate(templateId: string) {
     const sessionId = createId('session');
 
@@ -452,12 +518,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         addQuickMealLog,
         addCustomMealLog,
         addDiningMealLog,
+        clearTodayMealLogs,
         createWorkoutTemplate,
+        deleteMealLog,
         finishWorkoutSession,
         logSet,
         setPreferredDiningPeriod,
         startEmptyWorkout,
         startWorkoutFromTemplate,
+        updateMealLog,
       }}>
       {children}
     </AppDataContext.Provider>

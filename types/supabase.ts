@@ -130,37 +130,52 @@ export type Database = {
       }
       menu_items: {
         Row: {
+          allergen_labels: Json
+          badge_labels: Json
           calories: number | null
           carbs_g: number | null
           fats_g: number | null
           id: number
+          ingredients: Json
           item_name: string
           item_order: number
           protein_g: number | null
+          recipe_id: number | null
+          nutrition_facts: Json
           serving_size: string | null
           snapshot_id: number
           station_name: string | null
         }
         Insert: {
+          allergen_labels?: Json
+          badge_labels?: Json
           calories?: number | null
           carbs_g?: number | null
           fats_g?: number | null
           id?: never
+          ingredients?: Json
           item_name: string
           item_order?: number
           protein_g?: number | null
+          recipe_id?: number | null
+          nutrition_facts?: Json
           serving_size?: string | null
           snapshot_id: number
           station_name?: string | null
         }
         Update: {
+          allergen_labels?: Json
+          badge_labels?: Json
           calories?: number | null
           carbs_g?: number | null
           fats_g?: number | null
           id?: never
+          ingredients?: Json
           item_name?: string
           item_order?: number
           protein_g?: number | null
+          recipe_id?: number | null
+          nutrition_facts?: Json
           serving_size?: string | null
           snapshot_id?: number
           station_name?: string | null
@@ -217,6 +232,8 @@ export type Database = {
     Views: {
       latest_menu_items: {
         Row: {
+          allergen_labels: Json | null
+          badge_labels: Json | null
           calories: number | null
           carbs_g: number | null
           fats_g: number | null
@@ -224,9 +241,11 @@ export type Database = {
           hall_id: string | null
           hall_name: string | null
           hall_sort_order: number | null
+          ingredients: Json | null
           item_name: string | null
           item_order: number | null
           meal_period: string | null
+          nutrition_facts: Json | null
           protein_g: number | null
           recipe_id: number | null
           serving_size: string | null
@@ -239,6 +258,8 @@ export type Database = {
       }
       menu_items_expanded: {
         Row: {
+          allergen_labels: Json | null
+          badge_labels: Json | null
           calories: number | null
           carbs_g: number | null
           fats_g: number | null
@@ -246,9 +267,11 @@ export type Database = {
           hall_id: string | null
           hall_name: string | null
           hall_sort_order: number | null
+          ingredients: Json | null
           item_name: string | null
           item_order: number | null
           meal_period: string | null
+          nutrition_facts: Json | null
           protein_g: number | null
           recipe_id: number | null
           serving_size: string | null

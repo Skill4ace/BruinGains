@@ -158,6 +158,13 @@ export type NutritionSummary = {
   fats: number;
 };
 
+export type DiningNutritionFact = {
+  id: string;
+  label: string;
+  value: string;
+  dailyValuePercent: number | null;
+};
+
 export type WeeklyActivityDay = {
   id: string;
   day: string;
@@ -219,6 +226,10 @@ export type DiningMenuItem = {
   carbsG: number | null;
   fatsG: number | null;
   itemOrder: number;
+  badgeLabels: string[];
+  allergenLabels: string[];
+  ingredients: string[];
+  nutritionFacts: DiningNutritionFact[];
 };
 
 export type CreateCustomMealLogInput = {
@@ -233,4 +244,14 @@ export type CreateCustomMealLogInput = {
 export type CreateDiningMealLogInput = {
   item: DiningMenuItem;
   servings: number;
+};
+
+export type UpdateMealLogInput = {
+  mealLogId: string;
+  title: string;
+  period: MealLogPeriod;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
 };

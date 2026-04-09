@@ -6,6 +6,17 @@ import * as cheerio from 'cheerio'
 const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu'
 const UCLA_DINING_TIME_ZONE = 'America/Los_Angeles'
 const USER_AGENT = 'BruinGainsDiningIngest/1.0 (+https://afxptjzzctiowrqqcyzh.supabase.co)'
+const DINING_MENU_AGLANCE_PATH = '/menus-at-a-glance'
+const BOUTIQUE_HALL_IDS = [
+  'feast-rieber',
+  'bruin-cafe',
+  'cafe-1919',
+  'study-hedrick',
+  'the-drey',
+  'rendezvous',
+  'bruin-bowl',
+  'epicuria-ackerman',
+] as const
 
 const PERIOD_CONFIG = [
   { key: 'breakfast', anchorId: 'breakfastmenu', heading: 'BREAKFAST' },
@@ -53,17 +64,28 @@ type ParsedMealSection = {
 }
 
 type ParsedMenuItem = {
+  badgeLabels: string[]
   itemName: string
   itemOrder: number
   recipeId: number
   stationName: string
 }
 
+type ParsedNutritionFact = {
+  dailyValuePercent: number | null
+  id: string
+  label: string
+  value: string
+}
+
 type NutritionDetail = {
+  allergenLabels: string[]
   calories: number | null
   carbsG: number | null
   fatsG: number | null
+  ingredients: string[]
   itemName: string | null
+  nutritionFacts: ParsedNutritionFact[]
   proteinG: number | null
   servingSize: string | null
 }
@@ -129,6 +151,15 @@ function cleanText(value: string | null | undefined) {
   return (value ?? '').replace(/\s+/g, ' ').trim()
 }
 
+function normalizeComparableValue(value: string | null | undefined) {
+  return cleanText(value)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
 function parseNumericValue(value: string) {
   const match = value.match(/-?\d+(?:\.\d+)?/)
   return match ? Number.parseFloat(match[0]) : null
@@ -143,9 +174,58 @@ function parseIntegerValue(value: string | null | undefined) {
   return numeric === null ? null : Math.round(numeric)
 }
 
+function normalizeNutritionFactId(label: string) {
+  const words = cleanText(label)
+    .replace(/[%*]/g, '')
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+
+  if (!words.length) {
+    return 'fact'
+  }
+
+  return words
+    .map((word, index) =>
+      index === 0
+        ? word.slice(0, 1).toLowerCase() + word.slice(1)
+        : word.slice(0, 1).toUpperCase() + word.slice(1),
+    )
+    .join('')
+}
+
+function splitLabelList(value: string | null | undefined) {
+  return (value ?? '')
+    .split(/[,/;]+/)
+    .map((entry) => cleanText(entry))
+    .filter(Boolean)
+}
+
+function isAllergenBadgeLabel(label: string) {
+  const normalizedLabel = label.toLowerCase()
+
+  return (
+    normalizedLabel.includes('soy') ||
+    normalizedLabel.includes('gluten') ||
+    normalizedLabel.includes('wheat') ||
+    normalizedLabel.includes('dairy') ||
+    normalizedLabel.includes('milk') ||
+    normalizedLabel.includes('egg') ||
+    normalizedLabel.includes('fish') ||
+    normalizedLabel.includes('shellfish') ||
+    normalizedLabel.includes('peanut') ||
+    normalizedLabel.includes('tree-nut') ||
+    normalizedLabel.includes('tree nut') ||
+    normalizedLabel.includes('sesame')
+  )
+}
+
 function buildHallUrl(sourcePath: string, targetDate: string) {
   const normalizedPath = sourcePath.startsWith('/') ? sourcePath : `/${sourcePath}`
   return `${UCLA_DINING_BASE_URL}${normalizedPath.replace(/\/$/, '')}/?date=${targetDate}`
+}
+
+function buildAtAGlanceUrl(targetDate: string) {
+  return `${UCLA_DINING_BASE_URL}${DINING_MENU_AGLANCE_PATH}/?date=${targetDate}`
 }
 
 function extractRecipeIdFromHref(href: string | undefined) {
@@ -155,6 +235,19 @@ function extractRecipeIdFromHref(href: string | undefined) {
 
   const match = href.match(/[?&]recipe=(\d+)/)
   return match ? Number.parseInt(match[1], 10) : null
+}
+
+function normalizeBadgeLabel(value: string | undefined) {
+  const label = cleanText(value)
+
+  if (!label) {
+    return null
+  }
+
+  return label
+    .replace(/^Contains\s+/i, '')
+    .replace(/\s+food item$/i, '')
+    .replace(/\s+menu option$/i, '')
 }
 
 function extractDateLabel(value: string | null) {
@@ -255,7 +348,19 @@ function parseHallMenuPage(
             return
           }
 
+          const badgeLabels = $(recipeCard)
+            .find('.menu-item-meta-data img')
+            .map((__, badgeImage) => {
+              const badge = normalizeBadgeLabel(
+                $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
+              )
+              return badge
+            })
+            .get()
+            .filter((badge): badge is string => Boolean(badge))
+
           items.push({
+            badgeLabels: [...new Set(badgeLabels)],
             itemName,
             itemOrder,
             recipeId,
@@ -282,32 +387,216 @@ function parseHallMenuPage(
   }
 }
 
+function buildHallLookup(halls: DiningHallRow[]) {
+  const byName = new Map<string, DiningHallRow>()
+  const bySourcePath = new Map<string, DiningHallRow>()
+
+  halls.forEach((hall) => {
+    byName.set(normalizeComparableValue(hall.name), hall)
+
+    if (hall.source_path) {
+      bySourcePath.set(
+        normalizeComparableValue(hall.source_path.replace(/^\//, '')),
+        hall,
+      )
+      bySourcePath.set(normalizeComparableValue(hall.source_path), hall)
+    }
+  })
+
+  byName.set(normalizeComparableValue('De Neve Dining'), halls.find((hall) => hall.id === 'de-neve') ?? halls[0])
+  byName.set(
+    normalizeComparableValue('The Study at Hedrick'),
+    halls.find((hall) => hall.id === 'study-hedrick') ?? halls[0],
+  )
+
+  return { byName, bySourcePath }
+}
+
+function parseAtAGlancePage(
+  html: string,
+  halls: DiningHallRow[],
+  targetDate: string,
+  selectedMealPeriods: MealPeriod[] | undefined,
+) {
+  const $ = cheerio.load(html)
+  const pageDateLabel = extractDateLabel(
+    cleanText($('h1.at-a-glance-page-title').first().text()),
+  )
+
+  if (!isExpectedPageDate(pageDateLabel, targetDate)) {
+    throw new Error(
+      `At-a-glance page date mismatch: expected ${targetDate}, received ${pageDateLabel ?? 'unknown'}`,
+    )
+  }
+
+  const lookup = buildHallLookup(halls)
+  const parsedHalls = new Map<string, ParsedHallMenu>()
+
+  for (const period of PERIOD_CONFIG) {
+    if (selectedMealPeriods?.length && !selectedMealPeriods.includes(period.key)) {
+      continue
+    }
+
+    const sectionRoot = $(`#${period.anchorId}`)
+
+    if (!sectionRoot.length) {
+      continue
+    }
+
+    sectionRoot
+      .children('.wp-block-columns')
+      .first()
+      .find('.at-a-glance-menu__dining-location')
+      .each((_, locationElement) => {
+        const hallName = cleanText($(locationElement).find('h3').first().text())
+        const detailHref = $(locationElement)
+          .children("a[href^='/']")
+          .first()
+          .attr('href')
+        const hall =
+          (detailHref
+            ? lookup.bySourcePath.get(
+                normalizeComparableValue(detailHref.replace(/\/$/, '')),
+              )
+            : null) ??
+          lookup.byName.get(normalizeComparableValue(hallName))
+
+        if (!hall) {
+          return
+        }
+
+        const noServiceMessage = cleanText($(locationElement).children('p').first().text())
+
+        if (noServiceMessage.toLowerCase().includes('there is no')) {
+          return
+        }
+
+        const items: ParsedMenuItem[] = []
+        let itemOrder = 0
+
+        $(locationElement)
+          .children('.at-a-glance-menu__meal-station')
+          .each((__, stationElement) => {
+            const rawStationName = cleanText($(stationElement).find('h4').first().text())
+            const stationName = rawStationName && rawStationName !== '.' ? rawStationName : 'Station'
+
+            $(stationElement)
+              .find('li')
+              .each((___, itemElement) => {
+                const recipeLink = $(itemElement).find("a[href*='recipe=']").first()
+                const itemName = cleanText(recipeLink.text())
+                const recipeId = extractRecipeIdFromHref(recipeLink.attr('href'))
+
+                if (!itemName || recipeId === null) {
+                  return
+                }
+
+                const badgeLabels = $(itemElement)
+                  .find('img')
+                  .map((____, badgeImage) =>
+                    normalizeBadgeLabel(
+                      $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
+                    ),
+                  )
+                  .get()
+                  .filter((badge): badge is string => Boolean(badge))
+
+                items.push({
+                  badgeLabels: [...new Set(badgeLabels)],
+                  itemName,
+                  itemOrder,
+                  recipeId,
+                  stationName,
+                })
+                itemOrder += 1
+              })
+          })
+
+        if (!items.length) {
+          return
+        }
+
+        const existing = parsedHalls.get(hall.id)
+        const nextSection = {
+          items,
+          mealPeriod: period.key,
+        }
+
+        parsedHalls.set(hall.id, {
+          hallId: hall.id,
+          hallName: hall.name,
+          pageDateLabel,
+          sourceUrl: detailHref
+            ? `${UCLA_DINING_BASE_URL}${detailHref}`
+            : buildAtAGlanceUrl(targetDate),
+          sections: existing ? [...existing.sections, nextSection] : [nextSection],
+        })
+      })
+  }
+
+  return parsedHalls
+}
+
 function parseNutritionPage(html: string): NutritionDetail {
   const $ = cheerio.load(html)
   const nutritionRoot = $('#nutrition')
+  const ingredientRoot = $('#ingredient_list')
   const labelToValue = new Map<string, string>()
+  const nutritionFacts: ParsedNutritionFact[] = []
+  const seenFactIds = new Set<string>()
 
-  nutritionRoot.find('table.nutritive-table tbody tr').each((_, row) => {
-    const firstCell = $(row).find('td').first().clone()
-    const label = cleanText(firstCell.find('span').first().text())
+  nutritionRoot.find('table tbody tr').each((_, row) => {
+    const cells = $(row).children('td')
 
-    if (!label) {
-      return
+    for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 2) {
+      const factCell = cells.eq(cellIndex).clone()
+      const dailyValueCell = cells.eq(cellIndex + 1)
+      const labelElement = factCell.find('span').first()
+      const label = cleanText(labelElement.text())
+
+      if (!label) {
+        continue
+      }
+
+      labelElement.remove()
+      const value = cleanText(factCell.text())
+      const factId = normalizeNutritionFactId(label)
+
+      labelToValue.set(label.toLowerCase(), value)
+
+      if (!value || seenFactIds.has(factId)) {
+        continue
+      }
+
+      nutritionFacts.push({
+        dailyValuePercent: parseIntegerValue(cleanText(dailyValueCell.text())),
+        id: factId,
+        label,
+        value,
+      })
+      seenFactIds.add(factId)
     }
-
-    firstCell.find('span').remove()
-    labelToValue.set(label.toLowerCase(), cleanText(firstCell.text()))
   })
 
   const servingText = cleanText(nutritionRoot.text())
   const servingMatch = servingText.match(/Serving Size:\s*([^\n]+)/i)
+  const ingredientHtml = ingredientRoot.html() ?? ''
+  const allergenMatch = ingredientHtml.match(/<strong>Allergens\*:<\/strong>\s*([^<]+)/i)
+  const ingredients = ingredientRoot
+    .find('ul.nolispace li')
+    .map((_, ingredient) => cleanText($(ingredient).text()))
+    .get()
+    .filter(Boolean)
 
   return {
+    allergenLabels: [...new Set(splitLabelList(allergenMatch?.[1]))],
     itemName: cleanText($('.single-name').first().text()) || null,
     servingSize: servingMatch?.[1]?.split('Calories')[0]?.trim() ?? null,
     calories: parseIntegerValue(cleanText($('.single-calories').first().text())),
     fatsG: parseIntegerValue(labelToValue.get('total fat')),
     carbsG: parseIntegerValue(labelToValue.get('total carbohydrate')),
+    ingredients: [...new Set(ingredients)],
+    nutritionFacts,
     proteinG: parseIntegerValue(labelToValue.get('protein')),
   }
 }
@@ -415,6 +704,45 @@ async function finishRunRecord(
   }
 }
 
+async function clearSnapshotItemsForPeriod(
+  admin: ReturnType<typeof createAdminClient>,
+  hallId: string,
+  mealPeriod: MealPeriod,
+  sourceUrl: string,
+  targetDate: string,
+) {
+  const { data: snapshot, error: snapshotError } = await admin
+    .from('menu_snapshots')
+    .upsert(
+      {
+        fetched_at: new Date().toISOString(),
+        hall_id: hallId,
+        meal_period: mealPeriod,
+        service_date: targetDate,
+        source_url: sourceUrl,
+        status: 'ready',
+      },
+      {
+        onConflict: 'hall_id,service_date,meal_period',
+      },
+    )
+    .select('id')
+    .single()
+
+  if (snapshotError || !snapshot) {
+    throw snapshotError ?? new Error('Snapshot upsert failed while clearing items')
+  }
+
+  const { error: deleteError } = await admin
+    .from('menu_items')
+    .delete()
+    .eq('snapshot_id', snapshot.id)
+
+  if (deleteError) {
+    throw deleteError
+  }
+}
+
 async function syncDiningMenus(
   admin: ReturnType<typeof createAdminClient>,
   targetDate: string,
@@ -442,6 +770,17 @@ async function syncDiningMenus(
   let itemCount = 0
   let errorCount = 0
   const nutritionCache = new Map<number, NutritionDetail | null>()
+  let atAGlanceMenus: Map<string, ParsedHallMenu> | null = null
+
+  async function getAtAGlanceMenus() {
+    if (atAGlanceMenus) {
+      return atAGlanceMenus
+    }
+
+    const html = await fetchHtml(buildAtAGlanceUrl(targetDate))
+    atAGlanceMenus = parseAtAGlancePage(html, filteredHalls, targetDate, selectedMealPeriods)
+    return atAGlanceMenus
+  }
 
   try {
     for (const hall of filteredHalls) {
@@ -462,12 +801,52 @@ async function syncDiningMenus(
 
       try {
         const html = await fetchHtml(sourceUrl)
-        const parsedHall = parseHallMenuPage(
+        let parsedHall = parseHallMenuPage(
           html,
           hall,
           targetDate,
           selectedMealPeriods,
         )
+        const isBoutiqueHall = BOUTIQUE_HALL_IDS.includes(
+          hall.id as (typeof BOUTIQUE_HALL_IDS)[number],
+        )
+
+        if (parsedHall.sections.length === 0 || isBoutiqueHall) {
+          const atAGlanceHall = (await getAtAGlanceMenus()).get(hall.id)
+
+          if (atAGlanceHall) {
+            parsedHall = atAGlanceHall
+          } else if (isBoutiqueHall) {
+            parsedHall = {
+              hallId: hall.id,
+              hallName: hall.name,
+              pageDateLabel: null,
+              sourceUrl: buildAtAGlanceUrl(targetDate),
+              sections: [],
+            }
+          }
+        }
+
+        const expectedMealPeriods =
+          selectedMealPeriods?.length
+            ? selectedMealPeriods
+            : PERIOD_CONFIG.map((period) => period.key)
+        const periodsToClear = expectedMealPeriods.filter(
+          (mealPeriod) =>
+            !parsedHall.sections.some((section) => section.mealPeriod === mealPeriod),
+        )
+
+        for (const mealPeriod of periodsToClear) {
+          await clearSnapshotItemsForPeriod(
+            admin,
+            hall.id,
+            mealPeriod,
+            parsedHall.sourceUrl,
+            targetDate,
+          )
+          snapshotCount += 1
+        }
+
         const recipeIds = parsedHall.sections.flatMap((section) =>
           section.items.map((item) => item.recipeId),
         )
@@ -509,8 +888,14 @@ async function syncDiningMenus(
 
           const rows = section.items.map((item) => {
             const nutrition = nutritionCache.get(item.recipeId)
+            const allergenLabels =
+              nutrition?.allergenLabels && nutrition.allergenLabels.length > 0
+                ? nutrition.allergenLabels
+                : item.badgeLabels.filter(isAllergenBadgeLabel)
 
             return {
+              allergen_labels: allergenLabels,
+              badge_labels: item.badgeLabels,
               snapshot_id: snapshot.id,
               recipe_id: item.recipeId,
               station_name: item.stationName,
@@ -520,7 +905,9 @@ async function syncDiningMenus(
               protein_g: nutrition?.proteinG ?? null,
               carbs_g: nutrition?.carbsG ?? null,
               fats_g: nutrition?.fatsG ?? null,
+              ingredients: nutrition?.ingredients ?? [],
               item_order: item.itemOrder,
+              nutrition_facts: nutrition?.nutritionFacts ?? [],
             }
           })
 
