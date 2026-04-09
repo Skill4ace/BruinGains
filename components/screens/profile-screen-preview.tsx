@@ -1,125 +1,221 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, View } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useState } from 'react';
+import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
-import { SectionHeader } from '@/components/ui/section-header';
-import { SegmentedChip } from '@/components/ui/segmented-chip';
+import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { profilePreview } from '@/constants/preview-data';
-import { AppColors, Radii, Spacing } from '@/constants/theme';
+import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
 
 export function ProfileScreenPreview() {
+  const { width } = useWindowDimensions();
+  const [activeWeek, setActiveWeek] = useState(1);
+  const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
+
+  const handleWeekEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const page = Math.round(event.nativeEvent.contentOffset.x / cardWidth);
+    setActiveWeek(page);
+  };
+
   return (
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <View style={styles.headerCopy}>
-          <AppText variant="headline">Profile</AppText>
-        </View>
+        <AppText variant="headline">Profile</AppText>
       </View>
 
       <View style={styles.stack}>
-        <View style={styles.summaryBlue}>
-          <AppText variant="eyebrow" color="rgba(255,255,255,0.72)">
-            Week in review
-          </AppText>
-          <AppText variant="heroNumber" color={AppColors.white}>
-            5 workouts
-          </AppText>
-          <AppText variant="label" color="rgba(255,255,255,0.78)">
-            Calories and lifting are trending the right way.
-          </AppText>
-        </View>
-        <View style={styles.statGrid}>
-          {profilePreview.summary.map((item) => (
-            <SurfaceCard key={item.id} tone="low" style={styles.statCard}>
+        <PressScale>
+          <SurfaceCard tone="low" style={styles.goalsCard}>
+            <View style={styles.goalHeaderRow}>
               <AppText variant="micro" dimmed>
-                {item.label}
+                Goals
               </AppText>
-              <AppText variant="title">{item.value}</AppText>
-            </SurfaceCard>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.stack}>
-        <SectionHeader title="Personal records" />
-        {profilePreview.prs.map((record) => (
-          <SurfaceCard key={record.id} style={styles.prCard}>
-            <View style={styles.prIcon}>
-              <Ionicons name="trophy" size={16} color={AppColors.white} />
+              <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
             </View>
-            <View style={styles.prCopy}>
-              <AppText variant="micro" dimmed>
-                {record.note}
-              </AppText>
-              <AppText variant="bodyStrong">{record.title}</AppText>
+
+            <View style={styles.goalMetricsRow}>
+              <GoalMetric icon="flame-outline" color="#1D1F24" label="Calories" value={profilePreview.goals.calories} />
+              <GoalMetric icon="food-drumstick" color="#E76F6A" label="Protein" value={profilePreview.goals.protein} material />
+              <GoalMetric icon="peanut" color="#5B8EE6" label="Fats" value={profilePreview.goals.fats} material />
+              <GoalMetric icon="bread-slice" color="#E2A061" label="Carbs" value={profilePreview.goals.carbs} material />
             </View>
-            <AppText variant="title" color={AppColors.primary}>
-              {record.value}
-            </AppText>
-          </SurfaceCard>
-        ))}
-      </View>
 
-      <View style={styles.stack}>
-        <SectionHeader title="Goals" />
-        <SurfaceCard tone="low" style={styles.goalCard}>
-          <GoalRow icon="flame-outline" label="Calories" value={profilePreview.goals.calories} />
-          <GoalRow icon="barbell-outline" label="Protein" value={profilePreview.goals.protein} />
-        </SurfaceCard>
-      </View>
+            <View style={styles.goalDivider} />
 
-      <View style={styles.stack}>
-        <SectionHeader title="Workout templates" actionLabel="Manage" />
-        <SurfaceCard style={styles.templateCard}>
-          {profilePreview.templates.map((template, index) => (
-            <View key={template.id} style={[styles.templateRow, index < profilePreview.templates.length - 1 ? styles.templateRowGap : null]}>
-              <View style={styles.templateCopy}>
-                <AppText variant="bodyStrong">{template.title}</AppText>
-                <AppText variant="label" dimmed>
-                  {template.detail}
+            <View style={styles.gymGoalRow}>
+              <View style={styles.gymGoalLeft}>
+                <Ionicons name="barbell-outline" size={16} color={AppColors.primary} />
+                <AppText variant="body" dimmed>
+                  Gym goals
                 </AppText>
               </View>
-              <Ionicons name="reorder-three" size={18} color={AppColors.textSubtle} />
+              <AppText variant="bodyStrong">{profilePreview.goals.workouts}</AppText>
             </View>
-          ))}
-        </SurfaceCard>
+          </SurfaceCard>
+        </PressScale>
       </View>
 
       <View style={styles.stack}>
-        <SectionHeader title="Dining preferences" />
-        <View style={styles.preferenceRow}>
-          {profilePreview.diningPreferences.map((preference) => (
-            <SegmentedChip key={preference} label={preference} selected />
+        <ScrollView
+          horizontal
+          pagingEnabled
+          decelerationRate="fast"
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={handleWeekEnd}>
+          {profilePreview.weeks.map((week) => (
+            <View key={week.id} style={[styles.weekPage, { width: cardWidth }]}>
+              <SurfaceCard floating style={styles.weekCard}>
+                <View style={styles.weekHeader}>
+                  <AppText variant="eyebrow" color={AppColors.textMuted}>
+                    {week.label}
+                  </AppText>
+                  <View style={styles.legendCompact}>
+                    <LegendIcon color={AppColors.primary} icon="barbell-outline" />
+                    <LegendIcon color={AppColors.secondary} icon="restaurant-outline" />
+                  </View>
+                </View>
+
+                <View style={styles.summaryGrid}>
+                  {profilePreview.summary.map((item) => (
+                    <View key={item.id} style={styles.summaryStat}>
+                      <AppText variant="micro" dimmed>
+                        {item.label}
+                      </AppText>
+                      <AppText variant="headline">{item.value}</AppText>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.weekDaysRow}>
+                  {week.days.map((day) => (
+                    <View key={day.id} style={styles.dayColumn}>
+                      <AppText variant="micro" dimmed>
+                        {day.day}
+                      </AppText>
+                      <AppText variant="label" dimmed>
+                        {day.date}
+                      </AppText>
+                      <View style={styles.dotStack}>
+                        <DayDot filled={day.workout} color={AppColors.primary} />
+                        <DayDot filled={day.nutrition} color={AppColors.secondary} />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </SurfaceCard>
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.pageDots}>
+          {profilePreview.weeks.map((week, index) => (
+            <View key={week.id} style={[styles.pageDot, activeWeek === index ? styles.pageDotActive : null]} />
           ))}
         </View>
+      </View>
+
+      <View style={styles.stack}>
+        <AppText variant="title">Achievements</AppText>
+        {profilePreview.achievements.map((achievement) => (
+          <SurfaceCard key={achievement.id} style={styles.achievementCard}>
+            <View
+              style={[
+                styles.achievementIcon,
+                achievement.tone === 'nutrition' ? styles.achievementIconNutrition : styles.achievementIconWorkout,
+              ]}>
+              <Ionicons
+                name={achievement.icon as keyof typeof Ionicons.glyphMap}
+                size={16}
+                color={AppColors.white}
+              />
+            </View>
+            <View style={styles.achievementCopy}>
+              <AppText variant="bodyStrong">{achievement.title}</AppText>
+              <AppText variant="body" dimmed>
+                {achievement.detail}
+              </AppText>
+              <AppText variant="micro" dimmed>
+                Earned {achievement.date}
+              </AppText>
+            </View>
+          </SurfaceCard>
+        ))}
       </View>
     </AppScreen>
   );
 }
 
-function GoalRow({
+function LegendIcon({
+  color,
   icon,
-  label,
-  value,
 }: {
+  color: string;
   icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
 }) {
   return (
-    <View style={styles.goalRow}>
-      <View style={styles.goalIcon}>
-        <Ionicons name={icon} size={16} color={AppColors.primary} />
-      </View>
-      <View style={styles.goalCopy}>
+    <View style={[styles.legendIconWrap, { backgroundColor: `${color}1A` }]}>
+      <Ionicons name={icon} size={12} color={color} />
+    </View>
+  );
+}
+
+function GoalMetric({
+  icon,
+  color,
+  label,
+  value,
+  material = false,
+}: {
+  icon: string;
+  color: string;
+  label: string;
+  value: string;
+  material?: boolean;
+}) {
+  return (
+    <View style={styles.goalMetric}>
+      <View style={styles.goalMetricTop}>
+        {material ? (
+          <MaterialCommunityIcons name={icon as never} size={14} color={color} />
+        ) : (
+          <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={14} color={color} />
+        )}
         <AppText variant="micro" dimmed>
           {label}
         </AppText>
-        <AppText variant="bodyStrong">{value}</AppText>
       </View>
+      <AppText variant="bodyStrong">{value}</AppText>
     </View>
+  );
+}
+
+function DayDot({
+  filled,
+  color,
+}: {
+  filled: boolean;
+  color: string;
+}) {
+  return (
+    <View
+      style={[
+        styles.dayDot,
+        {
+          borderColor: color,
+          backgroundColor: filled ? color : 'transparent',
+        },
+      ]}
+    />
   );
 }
 
@@ -128,85 +224,138 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
   },
   header: {
+    paddingTop: Spacing.xs,
+  },
+  stack: {
+    gap: Spacing.md,
+  },
+  goalsCard: {
+    gap: Spacing.lg,
+  },
+  goalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  goalMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  goalMetric: {
+    minWidth: '23%',
+    gap: Spacing.xs,
+  },
+  goalMetricTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  goalDivider: {
+    height: 1,
+    backgroundColor: AppColors.outlineVariant,
+  },
+  gymGoalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
-  headerCopy: {
-    gap: Spacing.xs,
-  },
-  stack: {
-    gap: Spacing.md,
-  },
-  summaryBlue: {
-    borderRadius: Radii.xl,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.xl,
-    backgroundColor: AppColors.primaryContainer,
-    gap: Spacing.sm,
-  },
-  statGrid: {
-    gap: Spacing.md,
-  },
-  statCard: {
-    gap: Spacing.xs,
-  },
-  prCard: {
+  gymGoalLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  weekPage: {
+    gap: Spacing.sm,
+  },
+  weekCard: {
+    gap: Spacing.lg,
+  },
+  weekHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.md,
   },
-  prIcon: {
+  legendCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  legendIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  summaryStat: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  weekDaysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  dayColumn: {
+    alignItems: 'center',
+    gap: Spacing.xs,
+    flex: 1,
+  },
+  dotStack: {
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: Spacing.xs,
+  },
+  dayDot: {
+    width: 11,
+    height: 11,
+    borderRadius: Radii.pill,
+    borderWidth: 1.5,
+  },
+  pageDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  pageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: Radii.pill,
+    backgroundColor: '#E3E5EA',
+  },
+  pageDotActive: {
+    backgroundColor: AppColors.text,
+  },
+  achievementCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+  },
+  achievementIcon: {
     width: 40,
     height: 40,
     borderRadius: Radii.pill,
-    backgroundColor: '#A66F00',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  prCopy: {
+  achievementIconWorkout: {
+    backgroundColor: AppColors.primary,
+  },
+  achievementIconNutrition: {
+    backgroundColor: AppColors.secondary,
+  },
+  achievementCopy: {
     flex: 1,
     gap: Spacing.xs,
-  },
-  goalCard: {
-    gap: Spacing.md,
-  },
-  goalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  goalIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLowest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  goalCopy: {
-    gap: Spacing.xs,
-    flex: 1,
-  },
-  templateCard: {
-    gap: Spacing.md,
-  },
-  templateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  templateRowGap: {
-    paddingBottom: Spacing.md,
-  },
-  templateCopy: {
-    flex: 1,
-    gap: Spacing.xs,
-  },
-  preferenceRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    flexWrap: 'wrap',
   },
 });

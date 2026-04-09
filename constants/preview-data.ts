@@ -214,23 +214,62 @@ export const gymPreview = {
 } as const;
 
 export const profilePreview = {
-  summary: [
-    { id: 'workouts', label: 'Workouts', value: '5' },
-    { id: 'calories', label: 'Avg calories', value: '2,210' },
-    { id: 'protein', label: 'Avg protein', value: '154g' },
-  ],
-  prs: [
-    { id: 'pr-1', title: 'Bench Press', value: '225 lbs', note: 'Latest PR' },
-    { id: 'pr-2', title: 'Trap Bar Deadlift', value: '375 lbs', note: 'All-time best' },
-  ],
   goals: {
-    calories: '2,400 kcal target',
-    protein: '160g daily target',
+    calories: '2,400 kcal',
+    protein: '160g',
+    fats: '65g',
+    carbs: '247g',
+    workouts: '4 / week',
   },
-  templates: [
-    { id: 't-1', title: 'Push Day', detail: 'Chest, shoulders, triceps' },
-    { id: 't-2', title: 'Leg Day', detail: 'Squat, hinge, calves' },
-    { id: 't-3', title: 'Upper Pull', detail: 'Back, rear delts, biceps' },
+  summary: [
+    { id: 'workouts', label: 'Avg workouts', value: '5' },
+    { id: 'calories', label: 'Avg calories', value: '2,210' },
   ],
-  diningPreferences: ['Epicuria', 'Bruin Plate', 'High protein'],
+  weeks: [
+    {
+      id: 'week-1',
+      label: 'Mar 23 - Mar 29',
+      days: [
+        { id: 'w1-mon', day: 'M', date: '23', workout: true, nutrition: true },
+        { id: 'w1-tue', day: 'T', date: '24', workout: false, nutrition: true },
+        { id: 'w1-wed', day: 'W', date: '25', workout: true, nutrition: false },
+        { id: 'w1-thu', day: 'T', date: '26', workout: false, nutrition: true },
+        { id: 'w1-fri', day: 'F', date: '27', workout: true, nutrition: true },
+        { id: 'w1-sat', day: 'S', date: '28', workout: false, nutrition: false },
+        { id: 'w1-sun', day: 'S', date: '29', workout: true, nutrition: true },
+      ],
+    },
+    {
+      id: 'week-2',
+      label: 'Mar 30 - Apr 5',
+      days: [
+        { id: 'w2-mon', day: 'M', date: '30', workout: true, nutrition: true },
+        { id: 'w2-tue', day: 'T', date: '31', workout: true, nutrition: true },
+        { id: 'w2-wed', day: 'W', date: '1', workout: false, nutrition: true },
+        { id: 'w2-thu', day: 'T', date: '2', workout: true, nutrition: false },
+        { id: 'w2-fri', day: 'F', date: '3', workout: false, nutrition: false },
+        { id: 'w2-sat', day: 'S', date: '4', workout: false, nutrition: true },
+        { id: 'w2-sun', day: 'S', date: '5', workout: true, nutrition: true },
+      ],
+    },
+    {
+      id: 'week-3',
+      label: 'Apr 6 - Apr 12',
+      days: [
+        { id: 'w3-mon', day: 'M', date: '6', workout: true, nutrition: true },
+        { id: 'w3-tue', day: 'T', date: '7', workout: false, nutrition: true },
+        { id: 'w3-wed', day: 'W', date: '8', workout: true, nutrition: true },
+        { id: 'w3-thu', day: 'T', date: '9', workout: false, nutrition: false },
+        { id: 'w3-fri', day: 'F', date: '10', workout: false, nutrition: false },
+        { id: 'w3-sat', day: 'S', date: '11', workout: false, nutrition: false },
+        { id: 'w3-sun', day: 'S', date: '12', workout: false, nutrition: false },
+      ],
+    },
+  ],
+  achievements: [
+    { id: 'a-1', title: 'First workout logged', detail: 'Started your first session in Bruin Gains', date: 'Apr 8', icon: 'barbell-outline', tone: 'workout' },
+    { id: 'a-2', title: 'Protein streak', detail: 'Hit your protein goal 5 days in a row', date: 'Apr 7', icon: 'flame-outline', tone: 'nutrition' },
+    { id: 'a-3', title: 'Hall hopper', detail: 'Tried 3 different UCLA dining halls this week', date: 'Apr 5', icon: 'restaurant-outline', tone: 'nutrition' },
+    { id: 'a-4', title: 'Survived finals week nutrition', detail: 'Stayed on plan during a heavy school week', date: 'Mar 30', icon: 'school-outline', tone: 'nutrition' },
+  ],
 } as const;
