@@ -228,6 +228,7 @@ export const profilePreview = {
   weeks: [
     {
       id: 'week-1',
+      startDate: '2026-03-23',
       label: 'Mar 23 - Mar 29',
       days: [
         { id: 'w1-mon', day: 'M', date: '23', workout: true, nutrition: true },
@@ -241,6 +242,7 @@ export const profilePreview = {
     },
     {
       id: 'week-2',
+      startDate: '2026-03-30',
       label: 'Mar 30 - Apr 5',
       days: [
         { id: 'w2-mon', day: 'M', date: '30', workout: true, nutrition: true },
@@ -254,6 +256,7 @@ export const profilePreview = {
     },
     {
       id: 'week-3',
+      startDate: '2026-04-06',
       label: 'Apr 6 - Apr 12',
       days: [
         { id: 'w3-mon', day: 'M', date: '6', workout: true, nutrition: true },

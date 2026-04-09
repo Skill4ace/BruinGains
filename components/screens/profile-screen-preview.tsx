@@ -19,7 +19,8 @@ import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
 
 export function ProfileScreenPreview() {
   const { width } = useWindowDimensions();
-  const [activeWeek, setActiveWeek] = useState(1);
+  const visibleWeeks = profilePreview.weeks.filter((week) => new Date(week.startDate) <= new Date());
+  const [activeWeek, setActiveWeek] = useState(Math.max(visibleWeeks.length - 1, 0));
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
 
   const handleWeekEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -84,7 +85,7 @@ export function ProfileScreenPreview() {
           decelerationRate="fast"
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handleWeekEnd}>
-          {profilePreview.weeks.map((week) => (
+          {visibleWeeks.map((week) => (
             <View key={week.id} style={[styles.weekPage, { width: cardWidth }]}>
               <SurfaceCard floating style={styles.weekCard}>
                 <View style={styles.weekHeader}>
@@ -130,7 +131,7 @@ export function ProfileScreenPreview() {
         </ScrollView>
 
         <View style={styles.pageDots}>
-          {profilePreview.weeks.map((week, index) => (
+          {visibleWeeks.map((week, index) => (
             <View key={week.id} style={[styles.pageDot, activeWeek === index ? styles.pageDotActive : null]} />
           ))}
         </View>
