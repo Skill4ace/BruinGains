@@ -15,11 +15,12 @@ import type {
   PublicResourceState,
 } from '@/types/app-data';
 
-const DINING_CACHE_KEY = '@bruingains/public-dining-halls';
-const DINING_MENU_ITEMS_CACHE_KEY = '@bruingains/public-dining-menu-items';
+const DINING_CACHE_KEY = '@bruingains/public-dining-halls-v4';
+const DINING_MENU_ITEMS_CACHE_KEY = '@bruingains/public-dining-menu-items-v4';
 const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities';
 const PUBLIC_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_DINING_MENU_ITEMS: DiningMenuItem[] = [];
+const DINING_MENU_PAGE_SIZE = 500;
 
 type CacheEnvelope<T> = {
   data: T;
@@ -244,20 +245,39 @@ async function fetchLatestDiningMenuItemsFromSupabase() {
     return null;
   }
 
-  const { data, error } = await supabasePublicClient
-    .from('latest_menu_items')
-    .select(
-      'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,ingredients,item_order,nutrition_facts',
-    )
-    .order('hall_sort_order', { ascending: true })
-    .order('meal_period', { ascending: true })
-    .order('item_order', { ascending: true });
+  const rows: LatestDiningMenuItemRow[] = [];
+  let pageStart = 0;
 
-  if (error || !data) {
-    throw error ?? new Error('Unable to load dining menu items');
+  while (true) {
+    const pageEnd = pageStart + DINING_MENU_PAGE_SIZE - 1;
+    const { data, error } = await supabasePublicClient
+      .from('latest_menu_items')
+      .select(
+        'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,ingredients,item_order,nutrition_facts',
+      )
+      .order('hall_sort_order', { ascending: true })
+      .order('meal_period', { ascending: true })
+      .order('item_order', { ascending: true })
+      .range(pageStart, pageEnd);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    rows.push(...(data as LatestDiningMenuItemRow[]));
+
+    if (data.length < DINING_MENU_PAGE_SIZE) {
+      break;
+    }
+
+    pageStart += DINING_MENU_PAGE_SIZE;
   }
 
-  const items = (data as LatestDiningMenuItemRow[]).map(mapLatestDiningMenuItemRow);
+  const items = rows.map(mapLatestDiningMenuItemRow);
   return items.length > 0 ? items : null;
 }
 

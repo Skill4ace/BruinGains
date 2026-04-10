@@ -7,6 +7,7 @@ const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu'
 const UCLA_DINING_TIME_ZONE = 'America/Los_Angeles'
 const USER_AGENT = 'BruinGainsDiningIngest/1.0 (+https://afxptjzzctiowrqqcyzh.supabase.co)'
 const DINING_MENU_AGLANCE_PATH = '/menus-at-a-glance'
+const FETCH_TIMEOUT_MS = 15000
 const BOUTIQUE_HALL_IDS = [
   'feast-rieber',
   'bruin-cafe',
@@ -68,11 +69,16 @@ type ParsedMealSection = {
   mealPeriod: MealPeriod
 }
 
+type ParsedAllDayStation = {
+  items: ParsedMenuItem[]
+  stationName: string
+}
+
 type ParsedMenuItem = {
   badgeLabels: string[]
   itemName: string
   itemOrder: number
-  recipeId: number
+  recipeId: number | null
   stationName: string
 }
 
@@ -111,6 +117,22 @@ type SyncRunSummary = {
   itemCount: number
   snapshotCount: number
   status: 'success' | 'partial_failure' | 'failure'
+}
+
+function hasMeaningfulNutritionDetail(detail: NutritionDetail | null | undefined) {
+  if (!detail) {
+    return false
+  }
+
+  return (
+    detail.servingSize !== null &&
+    detail.calories !== null &&
+    detail.proteinG !== null &&
+    detail.carbsG !== null &&
+    detail.fatsG !== null &&
+    detail.nutritionFacts.length > 0 &&
+    detail.ingredients.length > 0
+  )
 }
 
 function getRequiredEnv(name: string) {
@@ -289,6 +311,7 @@ async function fetchHtml(url: string) {
       'user-agent': USER_AGENT,
       accept: 'text/html,application/xhtml+xml',
     },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
 
   if (!response.ok) {
@@ -487,6 +510,138 @@ function getOpenMealPeriodsForHall(
   })
 }
 
+function normalizeStationName(value: string) {
+  const cleanedValue = cleanText(value)
+  return cleanedValue.replace(/[.\s]+/g, '') ? cleanedValue : 'Station'
+}
+
+function getStudyAllDayMealPeriods(
+  stationName: string,
+  openMealPeriods: MealPeriod[],
+) {
+  const normalizedStationName = normalizeComparableValue(stationName)
+  const breakfastPeriods = openMealPeriods.filter(
+    (mealPeriod) => mealPeriod === 'breakfast',
+  )
+  const nonBreakfastPeriods = openMealPeriods.filter(
+    (mealPeriod) => mealPeriod !== 'breakfast',
+  )
+
+  if (
+    normalizedStationName.includes('breakfast') ||
+    normalizedStationName.includes('tartines') ||
+    normalizedStationName.includes('crepes') ||
+    normalizedStationName.includes('waffles') ||
+    normalizedStationName.includes('oatmeal') ||
+    normalizedStationName.includes('bagel croissant bar')
+  ) {
+    return breakfastPeriods
+  }
+
+  if (
+    normalizedStationName.includes('cakes tarts') ||
+    normalizedStationName.includes('pastries verrines') ||
+    normalizedStationName.includes('coffee tea') ||
+    normalizedStationName.includes('espresso nitro') ||
+    normalizedStationName.includes('handcraft beverages') ||
+    normalizedStationName.includes('frozen yogurt') ||
+    normalizedStationName.includes('market entrees') ||
+    normalizedStationName.includes('market sandwiches') ||
+    normalizedStationName.includes('market salads') ||
+    normalizedStationName.includes('market beverages') ||
+    normalizedStationName === 'sides'
+  ) {
+    return openMealPeriods
+  }
+
+  return nonBreakfastPeriods
+}
+
+function getAllDayMealPeriodsForStation(
+  hall: DiningHallRow,
+  stationName: string,
+  openMealPeriods: MealPeriod[],
+) {
+  const normalizedStationName = normalizeComparableValue(stationName)
+  const lunchAndDinnerPeriods = openMealPeriods.filter(
+    (mealPeriod) => mealPeriod === 'lunch' || mealPeriod === 'dinner',
+  )
+
+  if (hall.id === 'study-hedrick') {
+    return getStudyAllDayMealPeriods(stationName, openMealPeriods)
+  }
+
+  if (hall.id === 'bruin-cafe' || hall.id === 'epicuria-ackerman') {
+    return lunchAndDinnerPeriods
+  }
+
+  if (hall.id === 'rendezvous') {
+    if (normalizedStationName.includes('lunch special')) {
+      return openMealPeriods.filter((mealPeriod) => mealPeriod === 'lunch')
+    }
+
+    return lunchAndDinnerPeriods
+  }
+
+  if (hall.id === 'the-drey') {
+    if (normalizedStationName.includes('lunch')) {
+      return openMealPeriods.filter((mealPeriod) => mealPeriod === 'lunch')
+    }
+
+    if (normalizedStationName.includes('dinner')) {
+      return openMealPeriods.filter((mealPeriod) => mealPeriod === 'dinner')
+    }
+
+    return lunchAndDinnerPeriods
+  }
+
+  return openMealPeriods
+}
+
+function buildAllDaySections(
+  hall: DiningHallRow,
+  stations: ParsedAllDayStation[],
+  openMealPeriods: MealPeriod[],
+) {
+  const itemsByMealPeriod = new Map<MealPeriod, ParsedMenuItem[]>(
+    openMealPeriods.map((mealPeriod) => [mealPeriod, []]),
+  )
+
+  stations.forEach((station) => {
+    const stationMealPeriods = getAllDayMealPeriodsForStation(
+      hall,
+      station.stationName,
+      openMealPeriods,
+    )
+
+    stationMealPeriods.forEach((mealPeriod) => {
+      const periodItems = itemsByMealPeriod.get(mealPeriod) ?? []
+
+      station.items.forEach((item) => {
+        periodItems.push({
+          ...item,
+          itemOrder: periodItems.length,
+        })
+      })
+
+      itemsByMealPeriod.set(mealPeriod, periodItems)
+    })
+  })
+
+  return PERIOD_CONFIG.flatMap((period) => {
+    const items = itemsByMealPeriod.get(period.key)
+
+    return items?.length
+      ? [
+          {
+            items,
+            mealPeriod: period.key,
+          },
+        ]
+      : []
+  })
+}
+
 function parseAllDayMenuPage(
   html: string,
   hall: DiningHallRow,
@@ -510,19 +665,29 @@ function parseAllDayMenuPage(
     return null
   }
 
-  const stationRoots = $('.force-left-full-width.meal-station')
+  const openMealPeriods = getOpenMealPeriodsForHall(hall, selectedMealPeriods)
+
+  if (!openMealPeriods.length) {
+    return null
+  }
+
+  const sectionContainer = allDayAnchor.nextAll('div').first()
+  const stationRoots =
+    sectionContainer.find('div.force-left-full-width.meal-station').length > 0
+      ? sectionContainer.find('div.force-left-full-width.meal-station')
+      : sectionContainer.find('.meal-station')
 
   if (!stationRoots.length) {
     return null
   }
 
-  const items: ParsedMenuItem[] = []
-  let itemOrder = 0
+  const stations: ParsedAllDayStation[] = []
 
   stationRoots.each((_, stationElement) => {
-    const stationName = cleanText(
+    const stationName = normalizeStationName(
       $(stationElement).find('.category-heading h2').first().text(),
-    ) || 'Station'
+    )
+    const items: ParsedMenuItem[] = []
 
     $(stationElement)
       .find('section.recipe-card')
@@ -549,15 +714,21 @@ function parseAllDayMenuPage(
         items.push({
           badgeLabels: [...new Set(badgeLabels)],
           itemName,
-          itemOrder,
+          itemOrder: items.length,
           recipeId,
           stationName,
         })
-        itemOrder += 1
       })
+
+    if (items.length > 0) {
+      stations.push({
+        items,
+        stationName,
+      })
+    }
   })
 
-  if (!items.length) {
+  if (!stations.length) {
     return null
   }
 
@@ -566,10 +737,7 @@ function parseAllDayMenuPage(
     hallName: hall.name,
     pageDateLabel,
     sourceUrl: buildHallUrl(hall.source_path ?? hall.id, targetDate),
-    sections: getOpenMealPeriodsForHall(hall, selectedMealPeriods).map((mealPeriod) => ({
-      items,
-      mealPeriod,
-    })),
+    sections: buildAllDaySections(hall, stations, openMealPeriods),
   }
 }
 
@@ -689,10 +857,24 @@ function parseAtAGlanceHallBlock(
   pageDateLabel: string | null,
   targetDate: string,
 ) {
-  const hallName = extractFragmentText(hallBlockHtml.match(/<h3>(.*?)<\/h3>/s)?.[1] ?? null)
+  // Use cheerio to parse the entire hall block — handles both the old and new
+  // at-a-glance HTML structure that UCLA dining rolled out in 2025-26.
+  const $ = cheerio.load(hallBlockHtml)
+
+  // New structure: <h3 class="dining-location__title">Hall Name</h3>
+  // Old structure: plain <h3>Hall Name</h3>
+  const hallName = cleanText($('h3').first().text())
+
+  // New structure: <a class="dining-location__link" href="/dining/menus/locations/…">
+  // Boutique halls: <a class="dining-location__detailed-menu" href="#">  (href is "#", useless)
+  const rawDetailHref = $(
+    'a.dining-location__link, a.dining-location__detailed-menu',
+  )
+    .first()
+    .attr('href')
   const detailHref =
-    hallBlockHtml.match(/<h3>.*?<\/h3>\s*<a href=['"]([^'"]+)['"]/s)?.[1] ??
-    hallBlockHtml.match(/<a href=['"]([^'"]+)['"][^>]*>\s*Detailed Menu\s*<\/a>/s)?.[1]
+    rawDetailHref && rawDetailHref !== '#' ? rawDetailHref : undefined
+
   const hall =
     (detailHref
       ? lookup.bySourcePath.get(normalizeComparableValue(detailHref.replace(/\/$/, '')))
@@ -703,7 +885,7 @@ function parseAtAGlanceHallBlock(
     return null
   }
 
-  const noServiceMessage = extractFragmentText(hallBlockHtml.match(/<p>(.*?)<\/p>/s)?.[1] ?? null)
+  const noServiceMessage = cleanText($('p').first().text())
 
   if (noServiceMessage.toLowerCase().includes('there is no')) {
     return {
@@ -720,29 +902,37 @@ function parseAtAGlanceHallBlock(
   const items: ParsedMenuItem[] = []
   let itemOrder = 0
 
-  for (const stationBlockHtml of extractStationBlocks(hallBlockHtml)) {
-    const $ = cheerio.load(`<div id="station-root">${stationBlockHtml}</div>`)
-    const stationRoot = $('#station-root').children().first()
-    const rawStationName = cleanText(stationRoot.find('h4').first().text())
+  // Station group selectors cover all known at-a-glance HTML variants:
+  //   Old:      div.at-a-glance-menu__meal-station
+  //   New main: div.dining-location__menu-item-group  (h5 for station name)
+  //   New café: div.dining-location__menu-section     (h4 for station name)
+  const stationGroups = $(
+    'div.dining-location__menu-item-group, div.dining-location__menu-section, div.at-a-glance-menu__meal-station',
+  )
+
+  stationGroups.each((_, stationEl) => {
+    const rawStationName = cleanText($(stationEl).find('h4, h5').first().text())
     const stationName = rawStationName && rawStationName !== '.' ? rawStationName : 'Station'
 
-    stationRoot
+    $(stationEl)
       .find('li')
-      .each((__, itemElement) => {
-        const recipeLink = $(itemElement).find("a[href*='recipe=']").first()
-        const itemName = cleanText(recipeLink.text())
-        const recipeId = extractRecipeIdFromHref(recipeLink.attr('href'))
+      .each((__, itemEl) => {
+        const link = $(itemEl).find('a').first()
+        const itemName = cleanText(link.text())
 
-        if (!itemName || recipeId === null) {
+        if (!itemName) {
           return
         }
 
-        const badgeLabels = $(itemElement)
+        const href = link.attr('href') ?? ''
+        // recipeId is null for boutique halls whose items link to href="#" or slug-only URLs;
+        // nutrition fields will be left null per spec — do not fabricate data.
+        const recipeId = extractRecipeIdFromHref(href)
+
+        const badgeLabels = $(itemEl)
           .find('img')
           .map((___, badgeImage) =>
-            normalizeBadgeLabel(
-              $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
-            ),
+            normalizeBadgeLabel($(badgeImage).attr('title') ?? $(badgeImage).attr('alt')),
           )
           .get()
           .filter((badge): badge is string => Boolean(badge))
@@ -756,7 +946,7 @@ function parseAtAGlanceHallBlock(
         })
         itemOrder += 1
       })
-  }
+  })
 
   return {
     hallId: hall.id,
@@ -845,6 +1035,32 @@ function normalizeHoursValue(value: string) {
   return cleanedValue
 }
 
+function applyHallHoursOverrides(
+  hallId: string,
+  hours: Pick<
+    DiningHallRow,
+    'breakfast_hours' | 'lunch_hours' | 'dinner_hours' | 'late_night_hours'
+  >,
+) {
+  if (hallId === 'feast-rieber') {
+    return {
+      breakfast_hours: null,
+      lunch_hours: null,
+      dinner_hours: hours.dinner_hours,
+      late_night_hours: null,
+    }
+  }
+
+  if (hallId === 'cafe-1919') {
+    return {
+      ...hours,
+      late_night_hours: null,
+    }
+  }
+
+  return hours
+}
+
 async function syncDiningHallHours(
   admin: ReturnType<typeof createAdminClient>,
   halls: DiningHallRow[],
@@ -874,12 +1090,19 @@ async function syncDiningHallHours(
       return
     }
 
-    updates.push({
-      id: hall.id,
+    const normalizedHours = applyHallHoursOverrides(hall.id, {
       breakfast_hours: normalizeHoursValue(cells.eq(1).text()),
       lunch_hours: normalizeHoursValue(cells.eq(2).text()),
       dinner_hours: normalizeHoursValue(cells.eq(3).text()),
       late_night_hours: normalizeHoursValue(cells.eq(4).text()),
+    })
+
+    updates.push({
+      id: hall.id,
+      breakfast_hours: normalizedHours.breakfast_hours,
+      lunch_hours: normalizedHours.lunch_hours,
+      dinner_hours: normalizedHours.dinner_hours,
+      late_night_hours: normalizedHours.late_night_hours,
     })
   })
 
@@ -904,6 +1127,7 @@ function parseNutritionPage(html: string): NutritionDetail {
   const $ = cheerio.load(html)
   const nutritionRoot = $('#nutrition')
   const ingredientRoot = $('#ingredient_list')
+  const complexIngredientRoot = $('.single-complex-ingredients')
   const labelToValue = new Map<string, string>()
   const nutritionFacts: ParsedNutritionFact[] = []
   const seenFactIds = new Set<string>()
@@ -945,14 +1169,34 @@ function parseNutritionPage(html: string): NutritionDetail {
   const servingMatch = servingText.match(/Serving Size:\s*([^\n]+)/i)
   const ingredientHtml = ingredientRoot.html() ?? ''
   const allergenMatch = ingredientHtml.match(/<strong>Allergens\*:<\/strong>\s*([^<]+)/i)
-  const ingredients = ingredientRoot
+  const tabIngredients = ingredientRoot
     .find('ul.nolispace li')
     .map((_, ingredient) => cleanText($(ingredient).text()))
     .get()
     .filter(Boolean)
+  const complexIngredients = complexIngredientRoot
+    .find('.single-ingredient-link')
+    .map((_, ingredientLink) => cleanText($(ingredientLink).text()))
+    .get()
+    .filter(Boolean)
+  const complexAllergenLabels = complexIngredientRoot
+    .find('img')
+    .map((_, badgeImage) =>
+      normalizeBadgeLabel($(badgeImage).attr('title') ?? $(badgeImage).attr('alt')),
+    )
+    .get()
+    .filter((label): label is string => Boolean(label))
+    .filter(isAllergenBadgeLabel)
+  const ingredients =
+    tabIngredients.length > 0 ? tabIngredients : complexIngredients
 
   return {
-    allergenLabels: [...new Set(splitLabelList(allergenMatch?.[1]))],
+    allergenLabels: [
+      ...new Set([
+        ...splitLabelList(allergenMatch?.[1]),
+        ...complexAllergenLabels,
+      ]),
+    ],
     itemName: cleanText($('.single-name').first().text()) || null,
     servingSize: servingMatch?.[1]?.split('Calories')[0]?.trim() ?? null,
     calories: parseIntegerValue(cleanText($('.single-calories').first().text())),
@@ -1022,7 +1266,7 @@ async function hydrateRecipeNutritionCacheFromDatabase(
       continue
     }
 
-    cache.set(recipeId, {
+    const detail = {
       allergenLabels: Array.isArray(row.allergen_labels)
         ? row.allergen_labels.filter((label): label is string => typeof label === 'string')
         : [],
@@ -1038,7 +1282,11 @@ async function hydrateRecipeNutritionCacheFromDatabase(
         : [],
       proteinG: row.protein_g,
       servingSize: row.serving_size,
-    })
+    }
+
+    if (hasMeaningfulNutritionDetail(detail)) {
+      cache.set(recipeId, detail)
+    }
   }
 }
 
@@ -1061,7 +1309,7 @@ async function populateRecipeNutritionCache(
     return
   }
 
-  const entries = await mapLimit(missingRecipeIds, 1, async (recipeId) => {
+  const entries = await mapLimit(missingRecipeIds, 20, async (recipeId) => {
     try {
       const html = await fetchHtml(`${UCLA_DINING_BASE_URL}/menu-item/?recipe=${recipeId}`)
       return [recipeId, parseNutritionPage(html)] as const
@@ -1169,6 +1417,50 @@ async function clearSnapshotItemsForPeriod(
   }
 }
 
+async function deleteSnapshotForPeriod(
+  admin: ReturnType<typeof createAdminClient>,
+  hallId: string,
+  mealPeriod: MealPeriod,
+  targetDate: string,
+) {
+  const { data: snapshots, error: snapshotError } = await admin
+    .from('menu_snapshots')
+    .select('id')
+    .eq('hall_id', hallId)
+    .eq('meal_period', mealPeriod)
+    .eq('service_date', targetDate)
+
+  if (snapshotError) {
+    throw snapshotError
+  }
+
+  if (!snapshots?.length) {
+    return
+  }
+
+  for (const snapshot of snapshots) {
+    const { error: deleteItemsError } = await admin
+      .from('menu_items')
+      .delete()
+      .eq('snapshot_id', snapshot.id)
+
+    if (deleteItemsError) {
+      throw deleteItemsError
+    }
+  }
+
+  const { error: deleteSnapshotError } = await admin
+    .from('menu_snapshots')
+    .delete()
+    .eq('hall_id', hallId)
+    .eq('meal_period', mealPeriod)
+    .eq('service_date', targetDate)
+
+  if (deleteSnapshotError) {
+    throw deleteSnapshotError
+  }
+}
+
 async function syncDiningMenus(
   admin: ReturnType<typeof createAdminClient>,
   targetDate: string,
@@ -1179,19 +1471,30 @@ async function syncDiningMenus(
     skipNutritionFetch?: boolean
   },
 ) {
-  const { data: halls, error: hallsError } = await admin
-    .from('dining_halls')
-    .select('id,name,source_path,breakfast_hours,lunch_hours,dinner_hours,late_night_hours')
-    .eq('is_active', true)
-    .order('sort_order', { ascending: true })
+  async function loadActiveHalls() {
+    const { data, error } = await admin
+      .from('dining_halls')
+      .select('id,name,source_path,breakfast_hours,lunch_hours,dinner_hours,late_night_hours')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
 
-  if (hallsError || !halls) {
-    throw hallsError ?? new Error('Unable to load dining halls')
+    if (error || !data) {
+      throw error ?? new Error('Unable to load dining halls')
+    }
+
+    return data as DiningHallRow[]
+  }
+
+  let halls = await loadActiveHalls()
+
+  if (targetDate === getLosAngelesToday()) {
+    await syncDiningHallHours(admin, halls)
+    halls = await loadActiveHalls()
   }
 
   const filteredHalls = halls.filter((hall) =>
     selectedHallIds?.length ? selectedHallIds.includes(hall.id) : true,
-  ) as DiningHallRow[]
+  )
 
   const runId = await startRunRecord(admin, targetDate, triggerSource)
   const hallResults: SyncHallResult[] = []
@@ -1200,10 +1503,6 @@ async function syncDiningMenus(
   let errorCount = 0
   const nutritionCache = new Map<number, NutritionDetail | null>()
   let atAGlanceMenus: Map<string, ParsedHallMenu> | null = null
-
-  if (targetDate === getLosAngelesToday()) {
-    await syncDiningHallHours(admin, halls as DiningHallRow[])
-  }
 
   async function getAtAGlanceMenus() {
     if (atAGlanceMenus) {
@@ -1230,28 +1529,41 @@ async function syncDiningMenus(
         continue
       }
 
-      const sourceUrl = buildHallUrl(hall.source_path, targetDate)
+      const sourceUrl = buildHallUrl(hall.source_path ?? hall.id, targetDate)
+      const openMealPeriods = getOpenMealPeriodsForHall(hall, selectedMealPeriods)
+      const closedMealPeriods = PERIOD_CONFIG.map((period) => period.key).filter(
+        (mealPeriod) =>
+          !getOpenMealPeriodsForHall(hall, undefined).includes(mealPeriod),
+      )
 
       try {
         const sourceHtml = await fetchHtml(sourceUrl)
         const isBoutiqueHall = BOUTIQUE_HALL_IDS.includes(
           hall.id as (typeof BOUTIQUE_HALL_IDS)[number],
         )
-        const forceAtAGlance = hall.id === 'feast-rieber'
-        const allDayHall = forceAtAGlance
-          ? null
-          : parseAllDayMenuPage(
-              sourceHtml,
-              hall,
-              targetDate,
-              selectedMealPeriods,
-            )
-        const shouldUseAtAGlance =
-          forceAtAGlance || (!allDayHall && !isBoutiqueHall)
-        const atAGlanceHall = shouldUseAtAGlance
-          ? (await getAtAGlanceMenus()).get(hall.id)
-          : null
-        let parsedHall = allDayHall ?? atAGlanceHall ?? {
+        const allDayHall = parseAllDayMenuPage(
+          sourceHtml,
+          hall,
+          targetDate,
+          selectedMealPeriods,
+        )
+        const hallMenuPage =
+          !allDayHall
+            ? parseHallMenuPage(
+                sourceHtml,
+                hall,
+                targetDate,
+                selectedMealPeriods,
+              )
+            : null
+        const atAGlanceHall =
+          !allDayHall && !hallMenuPage?.sections.length && !isBoutiqueHall
+            ? (await getAtAGlanceMenus()).get(hall.id)
+            : null
+        let parsedHall =
+          allDayHall ??
+          (hallMenuPage?.sections.length ? hallMenuPage : null) ??
+          atAGlanceHall ?? {
           hallId: hall.id,
           hallName: hall.name,
           pageDateLabel: null,
@@ -1259,20 +1571,11 @@ async function syncDiningMenus(
           sections: [] as ParsedMealSection[],
         }
 
-        if (!forceAtAGlance && !allDayHall && !atAGlanceHall) {
-          parsedHall = parseHallMenuPage(
-            sourceHtml,
-            hall,
-            targetDate,
-            selectedMealPeriods,
-          )
+        for (const mealPeriod of closedMealPeriods) {
+          await deleteSnapshotForPeriod(admin, hall.id, mealPeriod, targetDate)
         }
 
-        const expectedMealPeriods =
-          selectedMealPeriods?.length
-            ? selectedMealPeriods
-            : PERIOD_CONFIG.map((period) => period.key)
-        const periodsToClear = expectedMealPeriods.filter(
+        const periodsToClear = openMealPeriods.filter(
           (mealPeriod) =>
             !parsedHall.sections.some((section) => section.mealPeriod === mealPeriod),
         )
@@ -1289,7 +1592,9 @@ async function syncDiningMenus(
         }
 
         const recipeIds = parsedHall.sections.flatMap((section) =>
-          section.items.map((item) => item.recipeId),
+          section.items
+            .map((item) => item.recipeId)
+            .filter((id): id is number => id !== null),
         )
         await populateRecipeNutritionCache(admin, nutritionCache, recipeIds, {
           skipNetworkFetch: options?.skipNutritionFetch,
@@ -1330,7 +1635,7 @@ async function syncDiningMenus(
           }
 
           const rows = section.items.map((item) => {
-            const nutrition = nutritionCache.get(item.recipeId)
+            const nutrition = item.recipeId !== null ? nutritionCache.get(item.recipeId) : null
             const allergenLabels =
               nutrition?.allergenLabels && nutrition.allergenLabels.length > 0
                 ? nutrition.allergenLabels

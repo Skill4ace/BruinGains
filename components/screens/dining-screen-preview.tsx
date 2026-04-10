@@ -139,23 +139,19 @@ export function DiningScreenPreview() {
   const deferredHallSearchQuery = useDeferredValue(hallSearchQuery.trim().toLowerCase());
   const nutritionSummary = getNutritionSummaryForDate(state);
   const todaysMeals = getMealLogsForDate(state);
-  const latestMenuServiceDate = useMemo(() => {
-    return diningMenuState.data.reduce<string | null>((latest, item) => {
-      if (!latest || item.serviceDate > latest) {
-        return item.serviceDate;
+  const latestServiceDateByHall = useMemo(() => {
+    const latestByHall = new Map<string, string>();
+
+    diningMenuState.data.forEach((item) => {
+      const latestForHall = latestByHall.get(item.hallId);
+
+      if (!latestForHall || item.serviceDate > latestForHall) {
+        latestByHall.set(item.hallId, item.serviceDate);
       }
+    });
 
-      return latest;
-    }, null);
+    return latestByHall;
   }, [diningMenuState.data]);
-  const currentMenuItems = useMemo(() => {
-    if (!latestMenuServiceDate) {
-      return diningMenuState.data;
-    }
-
-    return diningMenuState.data.filter((item) => item.serviceDate === latestMenuServiceDate);
-  }, [diningMenuState.data, latestMenuServiceDate]);
-
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
 
   const hallsForPeriod = useMemo(() => {
@@ -187,11 +183,18 @@ export function DiningScreenPreview() {
   );
 
   const activeHallItems = useMemo(
-    () =>
-      activeHallId
-        ? currentMenuItems.filter((item) => item.hallId === activeHallId)
-        : [],
-    [activeHallId, currentMenuItems],
+    () => {
+      if (!activeHallId) {
+        return [];
+      }
+
+      const latestForHall = latestServiceDateByHall.get(activeHallId);
+
+      return diningMenuState.data.filter(
+        (item) => item.hallId === activeHallId && (!latestForHall || item.serviceDate === latestForHall),
+      );
+    },
+    [activeHallId, diningMenuState.data, latestServiceDateByHall],
   );
 
   const activeHallSections = useMemo(() => {
@@ -356,13 +359,6 @@ export function DiningScreenPreview() {
     });
     setSelectedMenuItem(null);
     setSelectedServings(1);
-  };
-
-  const handleQuickDiningItemSave = (item: DiningMenuItem) => {
-    addDiningMealLog({
-      item,
-      servings: 1,
-    });
   };
 
   return (
@@ -563,7 +559,6 @@ export function DiningScreenPreview() {
           setSelectedMenuItem(null);
           setSelectedServings(1);
         }}
-        onQuickAddItem={handleQuickDiningItemSave}
         onSaveItem={handleDiningItemSave}
         onSearchChange={setHallSearchQuery}
         onServingsChange={setSelectedServings}
@@ -598,7 +593,6 @@ function DiningHallModal({
   onClose,
   onOpenItem,
   onCloseItem,
-  onQuickAddItem,
   onSaveItem,
   onSearchChange,
   onServingsChange,
@@ -615,7 +609,6 @@ function DiningHallModal({
   onClose: () => void;
   onOpenItem: (item: DiningMenuItem) => void;
   onCloseItem: () => void;
-  onQuickAddItem: (item: DiningMenuItem) => void;
   onSaveItem: () => void;
   onSearchChange: (value: string) => void;
   onServingsChange: (value: number) => void;
@@ -691,46 +684,40 @@ function DiningHallModal({
                   </AppText>
                   <View style={styles.menuItemsList}>
                     {section.items.map((item) => (
-                      <PressScale
+                      <SurfaceCard
                         key={`${item.stationName}-${item.itemOrder}-${item.itemName}`}
-                        haptic="none"
-                        onPress={() => onOpenItem(item)}>
-                        <SurfaceCard style={styles.menuItemCard}>
-                          <View style={styles.menuItemTopRow}>
-                            <View style={styles.menuItemCopy}>
-                              <AppText numberOfLines={2} variant="bodyStrong">
-                                {item.itemName}
-                              </AppText>
-                              <AppText numberOfLines={1} variant="micro" dimmed>
-                                {formatMenuItemMeta(item)}
-                              </AppText>
-                            </View>
-                            <PressScale
-                              haptic="none"
-                              onPress={() => onQuickAddItem(item)}>
-                              <View style={styles.menuAddButtonCompact}>
-                                <Ionicons name="add" size={18} color={AppColors.primary} />
-                              </View>
-                            </PressScale>
-                          </View>
-                          <View style={styles.menuItemBottomRow}>
-                            <AppText
-                              numberOfLines={1}
-                              style={styles.menuItemNutritionLabel}
-                              variant="micro"
-                              dimmed>
-                              {formatInlineMacros(item)}
+                        style={styles.menuItemCard}>
+                        <View style={styles.menuItemTopRow}>
+                          <View style={styles.menuItemCopy}>
+                            <AppText numberOfLines={2} variant="bodyStrong">
+                              {item.itemName}
                             </AppText>
-                            {item.badgeLabels.length > 0 ? (
-                              <View style={styles.menuBadgeRow}>
-                                {item.badgeLabels.slice(0, 5).map((badge) => (
-                                  <MenuBadge key={`${item.itemName}-${badge}`} label={badge} />
-                                ))}
-                              </View>
-                            ) : null}
                           </View>
-                        </SurfaceCard>
-                      </PressScale>
+                          <PressScale
+                            haptic="none"
+                            onPress={() => onOpenItem(item)}>
+                            <View style={styles.menuAddButtonCompact}>
+                              <Ionicons name="add" size={17} color={AppColors.primary} />
+                            </View>
+                          </PressScale>
+                        </View>
+                        <View style={styles.menuItemBottomRow}>
+                          <AppText
+                            numberOfLines={1}
+                            style={styles.menuItemNutritionLabel}
+                            variant="micro"
+                            dimmed>
+                            {formatInlineMacros(item)}
+                          </AppText>
+                          {item.badgeLabels.length > 0 ? (
+                            <View style={styles.menuBadgeRow}>
+                              {item.badgeLabels.slice(0, 5).map((badge) => (
+                                <MenuBadge key={`${item.itemName}-${badge}`} label={badge} />
+                              ))}
+                            </View>
+                          ) : null}
+                        </View>
+                      </SurfaceCard>
                     ))}
                   </View>
                 </View>
@@ -1401,10 +1388,6 @@ function matchesDiningMenuQuery(item: DiningMenuItem, query: string) {
   return searchableFields.some((value) => value.toLowerCase().includes(query));
 }
 
-function formatMenuItemMeta(item: DiningMenuItem) {
-  return item.servingSize ?? 'Tap for details';
-}
-
 function formatInlineMacros(item: DiningMenuItem) {
   if (
     item.calories === null &&
@@ -1559,7 +1542,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loggedMealsCard: {
-    height: 320,
+    height: 292,
     gap: Spacing.lg,
   },
   loggedMealsHeader: {
@@ -1729,11 +1712,13 @@ const styles = StyleSheet.create({
   hallCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
   },
   hallImage: {
-    width: 72,
-    height: 48,
+    width: 68,
+    height: 44,
   },
   hallCopy: {
     flex: 1,
@@ -1807,33 +1792,33 @@ const styles = StyleSheet.create({
     gap: Spacing.xl,
   },
   menuSection: {
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   menuSectionLabel: {
     paddingHorizontal: Spacing.xs,
     letterSpacing: 0.5,
   },
   menuItemsList: {
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   menuItemCard: {
     backgroundColor: AppColors.surfaceLowest,
-    gap: Spacing.sm,
-    paddingVertical: Spacing.md,
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
   },
   menuItemTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   menuItemCopy: {
     flex: 1,
-    gap: 6,
+    gap: 2,
   },
   menuItemBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
     justifyContent: 'space-between',
   },
   menuBadgeRow: {
@@ -1860,12 +1845,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   menuAddButtonCompact: {
-    width: 38,
-    height: 38,
-    borderRadius: Radii.lg,
+    width: 30,
+    height: 30,
+    borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AppColors.secondaryContainer,
+    backgroundColor: AppColors.surfaceLow,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
   },
   menuEmptyState: {
     backgroundColor: AppColors.surfaceLowest,
