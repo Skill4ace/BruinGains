@@ -64,9 +64,7 @@ export function GymScreenPreview() {
                   </AppText>
                 </View>
                 <AppText variant="micro" dimmed>
-                  {location.zoneName
-                    ? `${location.zoneName} • ${location.hours}`
-                    : location.hours}
+                  {location.hours}
                 </AppText>
                 <View style={styles.capacityBarTrack}>
                   <View
