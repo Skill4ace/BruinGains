@@ -17,7 +17,7 @@ export type Database = {
           breakfast_hours: string | null
           created_at: string
           dinner_hours: string | null
-          fit_percent: number
+          fit_percent: number | null
           id: string
           image_key: string | null
           is_active: boolean
@@ -33,7 +33,7 @@ export type Database = {
           breakfast_hours?: string | null
           created_at?: string
           dinner_hours?: string | null
-          fit_percent?: number
+          fit_percent?: number | null
           id: string
           image_key?: string | null
           is_active?: boolean
@@ -49,7 +49,7 @@ export type Database = {
           breakfast_hours?: string | null
           created_at?: string
           dinner_hours?: string | null
-          fit_percent?: number
+          fit_percent?: number | null
           id?: string
           image_key?: string | null
           is_active?: boolean
@@ -67,26 +67,32 @@ export type Database = {
         Row: {
           captured_at: string
           id: number
+          is_closed: boolean
           load: number
           location_id: string
           percent_full: number | null
           source: string | null
+          zone_name: string | null
         }
         Insert: {
           captured_at?: string
           id?: never
+          is_closed?: boolean
           load: number
           location_id: string
           percent_full?: number | null
           source?: string | null
+          zone_name?: string | null
         }
         Update: {
           captured_at?: string
           id?: never
+          is_closed?: boolean
           load?: number
           location_id?: string
           percent_full?: number | null
           source?: string | null
+          zone_name?: string | null
         }
         Relationships: [
           {

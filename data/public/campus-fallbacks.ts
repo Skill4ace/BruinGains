@@ -9,6 +9,8 @@ export const fallbackGymCapacities: GymCapacitySnapshot[] = gymPreview.capacitie
   (location) => ({
     ...location,
     capturedAt: new Date().toISOString(),
+    isClosed: false,
+    zoneName: location.zoneName,
   }),
 );
 

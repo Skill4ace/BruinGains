@@ -53,20 +53,32 @@ export function GymScreenPreview() {
                   <AppText variant="bodyStrong">{location.name}</AppText>
                   <AppText
                     variant="title"
-                    color={location.load >= 0.7 ? '#A56D00' : AppColors.primary}>
-                    {location.percent}% full
+                    color={
+                      location.isClosed
+                        ? AppColors.textSubtle
+                        : location.load >= 0.7
+                          ? '#A56D00'
+                          : AppColors.primary
+                    }>
+                    {location.isClosed ? 'Closed' : `${location.percent}% full`}
                   </AppText>
                 </View>
                 <AppText variant="micro" dimmed>
-                  {location.hours}
+                  {location.zoneName
+                    ? `${location.zoneName} • ${location.hours}`
+                    : location.hours}
                 </AppText>
                 <View style={styles.capacityBarTrack}>
                   <View
                     style={[
                       styles.capacityBarFill,
                       {
-                        width: `${location.load * 100}%`,
-                        backgroundColor: location.load >= 0.7 ? '#E2A061' : AppColors.primary,
+                        width: `${location.isClosed ? 0 : location.load * 100}%`,
+                        backgroundColor: location.isClosed
+                          ? AppColors.textSubtle
+                          : location.load >= 0.7
+                            ? '#E2A061'
+                            : AppColors.primary,
                       },
                     ]}
                   />

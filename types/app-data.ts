@@ -7,7 +7,7 @@ export type PublicDiningHallHours = Record<MealPeriod, string | null>;
 export type PublicDiningHall = {
   id: string;
   name: string;
-  fitPercent: number;
+  fitPercent: number | null;
   hours: PublicDiningHallHours;
 };
 
@@ -15,8 +15,10 @@ export type GymCapacitySnapshot = {
   id: string;
   name: string;
   hours: string;
+  isClosed: boolean;
   load: number;
   percent: number;
+  zoneName: string | null;
   capturedAt: string;
 };
 

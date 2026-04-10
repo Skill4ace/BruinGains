@@ -16,9 +16,9 @@ import type {
   PublicResourceState,
 } from '@/types/app-data';
 
-const DINING_CACHE_KEY = '@bruingains/public-dining-halls-v4';
+const DINING_CACHE_KEY = '@bruingains/public-dining-halls-v6';
 const DINING_MENU_ITEMS_CACHE_KEY = '@bruingains/public-dining-menu-items-v4';
-const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities';
+const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities-v2';
 const PUBLIC_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_DINING_MENU_ITEMS: DiningMenuItem[] = [];
 const DINING_MENU_PAGE_SIZE = 500;
@@ -196,10 +196,12 @@ function mapGymCapacityRow(row: GymCapacitySnapshotRow): GymCapacitySnapshot | n
 
   return {
     id: row.location_id,
+    isClosed: row.is_closed,
     name: row.gym_locations.name,
     hours: row.gym_locations.hours,
     load: row.load,
     percent: row.percent_full ?? Math.round(row.load * 100),
+    zoneName: row.zone_name,
     capturedAt: row.captured_at,
   };
 }
@@ -259,7 +261,7 @@ async function fetchGymCapacitiesFromSupabase() {
   const { data, error } = await supabasePublicClient
     .from('gym_capacity_snapshots')
     .select(
-      'id,location_id,load,percent_full,captured_at,gym_locations!inner(id,name,hours,sort_order)',
+      'id,location_id,load,percent_full,captured_at,is_closed,zone_name,gym_locations!inner(id,name,hours,sort_order)',
     )
     .order('captured_at', { ascending: false })
     .limit(10);

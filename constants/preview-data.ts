@@ -165,6 +165,7 @@ export const gymPreview = {
       hours: '6:00 AM - 11:00 PM',
       load: 0.3,
       percent: 30,
+      zoneName: 'Pardee Gym',
       tone: 'blue' as const,
     },
     {
@@ -173,6 +174,7 @@ export const gymPreview = {
       hours: '6:00 AM - 10:00 PM',
       load: 0.75,
       percent: 75,
+      zoneName: 'Free Weight & Squat Zones',
       tone: 'gold' as const,
     },
   ],

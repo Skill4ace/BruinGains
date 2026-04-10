@@ -161,6 +161,7 @@ export function DiningScreenPreview() {
     return latestByHall;
   }, [diningMenuState.data]);
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
+  const currentDiningActivityPeriod = useMemo(() => getCurrentDiningActivityPeriod(), []);
 
   const hallsForPeriod = useMemo(() => {
     return diningHallState.data
@@ -539,6 +540,7 @@ export function DiningScreenPreview() {
             {hallsForPeriod.map((hall) => (
               <HallRow
                 key={hall.id}
+                currentDiningActivityPeriod={currentDiningActivityPeriod}
                 hall={hall}
                 onPress={() => handleHallOpen(hall)}
                 selectedPeriod={selectedPeriod}
@@ -1559,15 +1561,19 @@ function MacroIcon({
 }
 
 function HallRow({
+  currentDiningActivityPeriod,
   hall,
   onPress,
   selectedPeriod,
 }: {
+  currentDiningActivityPeriod: PeriodKey | null;
   hall: PublicDiningHall;
   onPress: () => void;
   selectedPeriod: PeriodKey;
 }) {
   const hours = hall.hours[selectedPeriod];
+  const showActivity =
+    hall.fitPercent !== null && currentDiningActivityPeriod === selectedPeriod;
 
   return (
     <PressScale haptic="none" onPress={onPress}>
@@ -1584,14 +1590,16 @@ function HallRow({
         </View>
         <View style={styles.hallMeta}>
           <View style={styles.hallMetaValue}>
-            <View style={styles.hallMetaCopy}>
-              <AppText variant="headline" color={AppColors.primary}>
-                {hall.fitPercent}%
-              </AppText>
-              <AppText variant="micro" dimmed>
-                full
-              </AppText>
-            </View>
+            {showActivity ? (
+              <View style={styles.hallMetaCopy}>
+                <AppText variant="headline" color={AppColors.primary}>
+                  {hall.fitPercent}%
+                </AppText>
+                <AppText variant="micro" dimmed>
+                  activity
+                </AppText>
+              </View>
+            ) : null}
             <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
           </View>
         </View>
@@ -1610,6 +1618,29 @@ function createCustomMealDraft(period: MealLogPeriod, mealLog?: MealLog): Custom
     fats: mealLog ? String(mealLog.fats) : '',
     period: mealLog?.period ?? period,
   };
+}
+
+function getCurrentDiningActivityPeriod(): PeriodKey | null {
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  if (currentMinutes >= 5 * 60 && currentMinutes < 11 * 60) {
+    return 'breakfast';
+  }
+
+  if (currentMinutes >= 11 * 60 && currentMinutes < 17 * 60) {
+    return 'lunch';
+  }
+
+  if (currentMinutes >= 17 * 60 && currentMinutes < 22 * 60) {
+    return 'dinner';
+  }
+
+  if (currentMinutes >= 22 * 60 && currentMinutes < 24 * 60) {
+    return 'lateNight';
+  }
+
+  return null;
 }
 
 function parseMealNumber(value: string) {
