@@ -134,6 +134,7 @@ export type Database = {
           badge_labels: Json
           calories: number | null
           carbs_g: number | null
+          customization_options: Json
           fats_g: number | null
           id: number
           ingredients: Json
@@ -151,6 +152,7 @@ export type Database = {
           badge_labels?: Json
           calories?: number | null
           carbs_g?: number | null
+          customization_options?: Json
           fats_g?: number | null
           id?: never
           ingredients?: Json
@@ -168,6 +170,7 @@ export type Database = {
           badge_labels?: Json
           calories?: number | null
           carbs_g?: number | null
+          customization_options?: Json
           fats_g?: number | null
           id?: never
           ingredients?: Json
@@ -236,6 +239,7 @@ export type Database = {
           badge_labels: Json | null
           calories: number | null
           carbs_g: number | null
+          customization_options: Json | null
           fats_g: number | null
           fetched_at: string | null
           hall_id: string | null
@@ -262,6 +266,7 @@ export type Database = {
           badge_labels: Json | null
           calories: number | null
           carbs_g: number | null
+          customization_options: Json | null
           fats_g: number | null
           fetched_at: string | null
           hall_id: string | null

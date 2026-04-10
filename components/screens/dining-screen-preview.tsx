@@ -36,6 +36,8 @@ import { ProgressRing } from '@/components/ui/progress-ring';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
 import type {
+  CreateDiningMealLogInput,
+  DiningCustomizationOption,
   DiningMenuItem,
   DiningNutritionFact,
   MealLog,
@@ -107,6 +109,12 @@ type BadgePresentation = {
   iconName?: string;
   imageUri?: string;
   text: string;
+};
+
+type DiningMealSaveOverrides = {
+  nutritionOverride?: CreateDiningMealLogInput['nutritionOverride'];
+  servings?: number;
+  titleOverride?: string;
 };
 
 export function DiningScreenPreview() {
@@ -348,14 +356,16 @@ export function DiningScreenPreview() {
     setSelectedServings(1);
   };
 
-  const handleDiningItemSave = () => {
+  const handleDiningItemSave = (overrides?: DiningMealSaveOverrides) => {
     if (!selectedMenuItem) {
       return;
     }
 
     addDiningMealLog({
       item: selectedMenuItem,
-      servings: selectedServings,
+      servings: overrides?.servings ?? selectedServings,
+      nutritionOverride: overrides?.nutritionOverride,
+      titleOverride: overrides?.titleOverride,
     });
     setSelectedMenuItem(null);
     setSelectedServings(1);
@@ -609,7 +619,7 @@ function DiningHallModal({
   onClose: () => void;
   onOpenItem: (item: DiningMenuItem) => void;
   onCloseItem: () => void;
-  onSaveItem: () => void;
+  onSaveItem: (overrides?: DiningMealSaveOverrides) => void;
   onSearchChange: (value: string) => void;
   onServingsChange: (value: number) => void;
   searchQuery: string;
@@ -618,6 +628,9 @@ function DiningHallModal({
 }) {
   const [showAllIngredients, setShowAllIngredients] = useState(false);
   const [showAllNutritionFacts, setShowAllNutritionFacts] = useState(false);
+  const [customizationQuantities, setCustomizationQuantities] = useState<Record<string, number>>(
+    {},
+  );
   const activePeriodLabel = getPeriodLabel(activePeriod);
   const nutritionFacts = activeItem ? getDetailNutritionFacts(activeItem) : [];
   const visibleNutritionFacts = showAllNutritionFacts
@@ -626,11 +639,94 @@ function DiningHallModal({
   const visibleIngredients = showAllIngredients
     ? activeItem?.ingredients ?? []
     : (activeItem?.ingredients ?? []).slice(0, 4);
+  const isCustomizableItem = Boolean(activeItem?.customizationOptions.length);
+  const customizationTotals = useMemo(() => {
+    if (!activeItem?.customizationOptions.length) {
+      return null;
+    }
+
+    return activeItem.customizationOptions.reduce(
+      (totals, option) => {
+        const quantity = customizationQuantities[getCustomizationOptionKey(option)] ?? 0;
+
+        return {
+          calories: totals.calories + Math.round((option.calories ?? 0) * quantity),
+          protein: totals.protein + Math.round((option.proteinG ?? 0) * quantity),
+          carbs: totals.carbs + Math.round((option.carbsG ?? 0) * quantity),
+          fats: totals.fats + Math.round((option.fatsG ?? 0) * quantity),
+        };
+      },
+      {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fats: 0,
+      },
+    );
+  }, [activeItem, customizationQuantities]);
+  const selectedCustomizationCount = useMemo(
+    () => Object.values(customizationQuantities).filter((quantity) => quantity > 0).length,
+    [customizationQuantities],
+  );
 
   useEffect(() => {
     setShowAllIngredients(false);
     setShowAllNutritionFacts(false);
+    setCustomizationQuantities({});
   }, [activeItem?.itemName, activeItem?.recipeId]);
+
+  const handleCustomizationToggle = (option: DiningCustomizationOption) => {
+    const optionKey = getCustomizationOptionKey(option);
+    const currentQuantity = customizationQuantities[optionKey] ?? 0;
+
+    setCustomizationQuantities((currentValue) => {
+      const nextValue = { ...currentValue };
+
+      if (currentQuantity > 0) {
+        delete nextValue[optionKey];
+        return nextValue;
+      }
+
+      nextValue[optionKey] = Math.max(1, option.defaultQuantity);
+      return nextValue;
+    });
+  };
+
+  const handleCustomizationQuantityChange = (
+    option: DiningCustomizationOption,
+    nextQuantity: number,
+  ) => {
+    const optionKey = getCustomizationOptionKey(option);
+
+    setCustomizationQuantities((currentValue) => {
+      const nextValue = { ...currentValue };
+
+      if (nextQuantity <= 0) {
+        delete nextValue[optionKey];
+        return nextValue;
+      }
+
+      nextValue[optionKey] = nextQuantity;
+      return nextValue;
+    });
+  };
+
+  const handleCustomizationSave = () => {
+    if (!activeItem || !customizationTotals || selectedCustomizationCount === 0) {
+      return;
+    }
+
+    onSaveItem({
+      nutritionOverride: {
+        calories: customizationTotals.calories,
+        proteinG: customizationTotals.protein,
+        carbsG: customizationTotals.carbs,
+        fatsG: customizationTotals.fats,
+      },
+      servings: 1,
+      titleOverride: activeItem.itemName,
+    });
+  };
 
   return (
     <Modal
@@ -742,136 +838,286 @@ function DiningHallModal({
                 onPress={onCloseItem}>
                 <View />
               </PressScale>
-              <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                style={styles.itemSheetCard}>
-                <ScrollView
-                  bounces={false}
-                  contentContainerStyle={styles.itemSheetContent}
-                  showsVerticalScrollIndicator={false}>
-                  <View style={styles.sheetGrabber} />
-                  <View style={styles.itemSheetHeader}>
-                    <View style={styles.itemSheetCopy}>
-                      <AppText variant="headline">{activeItem.itemName}</AppText>
+              {isCustomizableItem && customizationTotals ? (
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                  style={styles.itemSheetCard}>
+                  <ScrollView
+                    bounces={false}
+                    contentContainerStyle={styles.buildYourOwnContent}
+                    showsVerticalScrollIndicator={false}>
+                    <View style={styles.sheetGrabber} />
+                    <View style={styles.itemSheetHeader}>
+                      <View style={styles.itemSheetCopy}>
+                        <AppText variant="headline">{activeItem.itemName}</AppText>
+                        <AppText dimmed>
+                          {activeItem.hallName} • {activeItem.stationName}
+                        </AppText>
+                      </View>
+                      <PressScale haptic="none" onPress={onCloseItem}>
+                        <View style={styles.sheetCloseButton}>
+                          <Ionicons name="close" size={20} color={AppColors.text} />
+                        </View>
+                      </PressScale>
+                    </View>
+
+                    <View style={styles.buildYourOwnSummary}>
+                      <BuildYourOwnMetric
+                        label="kcal"
+                        value={customizationTotals.calories.toString()}
+                      />
+                      <BuildYourOwnMetric
+                        label="Protein"
+                        value={`${customizationTotals.protein}g`}
+                      />
+                      <BuildYourOwnMetric
+                        label="Carbs"
+                        value={`${customizationTotals.carbs}g`}
+                      />
+                      <BuildYourOwnMetric
+                        label="Fat"
+                        value={`${customizationTotals.fats}g`}
+                      />
+                    </View>
+
+                    <View style={styles.buildYourOwnIntro}>
+                      <AppText variant="title">Select your ingredients</AppText>
                       <AppText dimmed>
-                        {activeItem.hallName} • {activeItem.stationName}
+                        Pick the components you want, then add the configured meal.
                       </AppText>
                     </View>
-                    <PressScale haptic="none" onPress={onCloseItem}>
-                      <View style={styles.sheetCloseButton}>
-                        <Ionicons name="close" size={20} color={AppColors.text} />
-                      </View>
-                    </PressScale>
-                  </View>
 
-                  <View style={styles.itemSheetMetaWrap}>
-                    <DetailTag label={activePeriodLabel} tone="primary" />
-                    <AppText variant="micro" dimmed>
-                      {activeItem.servingSize
-                        ? `Serving • ${activeItem.servingSize}`
-                        : 'Serving details unavailable'}
-                    </AppText>
-                  </View>
+                    <View style={styles.buildYourOwnOptionsList}>
+                      {activeItem.customizationOptions.map((option) => {
+                        const optionKey = getCustomizationOptionKey(option);
+                        const selectedQuantity = customizationQuantities[optionKey] ?? 0;
+                        const isSelected = selectedQuantity > 0;
 
-                  {activeItem.badgeLabels.length > 0 ? (
-                    <View style={styles.itemSheetBadgeRow}>
-                      {activeItem.badgeLabels.map((badge) => (
-                        <MenuBadge key={`${activeItem.itemName}-${badge}-detail`} label={badge} />
-                      ))}
-                    </View>
-                  ) : null}
+                        return (
+                          <View key={optionKey} style={styles.buildYourOwnOptionCard}>
+                            <PressScale
+                              haptic="none"
+                              onPress={() => handleCustomizationToggle(option)}>
+                              <View style={styles.buildYourOwnOptionTopRow}>
+                                <View style={styles.buildYourOwnOptionCopy}>
+                                  <AppText variant="title">{option.itemName}</AppText>
+                                  <AppText dimmed>{formatCustomizationOptionMeta(option)}</AppText>
+                                </View>
+                                {isSelected ? (
+                                  <View style={styles.buildYourOwnOptionStepper}>
+                                    <StepperButton
+                                      icon="remove"
+                                      onPress={() =>
+                                        handleCustomizationQuantityChange(
+                                          option,
+                                          selectedQuantity - 1,
+                                        )
+                                      }
+                                    />
+                                    <AppText variant="title">{selectedQuantity}</AppText>
+                                    <StepperButton
+                                      icon="add"
+                                      onPress={() =>
+                                        handleCustomizationQuantityChange(
+                                          option,
+                                          selectedQuantity + 1,
+                                        )
+                                      }
+                                    />
+                                  </View>
+                                ) : (
+                                  <View style={styles.buildYourOwnCheckbox}>
+                                    <Ionicons
+                                      name="add"
+                                      size={18}
+                                      color={AppColors.primary}
+                                    />
+                                  </View>
+                                )}
+                              </View>
+                            </PressScale>
 
-                  <View style={styles.servingsRow}>
-                    <AppText variant="title">Servings</AppText>
-                    <View style={styles.stepper}>
-                      <StepperButton
-                        icon="remove"
-                        onPress={() => onServingsChange(Math.max(1, servings - 1))}
-                      />
-                      <AppText variant="headline">{servings}</AppText>
-                      <StepperButton icon="add" onPress={() => onServingsChange(servings + 1)} />
-                    </View>
-                  </View>
-
-                  <View style={styles.sheetMacroGrid}>
-                    <MacroMetric label="Calories" value={`${selectedItemTotals.calories} cal`} />
-                    <MacroMetric label="Protein" value={`${selectedItemTotals.protein}g`} />
-                    <MacroMetric label="Carbs" value={`${selectedItemTotals.carbs}g`} />
-                    <MacroMetric label="Fat" value={`${selectedItemTotals.fats}g`} />
-                  </View>
-
-                  {nutritionFacts.length > 0 ? (
-                    <View style={styles.detailSection}>
-                      <View style={styles.detailSectionHeader}>
-                        <AppText variant="title">Nutrition facts</AppText>
-                        {nutritionFacts.length > 6 ? (
-                          <DetailToggleButton
-                            label={
-                              showAllNutritionFacts
-                                ? 'Show less'
-                                : `Show all ${nutritionFacts.length}`
-                            }
-                            onPress={() =>
-                              setShowAllNutritionFacts((currentValue) => !currentValue)
-                            }
-                          />
-                        ) : null}
-                      </View>
-                      <View style={styles.nutritionFactGrid}>
-                        {visibleNutritionFacts.map((fact) => (
-                          <NutritionFactChip key={fact.id} fact={fact} />
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {activeItem.allergenLabels.length > 0 ? (
-                    <View style={styles.detailSection}>
-                      <AppText variant="title">Allergens</AppText>
-                      <View style={styles.detailTagWrap}>
-                        {activeItem.allergenLabels.map((label) => (
-                          <DetailTag key={`${activeItem.itemName}-${label}`} label={label} tone="warning" />
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {activeItem.ingredients.length > 0 ? (
-                    <View style={styles.detailSection}>
-                      <View style={styles.detailSectionHeader}>
-                        <AppText variant="title">Ingredients</AppText>
-                        {activeItem.ingredients.length > 4 ? (
-                          <DetailToggleButton
-                            label={
-                              showAllIngredients
-                                ? 'Show less'
-                                : `Show all ${activeItem.ingredients.length}`
-                            }
-                            onPress={() =>
-                              setShowAllIngredients((currentValue) => !currentValue)
-                            }
-                          />
-                        ) : null}
-                      </View>
-                      <View style={styles.ingredientList}>
-                        {visibleIngredients.map((ingredient) => (
-                          <View
-                            key={`${activeItem.itemName}-${ingredient}`}
-                            style={styles.ingredientRow}>
-                            <View style={styles.ingredientBullet} />
-                            <AppText style={styles.ingredientText}>{ingredient}</AppText>
+                            {option.badgeLabels.length > 0 ? (
+                              <View style={styles.buildYourOwnOptionBadges}>
+                                {option.badgeLabels.slice(0, 4).map((badge) => (
+                                  <MenuBadge
+                                    key={`${option.itemName}-${badge}`}
+                                    label={badge}
+                                  />
+                                ))}
+                              </View>
+                            ) : null}
                           </View>
+                        );
+                      })}
+                    </View>
+
+                    <View
+                      style={[
+                        styles.buildYourOwnAddButton,
+                        selectedCustomizationCount === 0
+                          ? styles.buildYourOwnAddButtonDisabled
+                          : null,
+                      ]}>
+                      <PressScale
+                        haptic="none"
+                        onPress={selectedCustomizationCount > 0 ? handleCustomizationSave : undefined}>
+                        <View style={styles.buildYourOwnAddButtonInner}>
+                          <Ionicons
+                            name="add"
+                            size={18}
+                            color={
+                              selectedCustomizationCount > 0
+                                ? AppColors.white
+                                : AppColors.textSubtle
+                            }
+                          />
+                          <AppText
+                            variant="bodyStrong"
+                            color={
+                              selectedCustomizationCount > 0
+                                ? AppColors.white
+                                : AppColors.textSubtle
+                            }>
+                            Add to Meal
+                          </AppText>
+                        </View>
+                      </PressScale>
+                    </View>
+                  </ScrollView>
+                </KeyboardAvoidingView>
+              ) : (
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                  style={styles.itemSheetCard}>
+                  <ScrollView
+                    bounces={false}
+                    contentContainerStyle={styles.itemSheetContent}
+                    showsVerticalScrollIndicator={false}>
+                    <View style={styles.sheetGrabber} />
+                    <View style={styles.itemSheetHeader}>
+                      <View style={styles.itemSheetCopy}>
+                        <AppText variant="headline">{activeItem.itemName}</AppText>
+                        <AppText dimmed>
+                          {activeItem.hallName} • {activeItem.stationName}
+                        </AppText>
+                      </View>
+                      <PressScale haptic="none" onPress={onCloseItem}>
+                        <View style={styles.sheetCloseButton}>
+                          <Ionicons name="close" size={20} color={AppColors.text} />
+                        </View>
+                      </PressScale>
+                    </View>
+
+                    <View style={styles.itemSheetMetaWrap}>
+                      <DetailTag label={activePeriodLabel} tone="primary" />
+                      <AppText variant="micro" dimmed>
+                        {activeItem.servingSize
+                          ? `Serving • ${activeItem.servingSize}`
+                          : 'Serving details unavailable'}
+                      </AppText>
+                    </View>
+
+                    {activeItem.badgeLabels.length > 0 ? (
+                      <View style={styles.itemSheetBadgeRow}>
+                        {activeItem.badgeLabels.map((badge) => (
+                          <MenuBadge key={`${activeItem.itemName}-${badge}-detail`} label={badge} />
                         ))}
                       </View>
-                    </View>
-                  ) : null}
+                    ) : null}
 
-                  <ActionButton
-                    label={`Add ${servings} serving${servings > 1 ? 's' : ''} to Meal`}
-                    onPress={onSaveItem}
-                  />
-                </ScrollView>
-              </KeyboardAvoidingView>
+                    <View style={styles.servingsRow}>
+                      <AppText variant="title">Servings</AppText>
+                      <View style={styles.stepper}>
+                        <StepperButton
+                          icon="remove"
+                          onPress={() => onServingsChange(Math.max(1, servings - 1))}
+                        />
+                        <AppText variant="headline">{servings}</AppText>
+                        <StepperButton icon="add" onPress={() => onServingsChange(servings + 1)} />
+                      </View>
+                    </View>
+
+                    <View style={styles.sheetMacroGrid}>
+                      <MacroMetric label="Calories" value={`${selectedItemTotals.calories} cal`} />
+                      <MacroMetric label="Protein" value={`${selectedItemTotals.protein}g`} />
+                      <MacroMetric label="Carbs" value={`${selectedItemTotals.carbs}g`} />
+                      <MacroMetric label="Fat" value={`${selectedItemTotals.fats}g`} />
+                    </View>
+
+                    {nutritionFacts.length > 0 ? (
+                      <View style={styles.detailSection}>
+                        <View style={styles.detailSectionHeader}>
+                          <AppText variant="title">Nutrition facts</AppText>
+                          {nutritionFacts.length > 6 ? (
+                            <DetailToggleButton
+                              label={
+                                showAllNutritionFacts
+                                  ? 'Show less'
+                                  : `Show all ${nutritionFacts.length}`
+                              }
+                              onPress={() =>
+                                setShowAllNutritionFacts((currentValue) => !currentValue)
+                              }
+                            />
+                          ) : null}
+                        </View>
+                        <View style={styles.nutritionFactGrid}>
+                          {visibleNutritionFacts.map((fact) => (
+                            <NutritionFactChip key={fact.id} fact={fact} />
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {activeItem.allergenLabels.length > 0 ? (
+                      <View style={styles.detailSection}>
+                        <AppText variant="title">Allergens</AppText>
+                        <View style={styles.detailTagWrap}>
+                          {activeItem.allergenLabels.map((label) => (
+                            <DetailTag key={`${activeItem.itemName}-${label}`} label={label} tone="warning" />
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {activeItem.ingredients.length > 0 ? (
+                      <View style={styles.detailSection}>
+                        <View style={styles.detailSectionHeader}>
+                          <AppText variant="title">Ingredients</AppText>
+                          {activeItem.ingredients.length > 4 ? (
+                            <DetailToggleButton
+                              label={
+                                showAllIngredients
+                                  ? 'Show less'
+                                  : `Show all ${activeItem.ingredients.length}`
+                              }
+                              onPress={() =>
+                                setShowAllIngredients((currentValue) => !currentValue)
+                              }
+                            />
+                          ) : null}
+                        </View>
+                        <View style={styles.ingredientList}>
+                          {visibleIngredients.map((ingredient) => (
+                            <View
+                              key={`${activeItem.itemName}-${ingredient}`}
+                              style={styles.ingredientRow}>
+                              <View style={styles.ingredientBullet} />
+                              <AppText style={styles.ingredientText}>{ingredient}</AppText>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
+
+                    <ActionButton
+                      label={`Add ${servings} serving${servings > 1 ? 's' : ''} to Meal`}
+                      onPress={() => onSaveItem()}
+                    />
+                  </ScrollView>
+                </KeyboardAvoidingView>
+              )}
             </View>
           ) : null}
         </View>
@@ -1057,6 +1303,21 @@ function MacroMetric({
 }) {
   return (
     <View style={styles.metricCard}>
+      <AppText variant="headline">{value}</AppText>
+      <AppText dimmed>{label}</AppText>
+    </View>
+  );
+}
+
+function BuildYourOwnMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.buildYourOwnMetric}>
       <AppText variant="headline">{value}</AppText>
       <AppText dimmed>{label}</AppText>
     </View>
@@ -1369,6 +1630,28 @@ function getMenuItemTotals(item: DiningMenuItem, servings: number) {
     carbs: Math.round((item.carbsG ?? 0) * normalizedServings),
     fats: Math.round((item.fatsG ?? 0) * normalizedServings),
   };
+}
+
+function getCustomizationOptionKey(option: DiningCustomizationOption) {
+  return option.recipeId !== null
+    ? `recipe-${option.recipeId}`
+    : `option-${option.itemName.toLowerCase().replace(/\s+/g, '-')}`;
+}
+
+function formatCustomizationOptionMeta(option: DiningCustomizationOption) {
+  if (
+    option.calories === null &&
+    option.proteinG === null &&
+    option.carbsG === null &&
+    option.fatsG === null
+  ) {
+    return option.servingSize
+      ? `Serving • ${option.servingSize}`
+      : 'Nutrition unavailable';
+  }
+
+  const macroSummary = `${option.calories ?? 0} cal • P ${option.proteinG ?? 0}g • C ${option.carbsG ?? 0}g • F ${option.fatsG ?? 0}g`;
+  return option.servingSize ? `${macroSummary} • ${option.servingSize}` : macroSummary;
 }
 
 function getPeriodLabel(period: PeriodKey) {
@@ -1871,6 +2154,12 @@ const styles = StyleSheet.create({
     backgroundColor: AppColors.surfaceLowest,
     maxHeight: '82%',
   },
+  buildYourOwnContent: {
+    paddingHorizontal: Layout.pagePadding,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xxl,
+    gap: Spacing.lg,
+  },
   itemSheetContent: {
     paddingHorizontal: Layout.pagePadding,
     paddingTop: Spacing.md,
@@ -1936,6 +2225,79 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.md,
+  },
+  buildYourOwnSummary: {
+    flexDirection: 'row',
+    backgroundColor: AppColors.surfaceLow,
+    borderRadius: Radii.xl,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.lg,
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  buildYourOwnMetric: {
+    flex: 1,
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  buildYourOwnIntro: {
+    gap: Spacing.xs,
+    alignItems: 'center',
+  },
+  buildYourOwnOptionsList: {
+    gap: Spacing.md,
+  },
+  buildYourOwnOptionCard: {
+    backgroundColor: AppColors.surfaceLow,
+    borderRadius: Radii.xl,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  buildYourOwnOptionTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  buildYourOwnOptionCopy: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  buildYourOwnOptionStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  buildYourOwnCheckbox: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: AppColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLowest,
+  },
+  buildYourOwnOptionBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  buildYourOwnAddButton: {
+    borderRadius: Radii.pill,
+    backgroundColor: AppColors.primary,
+    overflow: 'hidden',
+  },
+  buildYourOwnAddButtonDisabled: {
+    backgroundColor: AppColors.surfaceHighest,
+  },
+  buildYourOwnAddButtonInner: {
+    minHeight: 54,
+    paddingHorizontal: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
   },
   metricCard: {
     width: '47%',

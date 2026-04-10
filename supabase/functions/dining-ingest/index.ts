@@ -8,17 +8,8 @@ const UCLA_DINING_TIME_ZONE = 'America/Los_Angeles'
 const USER_AGENT = 'BruinGainsDiningIngest/1.0 (+https://afxptjzzctiowrqqcyzh.supabase.co)'
 const DINING_MENU_AGLANCE_PATH = '/menus-at-a-glance'
 const FETCH_TIMEOUT_MS = 15000
-const BOUTIQUE_HALL_IDS = [
-  'feast-rieber',
-  'bruin-cafe',
-  'cafe-1919',
-  'study-hedrick',
-  'the-drey',
-  'rendezvous',
-  'bruin-bowl',
-  'epicuria-ackerman',
-] as const
-
+const DETAIL_FETCH_CONCURRENCY = 2
+const ITEM_PROCESSING_CHUNK_SIZE = 5
 const PERIOD_CONFIG = [
   { key: 'breakfast', anchorId: 'breakfastmenu', heading: 'BREAKFAST' },
   { key: 'lunch', anchorId: 'lunchmenu', heading: 'LUNCH' },
@@ -31,8 +22,11 @@ type MealPeriod = (typeof PERIOD_CONFIG)[number]['key']
 type SyncRequest = {
   force?: boolean
   hallIds?: string[]
+  itemNames?: string[]
   mealPeriods?: MealPeriod[]
+  replaceExistingSnapshot?: boolean
   skipNutritionFetch?: boolean
+  stationNames?: string[]
   targetDate?: string
   trigger?: string
 }
@@ -89,10 +83,27 @@ type ParsedNutritionFact = {
   value: string
 }
 
+type ParsedCustomizationOption = {
+  allergenLabels: string[]
+  badgeLabels: string[]
+  calories: number | null
+  carbsG: number | null
+  defaultQuantity: number
+  detailPath: string | null
+  fatsG: number | null
+  ingredients: string[]
+  itemName: string
+  nutritionFacts: ParsedNutritionFact[]
+  proteinG: number | null
+  recipeId: number | null
+  servingSize: string | null
+}
+
 type NutritionDetail = {
   allergenLabels: string[]
   calories: number | null
   carbsG: number | null
+  customizationOptions: ParsedCustomizationOption[]
   fatsG: number | null
   ingredients: string[]
   itemName: string | null
@@ -119,9 +130,24 @@ type SyncRunSummary = {
   status: 'success' | 'partial_failure' | 'failure'
 }
 
+function hasMeaningfulCustomizationOptionDetail(option: ParsedCustomizationOption) {
+  return (
+    option.calories !== null &&
+    option.proteinG !== null &&
+    option.carbsG !== null &&
+    option.fatsG !== null &&
+    option.nutritionFacts.length > 0 &&
+    option.ingredients.length > 0
+  )
+}
+
 function hasMeaningfulNutritionDetail(detail: NutritionDetail | null | undefined) {
   if (!detail) {
     return false
+  }
+
+  if (detail.customizationOptions.length > 0) {
+    return detail.customizationOptions.every(hasMeaningfulCustomizationOptionDetail)
   }
 
   return (
@@ -257,6 +283,29 @@ function buildAtAGlanceUrl(targetDate: string) {
 
 function buildHoursUrl() {
   return `${UCLA_DINING_BASE_URL}/hours/`
+}
+
+function normalizeMenuItemDetailPath(value: string | null | undefined) {
+  const cleanedValue = cleanText(value)
+
+  if (!cleanedValue) {
+    return null
+  }
+
+  if (cleanedValue.startsWith('http://') || cleanedValue.startsWith('https://')) {
+    const url = new URL(cleanedValue)
+    return `${url.pathname}${url.search}`
+  }
+
+  return cleanedValue.startsWith('/') ? cleanedValue : `/${cleanedValue}`
+}
+
+function buildRecipeDetailPath(recipeId: number) {
+  return `/menu-item/?recipe=${recipeId}`
+}
+
+function buildIngredientDetailPath(ingredientId: number) {
+  return `/menu-item/?ingredient=${ingredientId}`
 }
 
 function extractRecipeIdFromHref(href: string | undefined) {
@@ -563,6 +612,9 @@ function getAllDayMealPeriodsForStation(
   openMealPeriods: MealPeriod[],
 ) {
   const normalizedStationName = normalizeComparableValue(stationName)
+  const breakfastPeriods = openMealPeriods.filter(
+    (mealPeriod) => mealPeriod === 'breakfast',
+  )
   const lunchAndDinnerPeriods = openMealPeriods.filter(
     (mealPeriod) => mealPeriod === 'lunch' || mealPeriod === 'dinner',
   )
@@ -572,6 +624,10 @@ function getAllDayMealPeriodsForStation(
   }
 
   if (hall.id === 'bruin-cafe' || hall.id === 'epicuria-ackerman') {
+    if (normalizedStationName.includes('breakfast')) {
+      return breakfastPeriods
+    }
+
     return lunchAndDinnerPeriods
   }
 
@@ -640,6 +696,34 @@ function buildAllDaySections(
         ]
       : []
   })
+}
+
+function mergeParsedHallSections(
+  primary: ParsedHallMenu | null,
+  supplement: ParsedHallMenu | null,
+  mealPeriodsToSupplement: MealPeriod[],
+) {
+  if (!primary) {
+    return supplement
+  }
+
+  if (!supplement || !mealPeriodsToSupplement.length) {
+    return primary
+  }
+
+  const missingMealPeriods = new Set(mealPeriodsToSupplement)
+  const supplementalSections = supplement.sections.filter((section) =>
+    missingMealPeriods.has(section.mealPeriod),
+  )
+
+  if (!supplementalSections.length) {
+    return primary
+  }
+
+  return {
+    ...primary,
+    sections: [...primary.sections, ...supplementalSections],
+  }
 }
 
 function parseAllDayMenuPage(
@@ -1187,8 +1271,78 @@ function parseNutritionPage(html: string): NutritionDetail {
     .get()
     .filter((label): label is string => Boolean(label))
     .filter(isAllergenBadgeLabel)
+  const customizationOptions: ParsedCustomizationOption[] = []
+
+  complexIngredientRoot
+    .find('input.toggle_nutrition_value')
+    .each((_, optionInput) => {
+      const optionLabel = $(optionInput).closest('label')
+      const optionName = cleanText(optionLabel.find('.single-ingredient-link').first().text())
+      const optionHref = normalizeMenuItemDetailPath(
+        optionLabel.find('.single-ingredient-link').first().attr('href'),
+      )
+      const optionIdentifier = parseIntegerValue($(optionInput).attr('value'))
+      const optionType = cleanText($(optionInput).attr('ingredient_type')).toLowerCase()
+      const detailPath =
+        optionHref ??
+        (
+          optionIdentifier !== null
+            ? optionType === 'ingredient'
+              ? buildIngredientDetailPath(optionIdentifier)
+              : buildRecipeDetailPath(optionIdentifier)
+            : null
+        )
+      const recipeId = detailPath?.includes('?recipe=')
+        ? extractRecipeIdFromHref(detailPath)
+        : optionType === 'subrecipe'
+          ? optionIdentifier
+          : null
+
+      if (!optionName) {
+        return
+      }
+
+      const quantityInput = $(optionInput)
+        .closest('li')
+        .nextAll('div.multiplier_input')
+        .first()
+        .find('input.item-mutliplier')
+        .first()
+      const defaultQuantity =
+        parseIntegerValue(quantityInput.attr('value') ?? undefined) ?? 1
+      const optionBadgeLabels = optionLabel
+        .find('img')
+        .map((__, badgeImage) =>
+          normalizeBadgeLabel($(badgeImage).attr('title') ?? $(badgeImage).attr('alt')),
+        )
+        .get()
+        .filter((label): label is string => Boolean(label))
+      const optionAllergenLabels = optionBadgeLabels.filter(isAllergenBadgeLabel)
+
+      customizationOptions.push({
+        allergenLabels: [...new Set(optionAllergenLabels)],
+        badgeLabels: [...new Set(optionBadgeLabels)],
+        calories: null,
+        carbsG: null,
+        defaultQuantity,
+        detailPath,
+        fatsG: null,
+        ingredients: [],
+        itemName: optionName,
+        nutritionFacts: [],
+        proteinG: null,
+        recipeId,
+        servingSize: null,
+      })
+    })
+  const hasCustomizationCalculator =
+    customizationOptions.length > 0 && nutritionRoot.find('#selected-items').length > 0
   const ingredients =
-    tabIngredients.length > 0 ? tabIngredients : complexIngredients
+    tabIngredients.length > 0
+      ? tabIngredients
+      : hasCustomizationCalculator
+        ? []
+        : complexIngredients
 
   return {
     allergenLabels: [
@@ -1198,13 +1352,24 @@ function parseNutritionPage(html: string): NutritionDetail {
       ]),
     ],
     itemName: cleanText($('.single-name').first().text()) || null,
-    servingSize: servingMatch?.[1]?.split('Calories')[0]?.trim() ?? null,
-    calories: parseIntegerValue(cleanText($('.single-calories').first().text())),
-    fatsG: parseIntegerValue(labelToValue.get('total fat')),
-    carbsG: parseIntegerValue(labelToValue.get('total carbohydrate')),
+    servingSize: hasCustomizationCalculator
+      ? null
+      : servingMatch?.[1]?.split('Calories')[0]?.trim() ?? null,
+    calories: hasCustomizationCalculator
+      ? null
+      : parseIntegerValue(cleanText($('.single-calories').first().text())),
+    fatsG: hasCustomizationCalculator
+      ? null
+      : parseIntegerValue(labelToValue.get('total fat')),
+    carbsG: hasCustomizationCalculator
+      ? null
+      : parseIntegerValue(labelToValue.get('total carbohydrate')),
+    customizationOptions,
     ingredients: [...new Set(ingredients)],
     nutritionFacts,
-    proteinG: parseIntegerValue(labelToValue.get('protein')),
+    proteinG: hasCustomizationCalculator
+      ? null
+      : parseIntegerValue(labelToValue.get('protein')),
   }
 }
 
@@ -1238,10 +1403,12 @@ async function mapLimit<TInput, TOutput>(
 
 async function hydrateRecipeNutritionCacheFromDatabase(
   admin: ReturnType<typeof createAdminClient>,
-  cache: Map<number, NutritionDetail | null>,
+  cache: Map<string, NutritionDetail | null>,
   recipeIds: number[],
 ) {
-  const recipeIdsToLoad = [...new Set(recipeIds)].filter((recipeId) => !cache.has(recipeId))
+  const recipeIdsToLoad = [...new Set(recipeIds)].filter((recipeId) =>
+    !cache.has(buildRecipeDetailPath(recipeId)),
+  )
 
   if (!recipeIdsToLoad.length) {
     return
@@ -1250,7 +1417,7 @@ async function hydrateRecipeNutritionCacheFromDatabase(
   const { data, error } = await admin
     .from('menu_items_expanded')
     .select(
-      'recipe_id,item_name,serving_size,calories,protein_g,carbs_g,fats_g,ingredients,nutrition_facts,allergen_labels,fetched_at',
+      'recipe_id,item_name,serving_size,calories,protein_g,carbs_g,fats_g,ingredients,nutrition_facts,allergen_labels,customization_options,fetched_at',
     )
     .in('recipe_id', recipeIdsToLoad)
     .order('fetched_at', { ascending: false })
@@ -1261,8 +1428,10 @@ async function hydrateRecipeNutritionCacheFromDatabase(
 
   for (const row of data) {
     const recipeId = row.recipe_id
+    const cacheKey =
+      typeof recipeId === 'number' ? buildRecipeDetailPath(recipeId) : null
 
-    if (typeof recipeId !== 'number' || cache.has(recipeId)) {
+    if (!cacheKey || cache.has(cacheKey)) {
       continue
     }
 
@@ -1272,6 +1441,9 @@ async function hydrateRecipeNutritionCacheFromDatabase(
         : [],
       calories: row.calories,
       carbsG: row.carbs_g,
+      customizationOptions: Array.isArray(row.customization_options)
+        ? (row.customization_options as ParsedCustomizationOption[])
+        : [],
       fatsG: row.fats_g,
       ingredients: Array.isArray(row.ingredients)
         ? row.ingredients.filter((ingredient): ingredient is string => typeof ingredient === 'string')
@@ -1285,14 +1457,14 @@ async function hydrateRecipeNutritionCacheFromDatabase(
     }
 
     if (hasMeaningfulNutritionDetail(detail)) {
-      cache.set(recipeId, detail)
+      cache.set(cacheKey, detail)
     }
   }
 }
 
 async function populateRecipeNutritionCache(
   admin: ReturnType<typeof createAdminClient>,
-  cache: Map<number, NutritionDetail | null>,
+  cache: Map<string, NutritionDetail | null>,
   recipeIds: number[],
   options?: {
     skipNetworkFetch?: boolean
@@ -1300,16 +1472,18 @@ async function populateRecipeNutritionCache(
 ) {
   await hydrateRecipeNutritionCacheFromDatabase(admin, cache, recipeIds)
 
-  const missingRecipeIds = [...new Set(recipeIds)].filter((recipeId) => !cache.has(recipeId))
+  const missingRecipeIds = [...new Set(recipeIds)].filter((recipeId) =>
+    !cache.has(buildRecipeDetailPath(recipeId)),
+  )
 
   if (options?.skipNetworkFetch) {
     missingRecipeIds.forEach((recipeId) => {
-      cache.set(recipeId, null)
+      cache.set(buildRecipeDetailPath(recipeId), null)
     })
     return
   }
 
-  const entries = await mapLimit(missingRecipeIds, 20, async (recipeId) => {
+  const entries = await mapLimit(missingRecipeIds, DETAIL_FETCH_CONCURRENCY, async (recipeId) => {
     try {
       const html = await fetchHtml(`${UCLA_DINING_BASE_URL}/menu-item/?recipe=${recipeId}`)
       return [recipeId, parseNutritionPage(html)] as const
@@ -1323,7 +1497,46 @@ async function populateRecipeNutritionCache(
   })
 
   entries.forEach(([recipeId, detail]) => {
-    cache.set(recipeId, detail)
+    cache.set(buildRecipeDetailPath(recipeId), detail)
+  })
+}
+
+async function populateDetailNutritionCache(
+  cache: Map<string, NutritionDetail | null>,
+  detailPaths: string[],
+  options?: {
+    skipNetworkFetch?: boolean
+  },
+) {
+  const normalizedDetailPaths = [...new Set(
+    detailPaths
+      .map((detailPath) => normalizeMenuItemDetailPath(detailPath))
+      .filter((detailPath): detailPath is string => Boolean(detailPath)),
+  )]
+  const missingDetailPaths = normalizedDetailPaths.filter((detailPath) => !cache.has(detailPath))
+
+  if (options?.skipNetworkFetch) {
+    missingDetailPaths.forEach((detailPath) => {
+      cache.set(detailPath, null)
+    })
+    return
+  }
+
+  const entries = await mapLimit(missingDetailPaths, DETAIL_FETCH_CONCURRENCY, async (detailPath) => {
+    try {
+      const html = await fetchHtml(`${UCLA_DINING_BASE_URL}${detailPath}`)
+      return [detailPath, parseNutritionPage(html)] as const
+    } catch (error) {
+      console.error('Failed to fetch customization detail', {
+        detailPath,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return [detailPath, null] as const
+    }
+  })
+
+  entries.forEach(([detailPath, detail]) => {
+    cache.set(detailPath, detail)
   })
 }
 
@@ -1465,9 +1678,12 @@ async function syncDiningMenus(
   admin: ReturnType<typeof createAdminClient>,
   targetDate: string,
   selectedHallIds: string[] | undefined,
+  selectedItemNames: string[] | undefined,
   selectedMealPeriods: MealPeriod[] | undefined,
+  selectedStationNames: string[] | undefined,
   triggerSource: string,
   options?: {
+    replaceExistingSnapshot?: boolean
     skipNutritionFetch?: boolean
   },
 ) {
@@ -1501,7 +1717,7 @@ async function syncDiningMenus(
   let snapshotCount = 0
   let itemCount = 0
   let errorCount = 0
-  const nutritionCache = new Map<number, NutritionDetail | null>()
+  const nutritionCache = new Map<string, NutritionDetail | null>()
   let atAGlanceMenus: Map<string, ParsedHallMenu> | null = null
 
   async function getAtAGlanceMenus() {
@@ -1538,9 +1754,6 @@ async function syncDiningMenus(
 
       try {
         const sourceHtml = await fetchHtml(sourceUrl)
-        const isBoutiqueHall = BOUTIQUE_HALL_IDS.includes(
-          hall.id as (typeof BOUTIQUE_HALL_IDS)[number],
-        )
         const allDayHall = parseAllDayMenuPage(
           sourceHtml,
           hall,
@@ -1556,19 +1769,53 @@ async function syncDiningMenus(
                 selectedMealPeriods,
               )
             : null
+        const primaryHall =
+          allDayHall ?? (hallMenuPage?.sections.length ? hallMenuPage : null)
+        const missingMealPeriods = openMealPeriods.filter(
+          (mealPeriod) =>
+            !primaryHall?.sections.some((section) => section.mealPeriod === mealPeriod),
+        )
         const atAGlanceHall =
-          !allDayHall && !hallMenuPage?.sections.length && !isBoutiqueHall
-            ? (await getAtAGlanceMenus()).get(hall.id)
+          !primaryHall || missingMealPeriods.length > 0
+            ? (await getAtAGlanceMenus()).get(hall.id) ?? null
             : null
         let parsedHall =
-          allDayHall ??
-          (hallMenuPage?.sections.length ? hallMenuPage : null) ??
+          mergeParsedHallSections(primaryHall, atAGlanceHall, missingMealPeriods) ??
+          primaryHall ??
           atAGlanceHall ?? {
           hallId: hall.id,
           hallName: hall.name,
           pageDateLabel: null,
           sourceUrl: buildAtAGlanceUrl(targetDate),
           sections: [] as ParsedMealSection[],
+        }
+        if (selectedStationNames?.length) {
+          const selectedStationNameSet = new Set(selectedStationNames)
+          parsedHall = {
+            ...parsedHall,
+            sections: parsedHall.sections
+              .map((section) => ({
+                ...section,
+                items: section.items.filter((item) =>
+                  selectedStationNameSet.has(item.stationName),
+                ),
+              }))
+              .filter((section) => section.items.length > 0),
+          }
+        }
+        if (selectedItemNames?.length) {
+          const selectedItemNameSet = new Set(selectedItemNames)
+          parsedHall = {
+            ...parsedHall,
+            sections: parsedHall.sections
+              .map((section) => ({
+                ...section,
+                items: section.items.filter((item) =>
+                  selectedItemNameSet.has(item.itemName),
+                ),
+              }))
+              .filter((section) => section.items.length > 0),
+          }
         }
 
         for (const mealPeriod of closedMealPeriods) {
@@ -1590,15 +1837,6 @@ async function syncDiningMenus(
           )
           snapshotCount += 1
         }
-
-        const recipeIds = parsedHall.sections.flatMap((section) =>
-          section.items
-            .map((item) => item.recipeId)
-            .filter((id): id is number => id !== null),
-        )
-        await populateRecipeNutritionCache(admin, nutritionCache, recipeIds, {
-          skipNetworkFetch: options?.skipNutritionFetch,
-        })
 
         for (const section of parsedHall.sections) {
           const { data: snapshot, error: snapshotError } = await admin
@@ -1625,49 +1863,102 @@ async function syncDiningMenus(
 
           snapshotCount += 1
 
-          const { error: deleteError } = await admin
-            .from('menu_items')
-            .delete()
-            .eq('snapshot_id', snapshot.id)
+          if (options?.replaceExistingSnapshot ?? true) {
+            const { error: deleteError } = await admin
+              .from('menu_items')
+              .delete()
+              .eq('snapshot_id', snapshot.id)
 
-          if (deleteError) {
-            throw deleteError
-          }
-
-          const rows = section.items.map((item) => {
-            const nutrition = item.recipeId !== null ? nutritionCache.get(item.recipeId) : null
-            const allergenLabels =
-              nutrition?.allergenLabels && nutrition.allergenLabels.length > 0
-                ? nutrition.allergenLabels
-                : item.badgeLabels.filter(isAllergenBadgeLabel)
-
-            return {
-              allergen_labels: allergenLabels,
-              badge_labels: item.badgeLabels,
-              snapshot_id: snapshot.id,
-              recipe_id: item.recipeId,
-              station_name: item.stationName,
-              item_name: nutrition?.itemName ?? item.itemName,
-              serving_size: nutrition?.servingSize ?? null,
-              calories: nutrition?.calories ?? null,
-              protein_g: nutrition?.proteinG ?? null,
-              carbs_g: nutrition?.carbsG ?? null,
-              fats_g: nutrition?.fatsG ?? null,
-              ingredients: nutrition?.ingredients ?? [],
-              item_order: item.itemOrder,
-              nutrition_facts: nutrition?.nutritionFacts ?? [],
-            }
-          })
-
-          if (rows.length > 0) {
-            const { error: insertError } = await admin.from('menu_items').insert(rows)
-
-            if (insertError) {
-              throw insertError
+            if (deleteError) {
+              throw deleteError
             }
           }
 
-          itemCount += rows.length
+          for (let itemIndex = 0; itemIndex < section.items.length; itemIndex += ITEM_PROCESSING_CHUNK_SIZE) {
+            const itemChunk = section.items.slice(itemIndex, itemIndex + ITEM_PROCESSING_CHUNK_SIZE)
+            const recipeIds = itemChunk
+              .map((item) => item.recipeId)
+              .filter((id): id is number => id !== null)
+            await populateRecipeNutritionCache(admin, nutritionCache, recipeIds, {
+              skipNetworkFetch: options?.skipNutritionFetch,
+            })
+            const customizationDetailPaths = recipeIds.flatMap((recipeId) => {
+              const detail = nutritionCache.get(buildRecipeDetailPath(recipeId))
+
+              return detail?.customizationOptions
+                .map((option) => option.detailPath)
+                .filter((detailPath): detailPath is string => Boolean(detailPath)) ?? []
+            })
+            await populateDetailNutritionCache(nutritionCache, customizationDetailPaths, {
+              skipNetworkFetch: options?.skipNutritionFetch,
+            })
+
+            const rows = itemChunk.map((item) => {
+              const nutrition = item.recipeId !== null
+                ? nutritionCache.get(buildRecipeDetailPath(item.recipeId))
+                : null
+              const allergenLabels =
+                nutrition?.allergenLabels && nutrition.allergenLabels.length > 0
+                  ? nutrition.allergenLabels
+                  : item.badgeLabels.filter(isAllergenBadgeLabel)
+              const customizationOptions =
+                nutrition?.customizationOptions.map((option) => {
+                  const optionDetailPath =
+                    normalizeMenuItemDetailPath(option.detailPath) ??
+                    (option.recipeId !== null ? buildRecipeDetailPath(option.recipeId) : null)
+                  const optionNutrition =
+                    optionDetailPath ? nutritionCache.get(optionDetailPath) : null
+                  const optionAllergenLabels =
+                    optionNutrition?.allergenLabels && optionNutrition.allergenLabels.length > 0
+                      ? optionNutrition.allergenLabels
+                      : option.allergenLabels
+
+                  return {
+                    allergenLabels: optionAllergenLabels,
+                    badgeLabels: option.badgeLabels,
+                    calories: optionNutrition?.calories ?? option.calories,
+                    carbsG: optionNutrition?.carbsG ?? option.carbsG,
+                    defaultQuantity: option.defaultQuantity,
+                    detailPath: optionDetailPath,
+                    fatsG: optionNutrition?.fatsG ?? option.fatsG,
+                    ingredients: optionNutrition?.ingredients ?? option.ingredients,
+                    itemName: optionNutrition?.itemName ?? option.itemName,
+                    nutritionFacts: optionNutrition?.nutritionFacts ?? option.nutritionFacts,
+                    proteinG: optionNutrition?.proteinG ?? option.proteinG,
+                    recipeId: option.recipeId,
+                    servingSize: optionNutrition?.servingSize ?? option.servingSize,
+                  }
+                }) ?? []
+
+              return {
+                allergen_labels: allergenLabels,
+                badge_labels: item.badgeLabels,
+                snapshot_id: snapshot.id,
+                recipe_id: item.recipeId,
+                station_name: item.stationName,
+                item_name: nutrition?.itemName ?? item.itemName,
+                serving_size: nutrition?.servingSize ?? null,
+                calories: nutrition?.calories ?? null,
+                protein_g: nutrition?.proteinG ?? null,
+                carbs_g: nutrition?.carbsG ?? null,
+                fats_g: nutrition?.fatsG ?? null,
+                customization_options: customizationOptions,
+                ingredients: nutrition?.ingredients ?? [],
+                item_order: item.itemOrder,
+                nutrition_facts: nutrition?.nutritionFacts ?? [],
+              }
+            })
+
+            if (rows.length > 0) {
+              const { error: insertError } = await admin.from('menu_items').insert(rows)
+
+              if (insertError) {
+                throw insertError
+              }
+            }
+
+            itemCount += rows.length
+          }
         }
 
         hallResults.push({
@@ -1759,9 +2050,12 @@ Deno.serve(async (req) => {
       admin,
       targetDate,
       body.hallIds,
+      body.itemNames,
       body.mealPeriods,
+      body.stationNames,
       triggerSource,
       {
+        replaceExistingSnapshot: body.replaceExistingSnapshot,
         skipNutritionFetch: body.skipNutritionFetch,
       },
     )

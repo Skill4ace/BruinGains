@@ -165,6 +165,21 @@ export type DiningNutritionFact = {
   dailyValuePercent: number | null;
 };
 
+export type DiningCustomizationOption = {
+  recipeId: number | null;
+  itemName: string;
+  defaultQuantity: number;
+  servingSize: string | null;
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatsG: number | null;
+  badgeLabels: string[];
+  allergenLabels: string[];
+  ingredients: string[];
+  nutritionFacts: DiningNutritionFact[];
+};
+
 export type WeeklyActivityDay = {
   id: string;
   day: string;
@@ -230,6 +245,7 @@ export type DiningMenuItem = {
   allergenLabels: string[];
   ingredients: string[];
   nutritionFacts: DiningNutritionFact[];
+  customizationOptions: DiningCustomizationOption[];
 };
 
 export type CreateCustomMealLogInput = {
@@ -244,6 +260,13 @@ export type CreateCustomMealLogInput = {
 export type CreateDiningMealLogInput = {
   item: DiningMenuItem;
   servings: number;
+  nutritionOverride?: {
+    calories: number;
+    proteinG: number;
+    carbsG: number;
+    fatsG: number;
+  };
+  titleOverride?: string;
 };
 
 export type UpdateMealLogInput = {

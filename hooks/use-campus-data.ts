@@ -8,6 +8,7 @@ import {
 import { hasSupabasePublicEnv, supabasePublicClient } from '@/lib/supabase/client';
 import type { Database } from '@/types/supabase';
 import type {
+  DiningCustomizationOption,
   DiningMenuItem,
   DiningNutritionFact,
   GymCapacitySnapshot,
@@ -50,6 +51,7 @@ type LatestDiningMenuItemRow = {
   protein_g: number | null;
   carbs_g: number | null;
   fats_g: number | null;
+  customization_options: unknown;
   ingredients: unknown;
   item_order: number;
   nutrition_facts: unknown;
@@ -90,6 +92,45 @@ function parseNutritionFacts(value: unknown): DiningNutritionFact[] {
           typeof candidate.dailyValuePercent === 'number'
             ? candidate.dailyValuePercent
             : null,
+      },
+    ];
+  });
+}
+
+function parseCustomizationOptions(value: unknown): DiningCustomizationOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return [];
+    }
+
+    const candidate = entry as Record<string, unknown>;
+
+    if (typeof candidate.itemName !== 'string') {
+      return [];
+    }
+
+    return [
+      {
+        recipeId: typeof candidate.recipeId === 'number' ? candidate.recipeId : null,
+        itemName: candidate.itemName,
+        defaultQuantity:
+          typeof candidate.defaultQuantity === 'number' && candidate.defaultQuantity > 0
+            ? Math.round(candidate.defaultQuantity)
+            : 1,
+        servingSize:
+          typeof candidate.servingSize === 'string' ? candidate.servingSize : null,
+        calories: typeof candidate.calories === 'number' ? candidate.calories : null,
+        proteinG: typeof candidate.proteinG === 'number' ? candidate.proteinG : null,
+        carbsG: typeof candidate.carbsG === 'number' ? candidate.carbsG : null,
+        fatsG: typeof candidate.fatsG === 'number' ? candidate.fatsG : null,
+        badgeLabels: parseJsonStringArray(candidate.badgeLabels),
+        allergenLabels: parseJsonStringArray(candidate.allergenLabels),
+        ingredients: parseJsonStringArray(candidate.ingredients),
+        nutritionFacts: parseNutritionFacts(candidate.nutritionFacts),
       },
     ];
   });
@@ -185,6 +226,7 @@ function mapLatestDiningMenuItemRow(row: LatestDiningMenuItemRow): DiningMenuIte
     ingredients: parseJsonStringArray(row.ingredients),
     itemOrder: row.item_order,
     nutritionFacts: parseNutritionFacts(row.nutrition_facts),
+    customizationOptions: parseCustomizationOptions(row.customization_options),
   };
 }
 
@@ -253,7 +295,7 @@ async function fetchLatestDiningMenuItemsFromSupabase() {
     const { data, error } = await supabasePublicClient
       .from('latest_menu_items')
       .select(
-        'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,ingredients,item_order,nutrition_facts',
+        'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,customization_options,ingredients,item_order,nutrition_facts',
       )
       .order('hall_sort_order', { ascending: true })
       .order('meal_period', { ascending: true })

@@ -237,6 +237,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   function addDiningMealLog(input: CreateDiningMealLogInput) {
     const servings = Math.max(1, Math.round(input.servings));
+    const caloriesPerServing = input.nutritionOverride?.calories ?? input.item.calories ?? 0;
+    const proteinPerServing = input.nutritionOverride?.proteinG ?? input.item.proteinG ?? 0;
+    const carbsPerServing = input.nutritionOverride?.carbsG ?? input.item.carbsG ?? 0;
+    const fatsPerServing = input.nutritionOverride?.fatsG ?? input.item.fatsG ?? 0;
 
     setState((currentState) => {
       if (!currentState) {
@@ -249,13 +253,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           ...currentState.mealLogs,
           {
             id: createMealLogId(),
-            title: input.item.itemName,
+            title: input.titleOverride?.trim() || input.item.itemName,
             period: input.item.mealPeriod,
             loggedAt: new Date().toISOString(),
-            calories: Math.round((input.item.calories ?? 0) * servings),
-            protein: Math.round((input.item.proteinG ?? 0) * servings),
-            carbs: Math.round((input.item.carbsG ?? 0) * servings),
-            fats: Math.round((input.item.fatsG ?? 0) * servings),
+            calories: Math.round(caloriesPerServing * servings),
+            protein: Math.round(proteinPerServing * servings),
+            carbs: Math.round(carbsPerServing * servings),
+            fats: Math.round(fatsPerServing * servings),
             source: 'dining',
             hallId: input.item.hallId,
             hallName: input.item.hallName,
