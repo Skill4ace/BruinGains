@@ -236,7 +236,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }
 
   function addDiningMealLog(input: CreateDiningMealLogInput) {
-    const servings = Math.max(1, Math.round(input.servings));
+    const servings = Math.max(0.5, Math.round(input.servings * 2) / 2);
     const caloriesPerServing = input.nutritionOverride?.calories ?? input.item.calories ?? 0;
     const proteinPerServing = input.nutritionOverride?.proteinG ?? input.item.proteinG ?? 0;
     const carbsPerServing = input.nutritionOverride?.carbsG ?? input.item.carbsG ?? 0;

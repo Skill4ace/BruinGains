@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -628,19 +628,13 @@ function DiningHallModal({
   selectedItemTotals: ReturnType<typeof getMenuItemTotals> | null;
   servings: number;
 }) {
-  const [showAllIngredients, setShowAllIngredients] = useState(false);
-  const [showAllNutritionFacts, setShowAllNutritionFacts] = useState(false);
+  const [showIngredients, setShowIngredients] = useState(false);
+  const [showNutritionFacts, setShowNutritionFacts] = useState(false);
   const [customizationQuantities, setCustomizationQuantities] = useState<Record<string, number>>(
     {},
   );
   const activePeriodLabel = getPeriodLabel(activePeriod);
   const nutritionFacts = activeItem ? getDetailNutritionFacts(activeItem) : [];
-  const visibleNutritionFacts = showAllNutritionFacts
-    ? nutritionFacts
-    : nutritionFacts.slice(0, 6);
-  const visibleIngredients = showAllIngredients
-    ? activeItem?.ingredients ?? []
-    : (activeItem?.ingredients ?? []).slice(0, 4);
   const isCustomizableItem = Boolean(activeItem?.customizationOptions.length);
   const customizationTotals = useMemo(() => {
     if (!activeItem?.customizationOptions.length) {
@@ -672,8 +666,8 @@ function DiningHallModal({
   );
 
   useEffect(() => {
-    setShowAllIngredients(false);
-    setShowAllNutritionFacts(false);
+    setShowIngredients(false);
+    setShowNutritionFacts(false);
     setCustomizationQuantities({});
   }, [activeItem?.itemName, activeItem?.recipeId]);
 
@@ -994,6 +988,7 @@ function DiningHallModal({
                   style={styles.itemSheetCard}>
                   <ScrollView
                     bounces={false}
+                    style={styles.itemSheetScroll}
                     contentContainerStyle={styles.itemSheetContent}
                     showsVerticalScrollIndicator={false}>
                     <View style={styles.sheetGrabber} />
@@ -1012,96 +1007,68 @@ function DiningHallModal({
                     </View>
 
                     <View style={styles.itemSheetMetaWrap}>
-                      <DetailTag label={activePeriodLabel} tone="primary" />
-                      <AppText variant="micro" dimmed>
+                      <AppText variant="micro" dimmed style={styles.itemSheetServingText}>
                         {activeItem.servingSize
                           ? `Serving • ${activeItem.servingSize}`
                           : 'Serving details unavailable'}
                       </AppText>
+                      {activeItem.badgeLabels.length > 0 ? (
+                        <View style={styles.itemSheetBadgeRow}>
+                          {activeItem.badgeLabels.map((badge) => (
+                            <MenuBadge key={`${activeItem.itemName}-${badge}-detail`} label={badge} />
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
 
-                    {activeItem.badgeLabels.length > 0 ? (
-                      <View style={styles.itemSheetBadgeRow}>
-                        {activeItem.badgeLabels.map((badge) => (
-                          <MenuBadge key={`${activeItem.itemName}-${badge}-detail`} label={badge} />
-                        ))}
-                      </View>
-                    ) : null}
-
-                    <View style={styles.servingsRow}>
+                    <View style={styles.servingsRowCompact}>
                       <AppText variant="title">Servings</AppText>
                       <View style={styles.stepper}>
                         <StepperButton
                           icon="remove"
-                          onPress={() => onServingsChange(Math.max(1, servings - 1))}
+                          onPress={() => onServingsChange(normalizeServingStep(servings - 0.5))}
                         />
-                        <AppText variant="headline">{servings}</AppText>
-                        <StepperButton icon="add" onPress={() => onServingsChange(servings + 1)} />
+                        <AppText variant="headline">{formatServingCount(servings)}</AppText>
+                        <StepperButton
+                          icon="add"
+                          onPress={() => onServingsChange(normalizeServingStep(servings + 0.5))}
+                        />
                       </View>
                     </View>
 
-                    <View style={styles.sheetMacroGrid}>
-                      <MacroMetric label="Calories" value={`${selectedItemTotals.calories} cal`} />
-                      <MacroMetric label="Protein" value={`${selectedItemTotals.protein}g`} />
-                      <MacroMetric label="Carbs" value={`${selectedItemTotals.carbs}g`} />
-                      <MacroMetric label="Fat" value={`${selectedItemTotals.fats}g`} />
-                    </View>
+                    <SurfaceCard style={styles.compactMetricCard}>
+                      <View style={styles.compactMetricRow}>
+                        <CompactMetric label="Calories" value={`${selectedItemTotals.calories} cal`} />
+                        <CompactMetric label="Protein" value={`${selectedItemTotals.protein}g`} />
+                        <CompactMetric label="Carbs" value={`${selectedItemTotals.carbs}g`} />
+                        <CompactMetric label="Fat" value={`${selectedItemTotals.fats}g`} />
+                      </View>
+                    </SurfaceCard>
 
                     {nutritionFacts.length > 0 ? (
-                      <View style={styles.detailSection}>
-                        <View style={styles.detailSectionHeader}>
-                          <AppText variant="title">Nutrition facts</AppText>
-                          {nutritionFacts.length > 6 ? (
-                            <DetailToggleButton
-                              label={
-                                showAllNutritionFacts
-                                  ? 'Show less'
-                                  : `Show all ${nutritionFacts.length}`
-                              }
-                              onPress={() =>
-                                setShowAllNutritionFacts((currentValue) => !currentValue)
-                              }
-                            />
-                          ) : null}
-                        </View>
-                        <View style={styles.nutritionFactGrid}>
-                          {visibleNutritionFacts.map((fact) => (
-                            <NutritionFactChip key={fact.id} fact={fact} />
-                          ))}
-                        </View>
-                      </View>
+                      <CollapsibleDetailSection
+                        isOpen={showNutritionFacts}
+                        onPress={() => setShowNutritionFacts((currentValue) => !currentValue)}
+                        title="Nutrition facts">
+                        <NutritionFactsPanel facts={nutritionFacts} />
+                      </CollapsibleDetailSection>
                     ) : null}
 
-                    {activeItem.allergenLabels.length > 0 ? (
-                      <View style={styles.detailSection}>
-                        <AppText variant="title">Allergens</AppText>
-                        <View style={styles.detailTagWrap}>
-                          {activeItem.allergenLabels.map((label) => (
-                            <DetailTag key={`${activeItem.itemName}-${label}`} label={label} tone="warning" />
-                          ))}
-                        </View>
-                      </View>
-                    ) : null}
-
-                    {activeItem.ingredients.length > 0 ? (
-                      <View style={styles.detailSection}>
-                        <View style={styles.detailSectionHeader}>
-                          <AppText variant="title">Ingredients</AppText>
-                          {activeItem.ingredients.length > 4 ? (
-                            <DetailToggleButton
-                              label={
-                                showAllIngredients
-                                  ? 'Show less'
-                                  : `Show all ${activeItem.ingredients.length}`
-                              }
-                              onPress={() =>
-                                setShowAllIngredients((currentValue) => !currentValue)
-                              }
-                            />
-                          ) : null}
-                        </View>
+                    {activeItem.ingredients.length > 0 || activeItem.allergenLabels.length > 0 ? (
+                      <CollapsibleDetailSection
+                        contentStyle={styles.ingredientSectionContent}
+                        isOpen={showIngredients}
+                        onPress={() => setShowIngredients((currentValue) => !currentValue)}
+                        title="Ingredients">
+                        {activeItem.allergenLabels.length > 0 ? (
+                          <View style={styles.detailTagWrap}>
+                            {activeItem.allergenLabels.map((label) => (
+                              <DetailTag key={`${activeItem.itemName}-${label}`} label={label} tone="warning" />
+                            ))}
+                          </View>
+                        ) : null}
                         <View style={styles.ingredientList}>
-                          {visibleIngredients.map((ingredient) => (
+                          {activeItem.ingredients.map((ingredient) => (
                             <View
                               key={`${activeItem.itemName}-${ingredient}`}
                               style={styles.ingredientRow}>
@@ -1110,14 +1077,15 @@ function DiningHallModal({
                             </View>
                           ))}
                         </View>
-                      </View>
+                      </CollapsibleDetailSection>
                     ) : null}
-
+                  </ScrollView>
+                  <View style={styles.itemSheetFooter}>
                     <ActionButton
-                      label={`Add ${servings} serving${servings > 1 ? 's' : ''} to Meal`}
+                      label={`Add ${formatServingCount(servings)} serving${servings === 1 ? '' : 's'}`}
                       onPress={() => onSaveItem()}
                     />
-                  </ScrollView>
+                  </View>
                 </KeyboardAvoidingView>
               )}
             </View>
@@ -1311,6 +1279,23 @@ function MacroMetric({
   );
 }
 
+function CompactMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.compactMetricCell}>
+      <AppText variant="bodyStrong">{value}</AppText>
+      <AppText variant="micro" dimmed>
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
 function BuildYourOwnMetric({
   label,
   value,
@@ -1326,14 +1311,74 @@ function BuildYourOwnMetric({
   );
 }
 
-function NutritionFactChip({ fact }: { fact: DiningNutritionFact }) {
+function CollapsibleDetailSection({
+  children,
+  contentStyle,
+  isOpen,
+  onPress,
+  title,
+}: {
+  children: ReactNode;
+  contentStyle?: object;
+  isOpen: boolean;
+  onPress: () => void;
+  title: string;
+}) {
   return (
-    <View style={styles.nutritionFactChip}>
-      <AppText variant="bodyStrong">{fact.value}</AppText>
-      <AppText variant="micro" dimmed>
-        {fact.label}
-        {fact.dailyValuePercent !== null ? ` • ${fact.dailyValuePercent}% DV` : ''}
-      </AppText>
+    <View style={styles.collapsibleSection}>
+      <PressScale haptic="none" onPress={onPress}>
+        <View style={styles.collapsibleSectionHeader}>
+          <AppText variant="bodyStrong">{title}</AppText>
+          <Ionicons
+            name={isOpen ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={AppColors.textSubtle}
+          />
+        </View>
+      </PressScale>
+      {isOpen ? <View style={contentStyle}>{children}</View> : null}
+    </View>
+  );
+}
+
+function NutritionFactChip({
+  fact,
+  isLast = false,
+}: {
+  fact: DiningNutritionFact;
+  isLast?: boolean;
+}) {
+  return (
+    <View style={[styles.nutritionFactChip, isLast ? styles.nutritionFactRowLast : null]}>
+      <View style={styles.nutritionFactColumns}>
+        <AppText variant="body" dimmed style={styles.nutritionFactNameColumn}>
+          {fact.label}
+        </AppText>
+        <AppText variant="bodyStrong" style={styles.nutritionFactValueColumn}>
+          {fact.value}
+        </AppText>
+        <AppText variant="micro" dimmed style={styles.nutritionFactDailyValueColumn}>
+          {fact.dailyValuePercent !== null ? `${fact.dailyValuePercent}% DV` : ' '}
+        </AppText>
+      </View>
+    </View>
+  );
+}
+
+function NutritionFactsPanel({
+  facts,
+}: {
+  facts: DiningNutritionFact[];
+}) {
+  return (
+    <View style={styles.nutritionFactsPanel}>
+      {facts.map((fact, index) => (
+        <NutritionFactChip
+          key={fact.id}
+          fact={fact}
+          isLast={index === facts.length - 1}
+        />
+      ))}
     </View>
   );
 }
@@ -1652,8 +1697,16 @@ function parseMealNumber(value: string) {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : Number.NaN;
 }
 
+function formatServingCount(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function normalizeServingStep(value: number) {
+  return Math.max(0.5, Math.round(value * 2) / 2);
+}
+
 function getMenuItemTotals(item: DiningMenuItem, servings: number) {
-  const normalizedServings = Math.max(1, servings);
+  const normalizedServings = Math.max(0.5, servings);
 
   return {
     calories: Math.round((item.calories ?? 0) * normalizedServings),
@@ -2060,13 +2113,13 @@ const styles = StyleSheet.create({
   },
   menuModalHeader: {
     paddingHorizontal: Layout.pagePadding,
-    paddingTop: Spacing.sm,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.lg,
     gap: Spacing.md,
   },
   menuHeaderTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
@@ -2183,7 +2236,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radii.xl,
     borderTopRightRadius: Radii.xl,
     backgroundColor: AppColors.surfaceLowest,
-    maxHeight: '82%',
+    maxHeight: '80%',
+  },
+  itemSheetScroll: {
+    flexGrow: 0,
   },
   buildYourOwnContent: {
     paddingHorizontal: Layout.pagePadding,
@@ -2194,8 +2250,8 @@ const styles = StyleSheet.create({
   itemSheetContent: {
     paddingHorizontal: Layout.pagePadding,
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.lg,
+    paddingBottom: Spacing.lg,
+    gap: Spacing.md,
   },
   sheetGrabber: {
     width: 56,
@@ -2220,10 +2276,14 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     flexWrap: 'wrap',
   },
+  itemSheetServingText: {
+    flexShrink: 0,
+  },
   itemSheetBadgeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
+    flex: 1,
   },
   sheetCloseButton: {
     width: 36,
@@ -2233,7 +2293,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  servingsRow: {
+  servingsRowCompact: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -2245,12 +2305,29 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   stepperButton: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: Radii.pill,
     backgroundColor: AppColors.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  compactMetricCard: {
+    backgroundColor: AppColors.surfaceLow,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  compactMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  compactMetricCell: {
+    flex: 1,
+    gap: 2,
+    alignItems: 'center',
   },
   sheetMacroGrid: {
     flexDirection: 'row',
@@ -2337,6 +2414,19 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     gap: Spacing.xs,
   },
+  collapsibleSection: {
+    gap: Spacing.sm,
+  },
+  collapsibleSectionHeader: {
+    minHeight: 44,
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceLow,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
   detailSection: {
     gap: Spacing.sm,
   },
@@ -2346,18 +2436,44 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
-  nutritionFactGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  nutritionFactChip: {
-    width: '47%',
+  nutritionFactsPanel: {
     backgroundColor: AppColors.surfaceLow,
-    borderRadius: Radii.md,
+    borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    gap: 2,
+  },
+  nutritionFactChip: {
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: AppColors.outlineVariant,
+  },
+  nutritionFactColumns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  nutritionFactNameColumn: {
+    flex: 1,
+  },
+  nutritionFactValueColumn: {
+    minWidth: 72,
+    textAlign: 'right',
+  },
+  nutritionFactDailyValueColumn: {
+    minWidth: 58,
+    textAlign: 'right',
+  },
+  nutritionFactRowLast: {
+    borderBottomWidth: 0,
+  },
+  itemSheetFooter: {
+    paddingHorizontal: Layout.pagePadding,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xl,
+    backgroundColor: AppColors.surfaceLowest,
+    borderTopWidth: 1,
+    borderTopColor: AppColors.outlineVariant,
   },
   detailTagWrap: {
     flexDirection: 'row',
@@ -2387,6 +2503,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ingredientList: {
+    gap: Spacing.sm,
+  },
+  ingredientSectionContent: {
     gap: Spacing.sm,
   },
   ingredientRow: {

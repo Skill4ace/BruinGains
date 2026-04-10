@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { getWorkoutTemplateSummaries } from '@/data/local/selectors';
-import { formatPublicDataStatus, useGymCapacities } from '@/hooks/use-campus-data';
+import { useGymCapacities } from '@/hooks/use-campus-data';
 import { useAppData } from '@/providers/app-data-provider';
 import { ActionButton } from '@/components/ui/action-button';
 import { AppScreen } from '@/components/ui/app-screen';
@@ -19,11 +19,6 @@ export function GymScreenPreview() {
     useAppData();
   const capacityState = useGymCapacities();
   const templates = getWorkoutTemplateSummaries(state);
-  const capacityStatus = formatPublicDataStatus(
-    capacityState.updatedAt,
-    capacityState.source,
-    capacityState.isStale,
-  );
 
   return (
     <AppScreen contentContainerStyle={styles.content}>
@@ -34,7 +29,7 @@ export function GymScreenPreview() {
       </View>
 
       <SurfaceCard floating style={styles.topCard}>
-        <SectionHeader eyebrow={capacityStatus} title="Capacity" />
+        <SectionHeader title="Capacity" />
         {capacityState.error ? (
           <AppText variant="micro" color="#A56D00">
             Refresh unavailable. Showing the best local snapshot.
