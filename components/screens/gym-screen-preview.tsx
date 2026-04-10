@@ -61,21 +61,19 @@ export function GymScreenPreview() {
                 <AppText variant="micro" dimmed>
                   {location.hours}
                 </AppText>
-                <View style={styles.capacityBarTrack}>
-                  <View
-                    style={[
-                      styles.capacityBarFill,
-                      {
-                        width: `${location.isClosed ? 0 : location.load * 100}%`,
-                        backgroundColor: location.isClosed
-                          ? AppColors.textSubtle
-                          : location.load >= 0.7
-                            ? '#E2A061'
-                            : AppColors.primary,
-                      },
-                    ]}
-                  />
-                </View>
+                {!location.isClosed ? (
+                  <View style={styles.capacityBarTrack}>
+                    <View
+                      style={[
+                        styles.capacityBarFill,
+                        {
+                          width: `${location.load * 100}%`,
+                          backgroundColor: location.load >= 0.7 ? '#E2A061' : AppColors.primary,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
               </View>
             </View>
           ))}

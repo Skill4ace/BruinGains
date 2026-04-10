@@ -23,6 +23,27 @@ const GYM_TARGETS = [
   },
 ] as const
 
+const GYM_WEEKLY_HOURS = {
+  wooden: {
+    Monday: '5:15 AM - 1:00 AM',
+    Tuesday: '5:15 AM - 1:00 AM',
+    Wednesday: '5:15 AM - 1:00 AM',
+    Thursday: '5:15 AM - 1:00 AM',
+    Friday: '5:15 AM - 10:00 PM',
+    Saturday: '8:00 AM - 8:00 PM',
+    Sunday: '8:00 AM - 11:00 PM',
+  },
+  bfit: {
+    Monday: '6:00 AM - 12:00 AM',
+    Tuesday: '6:00 AM - 12:00 AM',
+    Wednesday: '6:00 AM - 12:00 AM',
+    Thursday: '6:00 AM - 12:00 AM',
+    Friday: '6:00 AM - 9:00 PM',
+    Saturday: '9:00 AM - 6:00 PM',
+    Sunday: '9:00 AM - 9:00 PM',
+  },
+} as const
+
 type SyncRequest = {
   includeDining?: boolean
   includeGyms?: boolean
@@ -62,6 +83,7 @@ type DiningSyncResult = {
 }
 
 type GymSyncResult = {
+  hours: string
   isClosed: boolean
   locationId: string
   percent: number
@@ -155,6 +177,67 @@ function getLosAngelesCurrentMinutes() {
   return Number.parseInt(values.hour, 10) * 60 + Number.parseInt(values.minute, 10)
 }
 
+function getLosAngelesWeekday() {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: UCLA_TIME_ZONE,
+    weekday: 'long',
+  }).format(new Date())
+}
+
+function getPreviousWeekday(weekday: string) {
+  const weekdays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ]
+  const currentIndex = weekdays.indexOf(weekday)
+  return weekdays[(currentIndex + weekdays.length - 1) % weekdays.length]
+}
+
+function parseClockMinutes(value: string) {
+  const match = cleanText(value).match(/(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?/i)
+
+  if (!match) {
+    return null
+  }
+
+  const hour = Number.parseInt(match[1], 10)
+  const minute = Number.parseInt(match[2], 10)
+  const marker = match[3].toLowerCase()
+  let normalizedHour = hour % 12
+
+  if (marker === 'p') {
+    normalizedHour += 12
+  }
+
+  return normalizedHour * 60 + minute
+}
+
+function parseTimeRange(range: string) {
+  const [startValue, endValue] = cleanText(range).split(/\s*-\s*/)
+
+  if (!startValue || !endValue) {
+    return null
+  }
+
+  const startMinutes = parseClockMinutes(startValue)
+  const endMinutes = parseClockMinutes(endValue)
+
+  if (startMinutes === null || endMinutes === null) {
+    return null
+  }
+
+  return {
+    crossesMidnight: startMinutes >= endMinutes,
+    endMinutes,
+    startMinutes,
+  }
+}
+
 function getCurrentDiningActivityPeriod(currentMinutes: number): MealPeriod | null {
   if (currentMinutes >= 5 * 60 && currentMinutes < 11 * 60) {
     return 'breakfast'
@@ -219,6 +302,51 @@ async function fetchDiningActivityPercent(locationId: string) {
 
 function clampLoad(value: number) {
   return Math.max(0, Math.min(1, value))
+}
+
+function getGymHoursForWeekday(
+  gymLocationId: (typeof GYM_TARGETS)[number]['gymLocationId'],
+  weekday: string,
+) {
+  return GYM_WEEKLY_HOURS[gymLocationId][weekday as keyof (typeof GYM_WEEKLY_HOURS)[typeof gymLocationId]] ?? null
+}
+
+function getEffectiveGymHours(
+  gymLocationId: (typeof GYM_TARGETS)[number]['gymLocationId'],
+  currentMinutes: number,
+  weekday: string,
+) {
+  const todaysHours = getGymHoursForWeekday(gymLocationId, weekday)
+  const todaysRange = todaysHours ? parseTimeRange(todaysHours) : null
+
+  if (todaysRange) {
+    const isOpenToday = todaysRange.crossesMidnight
+      ? currentMinutes >= todaysRange.startMinutes || currentMinutes < todaysRange.endMinutes
+      : currentMinutes >= todaysRange.startMinutes && currentMinutes < todaysRange.endMinutes
+
+    if (isOpenToday) {
+      return {
+        hours: todaysHours,
+        isOpenNow: true,
+      }
+    }
+  }
+
+  const previousHours = getGymHoursForWeekday(gymLocationId, getPreviousWeekday(weekday))
+  const previousRange = previousHours ? parseTimeRange(previousHours) : null
+
+  if (previousRange?.crossesMidnight && currentMinutes < 4 * 60) {
+    return {
+      hours: todaysHours ?? previousHours,
+      isOpenNow:
+        previousRange.endMinutes > 0 && currentMinutes < previousRange.endMinutes,
+    }
+  }
+
+  return {
+    hours: todaysHours ?? 'Closed',
+    isOpenNow: false,
+  }
 }
 
 async function syncDiningActivity(admin: ReturnType<typeof createAdminClient>) {
@@ -308,6 +436,8 @@ function selectGymSourceLocation(
 async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
   const sourceLocations = await fetchJson<GymSourceLocation[]>(GOBOARD_API_URL)
   const capturedAt = new Date().toISOString()
+  const currentMinutes = getLosAngelesCurrentMinutes()
+  const weekday = getLosAngelesWeekday()
   const results: GymSyncResult[] = []
 
   for (const target of GYM_TARGETS) {
@@ -317,15 +447,29 @@ async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
       throw new Error(`Unable to locate gym source row for ${target.zoneName}`)
     }
 
-    const percent = sourceLocation.IsClosed
+    const effectiveHours = getEffectiveGymHours(target.gymLocationId, currentMinutes, weekday)
+    const isClosed = sourceLocation.IsClosed || !effectiveHours.isOpenNow
+    const percent = isClosed
       ? 0
       : Math.round((sourceLocation.LastCount / sourceLocation.TotalCapacity) * 100)
+
+    const { error: updateGymError } = await admin
+      .from('gym_locations')
+      .update({
+        hours: effectiveHours.hours,
+        updated_at: capturedAt,
+      })
+      .eq('id', target.gymLocationId)
+
+    if (updateGymError) {
+      throw updateGymError
+    }
 
     const { error } = await admin
       .from('gym_capacity_snapshots')
       .insert({
         captured_at: capturedAt,
-        is_closed: sourceLocation.IsClosed,
+        is_closed: isClosed,
         load: clampLoad(percent / 100),
         location_id: target.gymLocationId,
         source: `module-6-campus-activity-sync:${sourceLocation.LocationName}`,
@@ -337,7 +481,8 @@ async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
     }
 
     results.push({
-      isClosed: sourceLocation.IsClosed,
+      hours: effectiveHours.hours,
+      isClosed: isClosed,
       locationId: target.gymLocationId,
       percent,
       status: 'inserted',
