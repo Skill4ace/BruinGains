@@ -22,112 +22,112 @@ export function GymScreenPreview() {
 
   return (
     <AppScreen contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <View style={styles.headerCopy}>
-          <AppText variant="headline">Gym</AppText>
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <AppText variant="headline">Gym</AppText>
+          </View>
         </View>
-      </View>
 
-      <SurfaceCard floating style={styles.topCard}>
-        <SectionHeader title="Capacity" />
-        {capacityState.error ? (
-          <AppText variant="micro" color="#A56D00">
-            Refresh unavailable. Showing the best local snapshot.
-          </AppText>
-        ) : null}
-        <View style={styles.capacityCompactCard}>
-          {capacityState.data.map((location, index) => (
-            <View
-              key={location.id}
-              style={[
-                styles.capacityCompactRow,
-                index < capacityState.data.length - 1 ? styles.capacityCompactDivider : null,
-              ]}>
-              <View style={styles.capacityCompactCopy}>
-                <View style={styles.capacityTopLine}>
-                  <AppText variant="bodyStrong">{location.name}</AppText>
-                  <AppText
-                    variant="title"
-                    color={
-                      location.isClosed
-                        ? AppColors.textSubtle
-                        : location.load >= 0.7
-                          ? '#A56D00'
-                          : AppColors.primary
-                    }>
-                    {location.isClosed ? 'Closed' : `${location.percent}% full`}
-                  </AppText>
-                </View>
-                <AppText variant="micro" dimmed>
-                  {location.hours}
-                </AppText>
-                {!location.isClosed ? (
-                  <View style={styles.capacityBarTrack}>
-                    <View
-                      style={[
-                        styles.capacityBarFill,
-                        {
-                          width: `${location.load * 100}%`,
-                          backgroundColor: location.load >= 0.7 ? '#E2A061' : AppColors.primary,
-                        },
-                      ]}
-                    />
+        <SurfaceCard floating style={styles.topCard}>
+          <SectionHeader title="Capacity" />
+          {capacityState.error ? (
+            <AppText variant="micro" color="#A56D00">
+              Refresh unavailable. Showing the best local snapshot.
+            </AppText>
+          ) : null}
+          <View style={styles.capacityCompactCard}>
+            {capacityState.data.map((location, index) => (
+              <View
+                key={location.id}
+                style={[
+                  styles.capacityCompactRow,
+                  index < capacityState.data.length - 1 ? styles.capacityCompactDivider : null,
+                ]}>
+                <View style={styles.capacityCompactCopy}>
+                  <View style={styles.capacityTopLine}>
+                    <AppText variant="bodyStrong">{location.name}</AppText>
+                    <AppText
+                      variant="title"
+                      color={
+                        location.isClosed
+                          ? AppColors.textSubtle
+                          : location.load >= 0.7
+                            ? '#A56D00'
+                            : AppColors.primary
+                      }>
+                      {location.isClosed ? 'Closed' : `${location.percent}% full`}
+                    </AppText>
                   </View>
-                ) : null}
+                  <AppText variant="micro" dimmed>
+                    {location.hours}
+                  </AppText>
+                  {!location.isClosed ? (
+                    <View style={styles.capacityBarTrack}>
+                      <View
+                        style={[
+                          styles.capacityBarFill,
+                          {
+                            width: `${location.load * 100}%`,
+                            backgroundColor: location.load >= 0.7 ? '#E2A061' : AppColors.primary,
+                          },
+                        ]}
+                      />
+                    </View>
+                  ) : null}
+                </View>
               </View>
-            </View>
-          ))}
-        </View>
-      </SurfaceCard>
+            ))}
+          </View>
+        </SurfaceCard>
 
-      <View style={styles.stack}>
-        <View style={styles.templatesHeader}>
-          <AppText variant="title">Templates</AppText>
-          <PressScale haptic="none" onPress={createWorkoutTemplate}>
-            <View style={styles.addTemplateButton}>
-              <Ionicons name="add" size={20} color={AppColors.white} />
-            </View>
-          </PressScale>
-        </View>
-        <View style={styles.templateGrid}>
-          {templates.map((template) => (
-            <PressScale
-              key={template.id}
+        <View style={styles.stack}>
+          <View style={styles.templatesHeader}>
+            <AppText variant="title">Templates</AppText>
+            <PressScale haptic="none" onPress={createWorkoutTemplate}>
+              <View style={styles.addTemplateButton}>
+                <Ionicons name="add" size={20} color={AppColors.white} />
+              </View>
+            </PressScale>
+          </View>
+          <View style={styles.templateGrid}>
+            {templates.map((template) => (
+              <PressScale
+                key={template.id}
+                onPress={() => {
+                  startWorkoutFromTemplate(template.id);
+                  router.push('/workout/session');
+                }}
+                containerStyle={styles.templateCell}>
+                <SurfaceCard style={styles.templateCard}>
+                  <View style={styles.templateTopLine}>
+                    <AppText variant="title">{template.name}</AppText>
+                  </View>
+                  <AppText variant="body" dimmed>
+                    {template.exerciseCount} exercises
+                  </AppText>
+                  <AppText variant="micro" dimmed>
+                    {template.focus}
+                  </AppText>
+                  <View style={styles.templateFooter}>
+                    <Ionicons name="play-circle" size={18} color={AppColors.primary} />
+                    <AppText variant="label" color={AppColors.primary}>
+                      Start workout
+                    </AppText>
+                  </View>
+                </SurfaceCard>
+              </PressScale>
+            ))}
+          </View>
+          <View style={styles.emptyWorkoutButton}>
+            <ActionButton
+              label="Start Empty Workout"
               onPress={() => {
-                startWorkoutFromTemplate(template.id);
+                startEmptyWorkout();
                 router.push('/workout/session');
               }}
-              containerStyle={styles.templateCell}>
-              <SurfaceCard style={styles.templateCard}>
-                <View style={styles.templateTopLine}>
-                  <AppText variant="title">{template.name}</AppText>
-                </View>
-                <AppText variant="body" dimmed>
-                  {template.exerciseCount} exercises
-                </AppText>
-                <AppText variant="micro" dimmed>
-                  {template.focus}
-                </AppText>
-                <View style={styles.templateFooter}>
-                  <Ionicons name="play-circle" size={18} color={AppColors.primary} />
-                  <AppText variant="label" color={AppColors.primary}>
-                    Start workout
-                  </AppText>
-                </View>
-              </SurfaceCard>
-            </PressScale>
-          ))}
+            />
+          </View>
         </View>
-        <View style={styles.emptyWorkoutButton}>
-          <ActionButton
-            label="Start Empty Workout"
-            onPress={() => {
-              startEmptyWorkout();
-              router.push('/workout/session');
-            }}
-          />
-        </View>
-      </View>
     </AppScreen>
   );
 }

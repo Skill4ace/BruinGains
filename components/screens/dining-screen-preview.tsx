@@ -799,7 +799,9 @@ function DiningHallModal({
                             style={styles.menuItemNutritionLabel}
                             variant="micro"
                             dimmed>
-                            {formatInlineMacros(item)}
+                            {item.customizationOptions.length > 0
+                              ? 'Tap to customize'
+                              : formatInlineMacros(item)}
                           </AppText>
                           {item.badgeLabels.length > 0 ? (
                             <View style={styles.menuBadgeRow}>
@@ -857,31 +859,14 @@ function DiningHallModal({
                       </PressScale>
                     </View>
 
-                    <View style={styles.buildYourOwnSummary}>
-                      <BuildYourOwnMetric
-                        label="kcal"
-                        value={customizationTotals.calories.toString()}
-                      />
-                      <BuildYourOwnMetric
-                        label="Protein"
-                        value={`${customizationTotals.protein}g`}
-                      />
-                      <BuildYourOwnMetric
-                        label="Carbs"
-                        value={`${customizationTotals.carbs}g`}
-                      />
-                      <BuildYourOwnMetric
-                        label="Fat"
-                        value={`${customizationTotals.fats}g`}
-                      />
-                    </View>
-
-                    <View style={styles.buildYourOwnIntro}>
-                      <AppText variant="title">Select your ingredients</AppText>
-                      <AppText dimmed>
-                        Pick the components you want, then add the configured meal.
-                      </AppText>
-                    </View>
+                    <SurfaceCard style={styles.compactMetricCard}>
+                      <View style={styles.compactMetricRow}>
+                        <CompactMetric label="Calories" value={`${customizationTotals.calories} cal`} />
+                        <CompactMetric label="Protein" value={`${customizationTotals.protein}g`} />
+                        <CompactMetric label="Carbs" value={`${customizationTotals.carbs}g`} />
+                        <CompactMetric label="Fat" value={`${customizationTotals.fats}g`} />
+                      </View>
+                    </SurfaceCard>
 
                     <View style={styles.buildYourOwnOptionsList}>
                       {activeItem.customizationOptions.map((option) => {
@@ -896,8 +881,8 @@ function DiningHallModal({
                               onPress={() => handleCustomizationToggle(option)}>
                               <View style={styles.buildYourOwnOptionTopRow}>
                                 <View style={styles.buildYourOwnOptionCopy}>
-                                  <AppText variant="title">{option.itemName}</AppText>
-                                  <AppText dimmed>{formatCustomizationOptionMeta(option)}</AppText>
+                                  <AppText variant="bodyStrong">{option.itemName}</AppText>
+                                  <AppText variant="micro" dimmed>{formatCustomizationOptionMeta(option)}</AppText>
                                 </View>
                                 {isSelected ? (
                                   <View style={styles.buildYourOwnOptionStepper}>
@@ -1292,21 +1277,6 @@ function CompactMetric({
       <AppText variant="micro" dimmed>
         {label}
       </AppText>
-    </View>
-  );
-}
-
-function BuildYourOwnMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.buildYourOwnMetric}>
-      <AppText variant="headline">{value}</AppText>
-      <AppText dimmed>{label}</AppText>
     </View>
   );
 }
@@ -2245,7 +2215,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Layout.pagePadding,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.xxl,
-    gap: Spacing.lg,
+    gap: Spacing.md,
   },
   itemSheetContent: {
     paddingHorizontal: Layout.pagePadding,
@@ -2334,32 +2304,15 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.md,
   },
-  buildYourOwnSummary: {
-    flexDirection: 'row',
-    backgroundColor: AppColors.surfaceLow,
-    borderRadius: Radii.xl,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.lg,
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  buildYourOwnMetric: {
-    flex: 1,
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  buildYourOwnIntro: {
-    gap: Spacing.xs,
-    alignItems: 'center',
-  },
   buildYourOwnOptionsList: {
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   buildYourOwnOptionCard: {
     backgroundColor: AppColors.surfaceLow,
-    borderRadius: Radii.xl,
-    padding: Spacing.lg,
-    gap: Spacing.sm,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
   },
   buildYourOwnOptionTopRow: {
     flexDirection: 'row',
@@ -2377,9 +2330,9 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   buildYourOwnCheckbox: {
-    width: 40,
-    height: 40,
-    borderRadius: Radii.md,
+    width: 34,
+    height: 34,
+    borderRadius: Radii.sm,
     borderWidth: 1,
     borderColor: AppColors.primary,
     alignItems: 'center',

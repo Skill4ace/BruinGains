@@ -1,11 +1,15 @@
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { formatWorkoutTimerLabel, getActiveWorkoutSessionView } from '@/data/local/selectors';
+import { useAppData } from '@/providers/app-data-provider';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { AppColors, Radii, Shadows, Spacing } from '@/constants/theme';
+import { useEffect, useState } from 'react';
 
 const TAB_META = {
   index: {
@@ -27,9 +31,46 @@ const TAB_META = {
 
 export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { state: appState } = useAppData();
+  const activeWorkout = getActiveWorkoutSessionView(appState);
+  const [clock, setClock] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!activeWorkout) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setClock(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [activeWorkout]);
 
   return (
     <View style={[styles.safeArea, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      {activeWorkout ? (
+        <PressScale haptic="none" onPress={() => router.push('/workout/session')}>
+          <View style={styles.resumeBar}>
+            <View style={styles.resumeHandle} />
+            <View style={styles.resumeContent}>
+              <View style={styles.resumeCopy}>
+                <AppText variant="bodyStrong">{activeWorkout.session.title}</AppText>
+                <AppText variant="micro" dimmed>
+                  Active workout
+                </AppText>
+              </View>
+              <View style={styles.resumeMeta}>
+                <AppText variant="label" color={AppColors.primary}>
+                  {formatWorkoutTimerLabel(activeWorkout.session.startedAt, clock)}
+                </AppText>
+                <Ionicons name="chevron-up" size={16} color={AppColors.primary} />
+              </View>
+            </View>
+          </View>
+        </PressScale>
+      ) : null}
       <View style={styles.bar}>
         {state.routes.map((route, index) => {
           const focused = state.index === index;
@@ -85,6 +126,40 @@ const styles = StyleSheet.create({
     backgroundColor: AppColors.surfaceLowest,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: AppColors.outlineVariant,
+  },
+  resumeBar: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    borderRadius: Radii.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.md,
+    gap: Spacing.sm,
+    backgroundColor: AppColors.surface,
+    ...Shadows.floating,
+  },
+  resumeHandle: {
+    width: 56,
+    height: 5,
+    borderRadius: Radii.pill,
+    backgroundColor: AppColors.surfaceHighest,
+    alignSelf: 'center',
+  },
+  resumeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  resumeCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  resumeMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   bar: {
     flexDirection: 'row',

@@ -60,6 +60,19 @@ export type ExerciseLibraryEntry = {
   focus: string;
 };
 
+export type WorkoutTrackingMode = 'strength' | 'duration';
+export type WorkoutSetType = 'drop' | 'failure' | 'normal' | 'warmup';
+
+export type WorkoutExerciseDraft = {
+  currentLoad?: number;
+  name: string;
+  repRange?: string;
+  targetDurationMinutes?: number;
+  targetReps?: number;
+  targetSets: number;
+  trackingMode: WorkoutTrackingMode;
+};
+
 export type WorkoutTemplate = {
   id: string;
   name: string;
@@ -87,6 +100,8 @@ export type WorkoutSession = {
   startedAt: string;
   endedAt: string | null;
   activeExerciseId: string | null;
+  restDurationSeconds?: number | null;
+  restStartedAt?: string | null;
 };
 
 export type WorkoutSessionExercise = {
@@ -99,16 +114,22 @@ export type WorkoutSessionExercise = {
   previousLoadLabel: string;
   currentLoad: number;
   targetReps: number;
+  targetDurationMinutes?: number | null;
+  trackingMode?: WorkoutTrackingMode;
   order: number;
 };
 
 export type WorkoutSet = {
+  completed?: boolean;
+  durationMinutes?: number | null;
   id: string;
   sessionId: string;
   sessionExerciseId: string;
   load: number;
   reps: number;
   loggedAt: string;
+  setType?: WorkoutSetType;
+  setNumber?: number;
 };
 
 export type PersonalRecord = {
@@ -202,11 +223,26 @@ export type ActiveWorkoutExerciseView = {
   name: string;
   targetSets: number;
   completedSets: number;
+  allSetsCompleted: boolean;
   repRange: string;
   previousLoadLabel: string;
   currentLoad: number;
   targetReps: number;
+  targetDurationMinutes: number | null;
+  trackingMode: WorkoutTrackingMode;
   active: boolean;
+  order: number;
+  sets: ActiveWorkoutSetView[];
+};
+
+export type ActiveWorkoutSetView = {
+  completed: boolean;
+  durationMinutes: number | null;
+  id: string | null;
+  load: number;
+  reps: number;
+  setNumber: number;
+  setType: WorkoutSetType;
 };
 
 export type ActiveWorkoutSessionView = {

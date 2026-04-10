@@ -51,10 +51,26 @@ function getLatestActiveExerciseId(
   exercises: ActiveWorkoutSessionView['exercises'],
 ) {
   if (currentActiveExerciseId) {
-    return currentActiveExerciseId;
+    const matchingExercise = exercises.find((exercise) => exercise.id === currentActiveExerciseId);
+
+    if (matchingExercise && !matchingExercise.allSetsCompleted) {
+      return currentActiveExerciseId;
+    }
   }
 
   return exercises.find((exercise) => exercise.completedSets < exercise.targetSets)?.id ?? null;
+}
+
+function normalizeWorkoutSetView<T extends { completed?: boolean; setNumber?: number }>(
+  workoutSet: T,
+  fallbackSetNumber: number,
+) {
+  return {
+    ...workoutSet,
+    completed: workoutSet.completed ?? true,
+    setType: 'setType' in workoutSet ? workoutSet.setType ?? 'normal' : 'normal',
+    setNumber: workoutSet.setNumber ?? fallbackSetNumber,
+  };
 }
 
 export function getMealLogsForDate(state: LocalAppData, date = new Date()) {
@@ -197,20 +213,52 @@ export function getActiveWorkoutSessionView(
     .filter((exercise) => exercise.sessionId === sessionId)
     .sort((left, right) => left.order - right.order)
     .map((exercise) => {
-      const completedSets = state.workoutSets.filter(
-        (set) => set.sessionExerciseId === exercise.id,
-      ).length;
+      const existingSets = state.workoutSets
+        .filter((set) => set.sessionExerciseId === exercise.id)
+        .sort((left, right) => {
+          const leftSetNumber = left.setNumber ?? Number.MAX_SAFE_INTEGER;
+          const rightSetNumber = right.setNumber ?? Number.MAX_SAFE_INTEGER;
+
+          if (leftSetNumber !== rightSetNumber) {
+            return leftSetNumber - rightSetNumber;
+          }
+
+          return left.loggedAt.localeCompare(right.loggedAt);
+        })
+        .map((set, index) => normalizeWorkoutSetView(set, index + 1));
+      const setCount = Math.max(exercise.targetSets, existingSets.length);
+      const sets = Array.from({ length: setCount }, (_, index) => {
+        const setNumber = index + 1;
+        const matchingSet = existingSets.find((set) => set.setNumber === setNumber);
+
+        return {
+          completed: matchingSet?.completed ?? false,
+          durationMinutes:
+            matchingSet?.durationMinutes ?? exercise.targetDurationMinutes ?? null,
+          id: matchingSet?.id ?? null,
+          load: matchingSet?.load ?? exercise.currentLoad,
+          reps: matchingSet?.reps ?? exercise.targetReps,
+          setNumber,
+          setType: matchingSet?.setType ?? 'normal',
+        };
+      });
+      const completedSets = sets.filter((set) => set.completed).length;
 
       return {
         id: exercise.id,
         name: exercise.name,
         targetSets: exercise.targetSets,
         completedSets,
+        allSetsCompleted: completedSets >= exercise.targetSets,
         repRange: exercise.repRange,
         previousLoadLabel: exercise.previousLoadLabel,
         currentLoad: exercise.currentLoad,
         targetReps: exercise.targetReps,
+        targetDurationMinutes: exercise.targetDurationMinutes ?? null,
+        trackingMode: exercise.trackingMode ?? 'strength',
         active: false,
+        order: exercise.order,
+        sets,
       };
     });
 

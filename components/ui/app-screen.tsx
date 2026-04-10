@@ -3,6 +3,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppData } from '@/providers/app-data-provider';
 import { AppColors, Layout, Spacing } from '@/constants/theme';
 
 type AppScreenProps = PropsWithChildren<{
@@ -11,13 +12,20 @@ type AppScreenProps = PropsWithChildren<{
 }>;
 
 export function AppScreen({ children, contentContainerStyle, tabbed = true }: AppScreenProps) {
+  const { state } = useAppData();
+  const hasActiveWorkout = Boolean(state.userPreferences.activeWorkoutSessionId);
+
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScrollView
           contentContainerStyle={[
             styles.contentContainer,
-            tabbed ? styles.contentContainerTabbed : styles.contentContainerStack,
+            tabbed
+              ? hasActiveWorkout
+                ? styles.contentContainerTabbedWithWorkout
+                : styles.contentContainerTabbed
+              : styles.contentContainerStack,
             contentContainerStyle,
           ]}
           showsVerticalScrollIndicator={false}
@@ -42,6 +50,9 @@ const styles = StyleSheet.create({
   },
   contentContainerTabbed: {
     paddingBottom: Layout.tabBarHeight + 20,
+  },
+  contentContainerTabbedWithWorkout: {
+    paddingBottom: Layout.tabBarHeight + 104,
   },
   contentContainerStack: {
     paddingBottom: 48,
