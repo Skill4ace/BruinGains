@@ -10,6 +10,7 @@ const DINING_MENU_AGLANCE_PATH = '/menus-at-a-glance'
 const FETCH_TIMEOUT_MS = 15000
 const DETAIL_FETCH_CONCURRENCY = 2
 const ITEM_PROCESSING_CHUNK_SIZE = 5
+const RUN_STALE_AFTER_MINUTES = 20
 const PERIOD_CONFIG = [
   { key: 'breakfast', anchorId: 'breakfastmenu', heading: 'BREAKFAST' },
   { key: 'lunch', anchorId: 'lunchmenu', heading: 'LUNCH' },
@@ -1597,6 +1598,29 @@ async function startRunRecord(
   return data.id as number
 }
 
+async function markAbandonedRunRecords(
+  admin: ReturnType<typeof createAdminClient>,
+) {
+  const cutoffIso = new Date(
+    Date.now() - RUN_STALE_AFTER_MINUTES * 60 * 1000,
+  ).toISOString()
+
+  const { error } = await admin
+    .from('dining_ingestion_runs')
+    .update({
+      completed_at: new Date().toISOString(),
+      error_message: 'Marked failed after exceeding runtime without completion',
+      status: 'failure',
+    })
+    .eq('status', 'running')
+    .is('completed_at', null)
+    .lt('started_at', cutoffIso)
+
+  if (error) {
+    throw error
+  }
+}
+
 async function finishRunRecord(
   admin: ReturnType<typeof createAdminClient>,
   runId: number,
@@ -1750,6 +1774,7 @@ async function syncDiningMenus(
     selectedHallIds?.length ? selectedHallIds.includes(hall.id) : true,
   )
 
+  await markAbandonedRunRecords(admin)
   const runId = await startRunRecord(admin, targetDate, triggerSource)
   const hallResults: SyncHallResult[] = []
   let snapshotCount = 0

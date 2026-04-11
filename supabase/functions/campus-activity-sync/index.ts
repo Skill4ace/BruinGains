@@ -9,17 +9,18 @@ const GOBOARD_API_URL =
   'https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount?AccountAPIKey=73829a91-48cb-4b7b-bd0b-8cf4134c04cd'
 const USER_AGENT = 'BruinGainsCampusActivitySync/1.0 (+https://afxptjzzctiowrqqcyzh.supabase.co)'
 const FETCH_TIMEOUT_MS = 15000
+const DINING_FETCH_CONCURRENCY = 3
 
 const GYM_TARGETS = [
   {
     facilityId: 802,
+    facilityName: 'John Wooden Center - FITWELL',
     gymLocationId: 'wooden',
-    zoneName: 'Pardee Gym',
   },
   {
     facilityId: 803,
+    facilityName: 'Bruin Fitness Center - FITWELL',
     gymLocationId: 'bfit',
-    zoneName: 'Free Weight & Squat Zones',
   },
 ] as const
 
@@ -93,7 +94,12 @@ type GymSyncResult = {
 
 type SyncSummary = {
   dining: DiningSyncResult[]
+  errors?: {
+    dining?: string
+    gyms?: string
+  }
   gyms: GymSyncResult[]
+  status: 'success' | 'partial_failure' | 'failure'
   trigger: string
 }
 
@@ -163,6 +169,34 @@ async function fetchJson<T>(url: string) {
   }
 
   return (await response.json()) as T
+}
+
+async function mapLimit<TInput, TOutput>(
+  values: TInput[],
+  limit: number,
+  mapper: (value: TInput, index: number) => Promise<TOutput>,
+) {
+  const results: TOutput[] = new Array(values.length)
+  let nextIndex = 0
+
+  async function worker() {
+    while (true) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+
+      if (currentIndex >= values.length) {
+        break
+      }
+
+      results[currentIndex] = await mapper(values[currentIndex], currentIndex)
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  )
+
+  return results
 }
 
 function getLosAngelesCurrentMinutes() {
@@ -275,15 +309,24 @@ function hasHoursForPeriod(hall: DiningHallRow, mealPeriod: MealPeriod) {
 }
 
 function parseDiningActivityLocationId(pageHtml: string) {
+  const candidatePayloads = [pageHtml]
+
   for (const match of pageHtml.matchAll(
     /<script[^>]+src=["']data:text\/javascript;base64,([A-Za-z0-9+/=]+)["']/g,
   )) {
-    const decodedScript = atob(match[1])
-    const locationIdMatch = decodedScript.match(
-      /var ajaxParams = \{"location_id":"(\d+)"/,
+    try {
+      candidatePayloads.push(atob(match[1]))
+    } catch {
+      // Ignore malformed embedded scripts and continue scanning.
+    }
+  }
+
+  for (const payload of candidatePayloads) {
+    const locationIdMatch = payload.match(
+      /(?:location_id["']?\s*[:=]\s*["']?)(\d+)/i,
     )
 
-    if (locationIdMatch) {
+    if (locationIdMatch?.[1]) {
       return locationIdMatch[1]
     }
   }
@@ -366,9 +409,7 @@ async function syncDiningActivity(admin: ReturnType<typeof createAdminClient>) {
   const currentMinutes = getLosAngelesCurrentMinutes()
   const activeMealPeriod = getCurrentDiningActivityPeriod(currentMinutes)
   const syncedAt = new Date().toISOString()
-  const results: DiningSyncResult[] = []
-
-  for (const hall of halls) {
+  return await mapLimit(halls, DINING_FETCH_CONCURRENCY, async (hall) => {
     const openNow = activeMealPeriod !== null && hasHoursForPeriod(hall, activeMealPeriod)
     let nextFitPercent = hall.fit_percent
     let locationId: string | null = null
@@ -383,11 +424,16 @@ async function syncDiningActivity(admin: ReturnType<typeof createAdminClient>) {
         locationId = parseDiningActivityLocationId(pageHtml)
 
         if (!locationId) {
-          nextFitPercent = null
-          status = 'cleared'
+          status = 'preserved_on_error'
         } else {
-          nextFitPercent = await fetchDiningActivityPercent(locationId)
-          status = nextFitPercent === null ? 'cleared' : 'updated'
+          const fetchedFitPercent = await fetchDiningActivityPercent(locationId)
+
+          if (fetchedFitPercent === null) {
+            status = 'preserved_on_error'
+          } else {
+            nextFitPercent = fetchedFitPercent
+            status = 'updated'
+          }
         }
       } catch (error) {
         console.error('Failed to sync dining activity', {
@@ -410,27 +456,59 @@ async function syncDiningActivity(admin: ReturnType<typeof createAdminClient>) {
       throw updateError
     }
 
-    results.push({
+    return {
       fitPercent: nextFitPercent,
       hallId: hall.id,
       locationId,
       openNow,
       status,
-    })
-  }
-
-  return results
+    }
+  })
 }
 
-function selectGymSourceLocation(
+function selectGymSourceLocations(
   locations: GymSourceLocation[],
   target: (typeof GYM_TARGETS)[number],
 ) {
-  return locations.find((location) =>
-    location.FacilityId === target.facilityId &&
-    normalizeComparableValue(location.LocationName) ===
-      normalizeComparableValue(target.zoneName),
+  const facilityMatches = locations.filter((location) =>
+    location.FacilityId === target.facilityId ||
+    normalizeComparableValue(location.FacilityName) ===
+      normalizeComparableValue(target.facilityName),
   )
+
+  if (facilityMatches.length > 0) {
+    return facilityMatches
+  }
+
+  return locations.filter((location) =>
+    normalizeComparableValue(location.FacilityName).includes(
+      normalizeComparableValue(target.facilityName),
+    ),
+  )
+}
+
+function getWeightedGymPercent(locations: GymSourceLocation[]) {
+  const totals = locations.reduce(
+    (accumulator, location) => {
+      const capacity = Math.max(0, location.TotalCapacity || 0)
+      const count = Math.max(0, location.LastCount || 0)
+
+      return {
+        capacity: accumulator.capacity + capacity,
+        count: accumulator.count + Math.min(count, capacity || count),
+      }
+    },
+    {
+      capacity: 0,
+      count: 0,
+    },
+  )
+
+  if (totals.capacity <= 0) {
+    return 0
+  }
+
+  return Math.round(clampLoad(totals.count / totals.capacity) * 100)
 }
 
 async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
@@ -441,17 +519,15 @@ async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
   const results: GymSyncResult[] = []
 
   for (const target of GYM_TARGETS) {
-    const sourceLocation = selectGymSourceLocation(sourceLocations, target)
+    const sourceLocationsForGym = selectGymSourceLocations(sourceLocations, target)
 
-    if (!sourceLocation) {
-      throw new Error(`Unable to locate gym source row for ${target.zoneName}`)
+    if (!sourceLocationsForGym.length) {
+      throw new Error(`Unable to locate gym source rows for ${target.facilityName}`)
     }
 
     const effectiveHours = getEffectiveGymHours(target.gymLocationId, currentMinutes, weekday)
-    const isClosed = sourceLocation.IsClosed || !effectiveHours.isOpenNow
-    const percent = isClosed
-      ? 0
-      : Math.round((sourceLocation.LastCount / sourceLocation.TotalCapacity) * 100)
+    const isClosed = !effectiveHours.isOpenNow
+    const percent = isClosed ? 0 : getWeightedGymPercent(sourceLocationsForGym)
 
     const { error: updateGymError } = await admin
       .from('gym_locations')
@@ -472,8 +548,8 @@ async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
         is_closed: isClosed,
         load: clampLoad(percent / 100),
         location_id: target.gymLocationId,
-        source: `module-6-campus-activity-sync:${sourceLocation.LocationName}`,
-        zone_name: sourceLocation.LocationName,
+        source: `module-6-campus-activity-sync:${target.facilityName}`,
+        zone_name: target.facilityName,
       })
 
     if (error) {
@@ -486,7 +562,7 @@ async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
       locationId: target.gymLocationId,
       percent,
       status: 'inserted',
-      zoneName: sourceLocation.LocationName,
+      zoneName: target.facilityName,
     })
   }
 
@@ -514,13 +590,46 @@ Deno.serve(async (req) => {
 
   try {
     const admin = createAdminClient()
+    const errors: SyncSummary['errors'] = {}
+    let dining: DiningSyncResult[] = []
+    let gyms: GymSyncResult[] = []
+
+    if (includeDining) {
+      try {
+        dining = await syncDiningActivity(admin)
+      } catch (error) {
+        errors.dining = error instanceof Error ? error.message : String(error)
+        console.error('Dining activity sync failed', error)
+      }
+    }
+
+    if (includeGyms) {
+      try {
+        gyms = await syncGymCapacities(admin)
+      } catch (error) {
+        errors.gyms = error instanceof Error ? error.message : String(error)
+        console.error('Gym capacity sync failed', error)
+      }
+    }
+
+    const requestedSyncCount = Number(includeDining) + Number(includeGyms)
+    const errorCount = Number(Boolean(errors.dining)) + Number(Boolean(errors.gyms))
+    const status: SyncSummary['status'] =
+      errorCount === 0
+        ? 'success'
+        : errorCount === requestedSyncCount
+          ? 'failure'
+          : 'partial_failure'
+
     const summary: SyncSummary = {
-      dining: includeDining ? await syncDiningActivity(admin) : [],
-      gyms: includeGyms ? await syncGymCapacities(admin) : [],
+      dining,
+      errors: Object.keys(errors).length ? errors : undefined,
+      gyms,
+      status,
       trigger,
     }
 
-    return jsonResponse(200, summary)
+    return jsonResponse(status === 'failure' ? 500 : 200, summary)
   } catch (error) {
     console.error('Campus activity sync failed', error)
 
