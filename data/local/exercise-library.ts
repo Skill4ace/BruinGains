@@ -1,0 +1,216 @@
+import { EXERCISE_DB_EXERCISES, type ExerciseDbExercise } from '@/data/local/exercisedb.generated';
+import { EXERCISE_DB_IMAGE_ASSETS } from '@/data/local/exercisedb-image-assets.generated';
+import type { ExerciseLibraryEntry } from '@/types/app-data';
+
+const EXERCISE_DB_ALIASES_BY_NAME: Record<string, string[]> = {
+  'barbell romanian deadlift': ['Romanian Deadlift'],
+  'cable lat pulldown full range of motion': ['Lat Pulldown'],
+  'cable lateral raise': ['Lateral Raise'],
+  'dumbbell seated shoulder press': ['Seated Shoulder Press'],
+  'smith seated shoulder press': ['Machine Shoulder Press'],
+  'triceps pushdown': ['Tricep Pressdown', 'Triceps Pressdown'],
+  'weighted pull-up': ['Weighted Pull Up'],
+};
+
+function normalizeSearchValue(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function titleize(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function deriveFocus(exercise: ExerciseDbExercise) {
+  return exercise.target ? titleize(exercise.target) : exercise.bodyPart ? titleize(exercise.bodyPart) : 'Custom';
+}
+
+function toExerciseLibraryEntry(exercise: ExerciseDbExercise): ExerciseLibraryEntry {
+  return {
+    aliases: EXERCISE_DB_ALIASES_BY_NAME[normalizeSearchValue(exercise.name)] ?? [],
+    bodyPart: exercise.bodyPart ?? null,
+    category: exercise.category ?? null,
+    description: exercise.description ?? null,
+    difficulty: exercise.difficulty ?? null,
+    equipment: exercise.equipment ?? null,
+    force: null,
+    focus: deriveFocus(exercise),
+    id: `exdb:${exercise.id}`,
+    imageAssetId: exercise.imageAssetId,
+    imageUrls: [],
+    instructions: exercise.instructions ?? [],
+    level: exercise.difficulty ?? null,
+    mechanic: null,
+    name: titleize(exercise.name),
+    primaryMuscles: exercise.target ? [titleize(exercise.target)] : [],
+    secondaryMuscles: exercise.secondaryMuscles.map(titleize),
+    source: 'exercise-db',
+    target: exercise.target ? titleize(exercise.target) : null,
+  };
+}
+
+function createSeedExerciseLibraryEntry(name: string, focus: string): ExerciseLibraryEntry {
+  return {
+    aliases: [],
+    bodyPart: null,
+    category: null,
+    description: null,
+    difficulty: null,
+    equipment: null,
+    force: null,
+    focus,
+    id: `seed:${normalizeSearchValue(name).replace(/\s+/g, '-')}`,
+    imageAssetId: null,
+    imageUrls: [],
+    instructions: [],
+    level: null,
+    mechanic: null,
+    name,
+    primaryMuscles: [],
+    secondaryMuscles: [],
+    source: 'seed',
+    target: null,
+  };
+}
+
+export const EXERCISE_DB_LIBRARY: ExerciseLibraryEntry[] = EXERCISE_DB_EXERCISES.map(
+  toExerciseLibraryEntry,
+).sort((left, right) => left.name.localeCompare(right.name));
+
+export function getExerciseLibraryImageSource(exercise: ExerciseLibraryEntry) {
+  if (exercise.imageAssetId && exercise.imageAssetId in EXERCISE_DB_IMAGE_ASSETS) {
+    return EXERCISE_DB_IMAGE_ASSETS[
+      exercise.imageAssetId as keyof typeof EXERCISE_DB_IMAGE_ASSETS
+    ];
+  }
+
+  if (exercise.imageUrls[0]) {
+    return { uri: exercise.imageUrls[0] };
+  }
+
+  return null;
+}
+
+export function searchExerciseLibraryEntry(entry: ExerciseLibraryEntry, query: string) {
+  const normalizedQuery = normalizeSearchValue(query);
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const searchableParts = [
+    entry.name,
+    ...entry.aliases,
+    entry.focus,
+    entry.bodyPart ?? '',
+    entry.category ?? '',
+    entry.description ?? '',
+    entry.equipment ?? '',
+    entry.force ?? '',
+    entry.target ?? '',
+    ...entry.primaryMuscles,
+    ...entry.secondaryMuscles,
+  ];
+
+  return searchableParts.some((part) =>
+    normalizeSearchValue(part).includes(normalizedQuery),
+  );
+}
+
+export function buildSeededExerciseLibrary(
+  seedExercises: Array<{ name: string; focus: string }>,
+) {
+  const library = [...EXERCISE_DB_LIBRARY];
+  const knownNames = new Set(
+    library.flatMap((entry) => [
+      normalizeSearchValue(entry.name),
+      ...entry.aliases.map((alias) => normalizeSearchValue(alias)),
+    ]),
+  );
+
+  seedExercises.forEach((exercise) => {
+    const normalizedName = normalizeSearchValue(exercise.name);
+
+    if (!knownNames.has(normalizedName)) {
+      library.push(createSeedExerciseLibraryEntry(exercise.name, exercise.focus));
+      knownNames.add(normalizedName);
+    }
+  });
+
+  return library.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function mergeExerciseLibrary(
+  candidateEntries: ExerciseLibraryEntry[] | undefined,
+  seedEntries: ExerciseLibraryEntry[],
+) {
+  if (!candidateEntries?.length) {
+    return seedEntries;
+  }
+
+  const mergedByName = new Map<string, ExerciseLibraryEntry>();
+
+  seedEntries.forEach((entry) => {
+    mergedByName.set(normalizeSearchValue(entry.name), entry);
+  });
+
+  candidateEntries.forEach((entry) => {
+    const normalizedName = normalizeSearchValue(entry.name);
+    const matchingSeedEntry = mergedByName.get(normalizedName);
+
+    if (!matchingSeedEntry) {
+      mergedByName.set(normalizedName, {
+        aliases: entry.aliases ?? [],
+        bodyPart: entry.bodyPart ?? null,
+        category: entry.category ?? null,
+        description: entry.description ?? null,
+        difficulty: entry.difficulty ?? null,
+        equipment: entry.equipment ?? null,
+        force: entry.force ?? null,
+        focus: entry.focus,
+        id: entry.id,
+        imageAssetId: entry.imageAssetId ?? null,
+        imageUrls: entry.imageUrls ?? [],
+        instructions: entry.instructions ?? [],
+        level: entry.level ?? null,
+        mechanic: entry.mechanic ?? null,
+        name: entry.name,
+        primaryMuscles: entry.primaryMuscles ?? [],
+        secondaryMuscles: entry.secondaryMuscles ?? [],
+        source: entry.source ?? 'custom',
+        target: entry.target ?? null,
+      });
+      return;
+    }
+
+    mergedByName.set(normalizedName, {
+      ...matchingSeedEntry,
+      aliases: [...new Set([...(matchingSeedEntry.aliases ?? []), ...(entry.aliases ?? [])])],
+      bodyPart: entry.bodyPart ?? matchingSeedEntry.bodyPart,
+      category: entry.category ?? matchingSeedEntry.category,
+      description: entry.description ?? matchingSeedEntry.description,
+      difficulty: entry.difficulty ?? matchingSeedEntry.difficulty,
+      equipment: entry.equipment ?? matchingSeedEntry.equipment,
+      focus: entry.focus || matchingSeedEntry.focus,
+      id: matchingSeedEntry.id,
+      imageAssetId: entry.imageAssetId ?? matchingSeedEntry.imageAssetId,
+      imageUrls: entry.imageUrls?.length ? entry.imageUrls : matchingSeedEntry.imageUrls,
+      instructions: entry.instructions?.length ? entry.instructions : matchingSeedEntry.instructions,
+      level: entry.level ?? matchingSeedEntry.level,
+      mechanic: entry.mechanic ?? matchingSeedEntry.mechanic,
+      primaryMuscles: entry.primaryMuscles?.length
+        ? entry.primaryMuscles
+        : matchingSeedEntry.primaryMuscles,
+      secondaryMuscles: entry.secondaryMuscles?.length
+        ? entry.secondaryMuscles
+        : matchingSeedEntry.secondaryMuscles,
+      source: matchingSeedEntry.source,
+      target: entry.target ?? matchingSeedEntry.target,
+    });
+  });
+
+  return [...mergedByName.values()].sort((left, right) => left.name.localeCompare(right.name));
+}

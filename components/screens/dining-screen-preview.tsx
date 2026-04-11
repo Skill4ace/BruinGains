@@ -877,7 +877,7 @@ function DiningHallModal({
                         return (
                           <View key={optionKey} style={styles.buildYourOwnOptionCard}>
                             <PressScale
-                              haptic="none"
+                              haptic="light"
                               onPress={() => handleCustomizationToggle(option)}>
                               <View style={styles.buildYourOwnOptionTopRow}>
                                 <View style={styles.buildYourOwnOptionCopy}>
@@ -932,7 +932,9 @@ function DiningHallModal({
                         );
                       })}
                     </View>
+                  </ScrollView>
 
+                  <View style={styles.itemSheetFooter}>
                     <View
                       style={[
                         styles.buildYourOwnAddButton,
@@ -941,7 +943,7 @@ function DiningHallModal({
                           : null,
                       ]}>
                       <PressScale
-                        haptic="none"
+                        haptic="medium"
                         onPress={selectedCustomizationCount > 0 ? handleCustomizationSave : undefined}>
                         <View style={styles.buildYourOwnAddButtonInner}>
                           <Ionicons
@@ -965,7 +967,7 @@ function DiningHallModal({
                         </View>
                       </PressScale>
                     </View>
-                  </ScrollView>
+                  </View>
                 </KeyboardAvoidingView>
               ) : (
                 <KeyboardAvoidingView
@@ -2214,7 +2216,7 @@ const styles = StyleSheet.create({
   buildYourOwnContent: {
     paddingHorizontal: Layout.pagePadding,
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: Spacing.md,
     gap: Spacing.md,
   },
   itemSheetContent: {
@@ -2330,14 +2332,14 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   buildYourOwnCheckbox: {
-    width: 34,
-    height: 34,
-    borderRadius: Radii.sm,
-    borderWidth: 1,
-    borderColor: AppColors.primary,
+    width: 30,
+    height: 30,
+    borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: AppColors.surfaceLow,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
   },
   buildYourOwnOptionBadges: {
     flexDirection: 'row',

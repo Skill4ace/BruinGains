@@ -1,4 +1,5 @@
 import { diningPreview, gymPreview } from '@/constants/preview-data';
+import { buildSeededExerciseLibrary, mergeExerciseLibrary } from '@/data/local/exercise-library';
 import type {
   Achievement,
   GoalSettings,
@@ -342,13 +343,14 @@ export function createDefaultLocalAppData(now = new Date()): LocalAppData {
   const { workoutTemplates, templateExercises } = buildTemplateState(now);
   const workoutHistory = buildSeedWorkoutHistory(now, templateExercises);
   const mealLogs = buildSeedMealLogs(now);
-  const exerciseLibrary = templateExercises.map((exercise) => ({
-    id: exercise.id,
-    name: exercise.name,
-    focus:
-      workoutTemplates.find((template) => template.id === exercise.templateId)?.focus ??
-      gymPreview.templates[0],
-  }));
+  const exerciseLibrary = buildSeededExerciseLibrary(
+    templateExercises.map((exercise) => ({
+      name: exercise.name,
+      focus:
+        workoutTemplates.find((template) => template.id === exercise.templateId)?.focus ??
+        gymPreview.templates[0],
+    })),
+  );
 
   return {
     profile: {
@@ -412,7 +414,7 @@ export function mergeLocalAppData(
       ...candidate.goals,
     },
     mealLogs: candidate.mealLogs ?? seed.mealLogs,
-    exerciseLibrary: candidate.exerciseLibrary ?? seed.exerciseLibrary,
+    exerciseLibrary: mergeExerciseLibrary(candidate.exerciseLibrary, seed.exerciseLibrary),
     workoutTemplates: candidate.workoutTemplates ?? seed.workoutTemplates,
     templateExercises: candidate.templateExercises ?? seed.templateExercises,
     workoutSessions: candidate.workoutSessions ?? seed.workoutSessions,

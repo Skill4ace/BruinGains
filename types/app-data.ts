@@ -55,9 +55,25 @@ export type MealLog = {
 };
 
 export type ExerciseLibraryEntry = {
+  aliases: string[];
+  bodyPart: string | null;
+  category: string | null;
+  description: string | null;
+  difficulty: string | null;
+  equipment: string | null;
+  force: string | null;
+  imageAssetId: string | null;
+  imageUrls: string[];
   id: string;
+  instructions: string[];
+  level: string | null;
+  mechanic: string | null;
   name: string;
   focus: string;
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  source: 'custom' | 'exercise-db' | 'seed';
+  target: string | null;
 };
 
 export type WorkoutTrackingMode = 'strength' | 'duration';
