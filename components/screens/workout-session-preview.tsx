@@ -77,7 +77,6 @@ type ExerciseComposerDraft = {
   name: string;
   repRange: string;
   reps: string;
-  targetSets: string;
   trackingMode: WorkoutTrackingMode;
 };
 
@@ -87,7 +86,6 @@ const DEFAULT_COMPOSER_DRAFT: ExerciseComposerDraft = {
   name: '',
   repRange: '8-10',
   reps: '8',
-  targetSets: '3',
   trackingMode: 'strength',
 };
 
@@ -421,9 +419,9 @@ export function WorkoutSessionPreview() {
 
   function handleSaveCustomExercise() {
     const trimmedName = composerDraft.name.trim();
-    const targetSets = Math.max(1, Math.round(Number.parseFloat(composerDraft.targetSets)));
+    const targetSets = 1;
 
-    if (!trimmedName || !Number.isFinite(targetSets)) {
+    if (!trimmedName) {
       return;
     }
 
@@ -1271,13 +1269,6 @@ function ExerciseComposerModal({
                 selected={draft.trackingMode === 'duration'}
               />
             </View>
-
-            <ExerciseInputField
-              keyboardType="numbers-and-punctuation"
-              label="Sets"
-              onChangeText={(value) => onChange({ ...draft, targetSets: value })}
-              value={draft.targetSets}
-            />
 
             {draft.trackingMode === 'duration' ? (
               <ExerciseInputField

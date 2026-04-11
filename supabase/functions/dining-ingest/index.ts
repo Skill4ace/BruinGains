@@ -41,6 +41,11 @@ type DiningHallRow = {
   source_path: string | null
 }
 
+type DiningHallHours = Pick<
+  DiningHallRow,
+  'breakfast_hours' | 'lunch_hours' | 'dinner_hours' | 'late_night_hours'
+>
+
 type MenuSnapshotRow = {
   fetched_at: string
   hall_id: string
@@ -557,6 +562,20 @@ function getOpenMealPeriodsForHall(
 
     return Boolean(hall.late_night_hours)
   })
+}
+
+function filterParsedHallSectionsByOpenMealPeriods(
+  parsedHall: ParsedHallMenu,
+  openMealPeriods: MealPeriod[],
+) {
+  const openMealPeriodSet = new Set(openMealPeriods)
+
+  return {
+    ...parsedHall,
+    sections: parsedHall.sections.filter((section) =>
+      openMealPeriodSet.has(section.mealPeriod),
+    ),
+  }
 }
 
 function normalizeStationName(value: string) {
@@ -1152,7 +1171,7 @@ async function syncDiningHallHours(
   const html = await fetchHtml(buildHoursUrl())
   const $ = cheerio.load(html)
   const lookup = buildHallLookup(halls)
-  const updates: Array<Record<string, string | null>> = []
+  const updates: Array<{ id: string } & DiningHallHours> = []
 
   $('.dining-hours-table tbody tr').each((_, row) => {
     const cells = $(row).find('td')
@@ -1190,6 +1209,10 @@ async function syncDiningHallHours(
     })
   })
 
+  if (!updates.length) {
+    throw new Error('Unable to parse daily dining hours from UCLA hours page')
+  }
+
   for (const update of updates) {
     const { error } = await admin
       .from('dining_halls')
@@ -1205,6 +1228,18 @@ async function syncDiningHallHours(
       throw error
     }
   }
+
+  return new Map<string, DiningHallHours>(
+    updates.map((update) => [
+      update.id,
+      {
+        breakfast_hours: update.breakfast_hours,
+        lunch_hours: update.lunch_hours,
+        dinner_hours: update.dinner_hours,
+        late_night_hours: update.late_night_hours,
+      },
+    ]),
+  )
 }
 
 function parseNutritionPage(html: string): NutritionDetail {
@@ -1704,8 +1739,11 @@ async function syncDiningMenus(
   let halls = await loadActiveHalls()
 
   if (targetDate === getLosAngelesToday()) {
-    await syncDiningHallHours(admin, halls)
-    halls = await loadActiveHalls()
+    const syncedHoursByHallId = await syncDiningHallHours(admin, halls)
+    halls = halls.map((hall) => ({
+      ...hall,
+      ...(syncedHoursByHallId.get(hall.id) ?? {}),
+    }))
   }
 
   const filteredHalls = halls.filter((hall) =>
@@ -1789,6 +1827,12 @@ async function syncDiningMenus(
           sourceUrl: buildAtAGlanceUrl(targetDate),
           sections: [] as ParsedMealSection[],
         }
+
+        parsedHall = filterParsedHallSectionsByOpenMealPeriods(
+          parsedHall,
+          openMealPeriods,
+        )
+
         if (selectedStationNames?.length) {
           const selectedStationNameSet = new Set(selectedStationNames)
           parsedHall = {

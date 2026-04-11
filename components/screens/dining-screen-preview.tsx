@@ -160,12 +160,47 @@ export function DiningScreenPreview() {
 
     return latestByHall;
   }, [diningMenuState.data]);
+  const latestGlobalServiceDate = useMemo(() => {
+    return diningMenuState.data.reduce<string | null>((latestDate, item) => {
+      if (!latestDate || item.serviceDate > latestDate) {
+        return item.serviceDate;
+      }
+
+      return latestDate;
+    }, null);
+  }, [diningMenuState.data]);
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
   const currentDiningActivityPeriod = useMemo(() => getCurrentDiningActivityPeriod(), []);
+  const availableHallIdsForPeriod = useMemo(() => {
+    if (!latestGlobalServiceDate) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      diningMenuState.data
+        .filter(
+          (item) =>
+            item.serviceDate === latestGlobalServiceDate &&
+            item.mealPeriod === selectedPeriod &&
+            item.snapshotStatus === 'ready',
+        )
+        .map((item) => item.hallId),
+    );
+  }, [diningMenuState.data, latestGlobalServiceDate, selectedPeriod]);
 
   const hallsForPeriod = useMemo(() => {
     return diningHallState.data
-      .filter((hall) => Boolean(hall.hours[selectedPeriod]))
+      .filter((hall) => {
+        if (!hall.hours[selectedPeriod]) {
+          return false;
+        }
+
+        if (!diningMenuState.data.length || !latestGlobalServiceDate) {
+          return true;
+        }
+
+        return availableHallIdsForPeriod.has(hall.id);
+      })
       .sort((a, b) => {
         const aPriority = DINING_HALL_PRIORITY.indexOf(
           a.id as (typeof DINING_HALL_PRIORITY)[number],
@@ -184,7 +219,13 @@ export function DiningScreenPreview() {
 
         return a.name.localeCompare(b.name);
       });
-  }, [diningHallState.data, selectedPeriod]);
+  }, [
+    availableHallIdsForPeriod,
+    diningHallState.data,
+    diningMenuState.data.length,
+    latestGlobalServiceDate,
+    selectedPeriod,
+  ]);
 
   const activeHall = useMemo(
     () => diningHallState.data.find((hall) => hall.id === activeHallId) ?? null,
@@ -198,12 +239,15 @@ export function DiningScreenPreview() {
       }
 
       const latestForHall = latestServiceDateByHall.get(activeHallId);
+      const targetServiceDate = latestGlobalServiceDate ?? latestForHall;
 
       return diningMenuState.data.filter(
-        (item) => item.hallId === activeHallId && (!latestForHall || item.serviceDate === latestForHall),
+        (item) =>
+          item.hallId === activeHallId &&
+          (!targetServiceDate || item.serviceDate === targetServiceDate),
       );
     },
-    [activeHallId, diningMenuState.data, latestServiceDateByHall],
+    [activeHallId, diningMenuState.data, latestGlobalServiceDate, latestServiceDateByHall],
   );
 
   const activeHallSections = useMemo(() => {
