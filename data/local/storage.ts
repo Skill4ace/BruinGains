@@ -28,7 +28,7 @@ export async function loadLocalAppData() {
     const parsed = JSON.parse(rawValue) as PersistedLocalAppEnvelope;
 
     if (parsed.version !== LOCAL_APP_STATE_VERSION) {
-      return mergeLocalAppData(parsed.state);
+      return createDefaultLocalAppData();
     }
 
     return mergeLocalAppData(parsed.state);

@@ -169,7 +169,14 @@ export function GymScreenPreview() {
           );
 
         if (!libraryMatch) {
-          return null;
+          return {
+            bodyPartLabel: 'custom',
+            defaultLoad: String(exercise.defaultLoad),
+            defaultReps: String(exercise.defaultReps),
+            id: exercise.id,
+            name: exercise.name,
+            targetSets: String(exercise.targetSets),
+          };
         }
 
         return buildTemplateExerciseDraftRow(libraryMatch, {

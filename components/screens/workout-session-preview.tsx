@@ -408,10 +408,8 @@ export function WorkoutSessionPreview() {
 
     selectedExercises.forEach((exercise) => {
       addWorkoutExercise(activeWorkout.session.id, {
-        currentLoad: 45,
         name: exercise.name,
         repRange: '8-10',
-        targetReps: 8,
         targetSets: 3,
         trackingMode: 'strength',
       });
@@ -448,18 +446,8 @@ export function WorkoutSessionPreview() {
       return;
     }
 
-    const targetReps = Math.max(1, Math.round(Number.parseFloat(composerDraft.reps)));
-    const currentLoad = Math.max(0, Number.parseFloat(composerDraft.load));
-
-    if (!Number.isFinite(targetReps) || !Number.isFinite(currentLoad)) {
-      return;
-    }
-
     handleSelectExerciseDraft({
-      currentLoad,
       name: trimmedName,
-      repRange: composerDraft.repRange.trim() || `${targetReps}-${targetReps}`,
-      targetReps,
       targetSets,
       trackingMode: 'strength',
     });
@@ -478,6 +466,28 @@ export function WorkoutSessionPreview() {
 
     finishWorkoutSession(activeWorkout.session.id);
     router.back();
+  }
+
+  function handleCancelWorkout() {
+    if (!activeWorkout) {
+      return;
+    }
+
+    Alert.alert(
+      'Cancel workout?',
+      'This will discard the current workout and remove it from your active session.',
+      [
+        { text: 'Keep workout', style: 'cancel' },
+        {
+          text: 'Cancel workout',
+          style: 'destructive',
+          onPress: () => {
+            cancelWorkoutSession(activeWorkout.session.id);
+            router.back();
+          },
+        },
+      ],
+    );
   }
 
   if (!activeWorkout) {
@@ -799,7 +809,7 @@ export function WorkoutSessionPreview() {
             onPress={() => handleOpenExercisePicker('add')}
             variant="primary"
           />
-          <PressScale haptic="none" onPress={handleFinishWorkout}>
+          <PressScale haptic="none" onPress={handleCancelWorkout}>
             <View style={styles.cancelWorkoutButton}>
               <AppText variant="label" color={AppColors.danger}>
                 Cancel Workout
@@ -1275,29 +1285,6 @@ function ExerciseComposerModal({
                 label="Minutes per set"
                 onChangeText={(value) => onChange({ ...draft, durationMinutes: value })}
                 value={draft.durationMinutes}
-              />
-            ) : (
-              <View style={styles.composerStrengthRow}>
-                <ExerciseInputField
-                  keyboardType="numbers-and-punctuation"
-                  label="Weight"
-                  onChangeText={(value) => onChange({ ...draft, load: value })}
-                  value={draft.load}
-                />
-                <ExerciseInputField
-                  keyboardType="numbers-and-punctuation"
-                  label="Reps"
-                  onChangeText={(value) => onChange({ ...draft, reps: value })}
-                  value={draft.reps}
-                />
-              </View>
-            )}
-
-            {draft.trackingMode === 'strength' ? (
-              <ExerciseInputField
-                label="Rep range"
-                onChangeText={(value) => onChange({ ...draft, repRange: value })}
-                value={draft.repRange}
               />
             ) : null}
 
@@ -2156,6 +2143,7 @@ const styles = StyleSheet.create({
   modeRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
+    zIndex: 1,
   },
   modeChip: {
     flex: 1,
@@ -2171,5 +2159,8 @@ const styles = StyleSheet.create({
   composerStrengthRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
+  },
+  composerStrengthField: {
+    flex: 1,
   },
 });

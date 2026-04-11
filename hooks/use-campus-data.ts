@@ -444,6 +444,29 @@ function useCachedCampusResource<T>(
     };
   }, [cacheKey, fallbackData, loader]);
 
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setState((currentState) => {
+        if (!currentState.updatedAt) {
+          return currentState;
+        }
+
+        const nextIsStale = isStale(currentState.updatedAt);
+
+        if (nextIsStale === currentState.isStale) {
+          return currentState;
+        }
+
+        return {
+          ...currentState,
+          isStale: nextIsStale,
+        };
+      });
+    }, 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   return state;
 }
 

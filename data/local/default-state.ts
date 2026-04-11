@@ -263,12 +263,15 @@ function buildSeedWorkoutHistory(now: Date, templateExercises: WorkoutTemplateEx
 
       for (let setIndex = 0; setIndex < completedSets; setIndex += 1) {
         workoutSets.push({
+          completed: true,
           id: createId('set'),
           sessionId,
           sessionExerciseId: exercise.id,
           load: exercise.currentLoad,
           reps: exercise.targetReps,
           loggedAt: new Date(startedAt.getTime() + (setIndex + exercise.order) * 6 * 60 * 1000).toISOString(),
+          setNumber: setIndex + 1,
+          setType: 'normal',
         });
       }
     });

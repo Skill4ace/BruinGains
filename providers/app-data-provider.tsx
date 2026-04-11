@@ -40,7 +40,6 @@ type AppDataContextValue = {
   deleteMealLog: (mealLogId: string) => void;
   finishWorkoutSession: (sessionId: string) => void;
   addWorkoutSetRow: (sessionExerciseId: string) => void;
-  logSet: (sessionExerciseId: string) => void;
   removeWorkoutSetRow: (
     sessionExerciseId: string,
     workoutSetId: string | null,
@@ -815,70 +814,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     return sessionId;
   }
 
-  function logSet(sessionExerciseId: string) {
-    setState((currentState) => {
-      if (!currentState) {
-        return currentState;
-      }
-
-      const sessionExercise = currentState.workoutSessionExercises.find(
-        (exercise) => exercise.id === sessionExerciseId,
-      );
-
-      if (!sessionExercise) {
-        return currentState;
-      }
-
-      const trackingMode = sessionExercise.trackingMode ?? 'strength';
-      const existingSets = getExerciseWorkoutSets(
-        currentState.workoutSets,
-        sessionExerciseId,
-      );
-      const nextSetNumber =
-        existingSets.find((set) => !set.completed)?.setNumber ??
-        existingSets.length + 1;
-      const sessionExercises = currentState.workoutSessionExercises.filter(
-        (exercise) => exercise.sessionId === sessionExercise.sessionId,
-      );
-      const nextWorkoutSets: WorkoutSet[] = [
-        ...currentState.workoutSets,
-        {
-          id: createId('set'),
-          sessionId: sessionExercise.sessionId,
-          sessionExerciseId,
-          durationMinutes:
-            trackingMode === 'duration' ? sessionExercise.targetDurationMinutes ?? 20 : null,
-          load: trackingMode === 'duration' ? 0 : sessionExercise.currentLoad,
-          reps: trackingMode === 'duration' ? 0 : sessionExercise.targetReps,
-          completed: true,
-          loggedAt: new Date().toISOString(),
-          setType: 'normal' as const,
-          setNumber: nextSetNumber,
-        },
-      ];
-      const nextActiveExerciseId = getNextActiveExerciseId(
-        [...sessionExercises],
-        nextWorkoutSets,
-        sessionExerciseId,
-      );
-
-      return {
-        ...currentState,
-        workoutSets: nextWorkoutSets,
-        workoutSessions: currentState.workoutSessions.map((session) =>
-          session.id === sessionExercise.sessionId
-            ? {
-                ...session,
-                activeExerciseId: nextActiveExerciseId,
-                restDurationSeconds: 90,
-                restStartedAt: new Date().toISOString(),
-              }
-            : session,
-        ),
-      };
-    });
-  }
-
   function addWorkoutExercise(sessionId: string, draft: WorkoutExerciseDraft) {
     setState((currentState) => {
       if (!currentState || !draft.name.trim()) {
@@ -1343,8 +1278,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         return currentState;
       }
 
+      const nextWorkoutSets = currentState.workoutSets.filter(
+        (set) => !(set.sessionId === sessionId && !(set.completed ?? false)),
+      );
+
       return {
         ...currentState,
+        workoutSets: nextWorkoutSets,
         workoutSessions: currentState.workoutSessions.map((session) =>
           session.id === sessionId
             ? {
@@ -1411,7 +1351,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         deleteWorkoutTemplate,
         deleteMealLog,
         finishWorkoutSession,
-        logSet,
         removeWorkoutSetRow,
         removeWorkoutExercise,
         replaceWorkoutExercise,
