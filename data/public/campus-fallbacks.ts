@@ -10,6 +10,7 @@ export const fallbackGymCapacities: GymCapacitySnapshot[] = gymPreview.capacitie
     ...location,
     capturedAt: new Date().toISOString(),
     isClosed: false,
+    zones: location.zones ?? [],
     zoneName: location.zoneName,
   }),
 );

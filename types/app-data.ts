@@ -18,8 +18,16 @@ export type GymCapacitySnapshot = {
   isClosed: boolean;
   load: number;
   percent: number;
+  zones: ReadonlyArray<GymCapacityZone>;
   zoneName: string | null;
   capturedAt: string;
+};
+
+export type GymCapacityZone = {
+  name: string;
+  count: number;
+  capacity: number;
+  percent: number;
 };
 
 export type LocalProfile = {

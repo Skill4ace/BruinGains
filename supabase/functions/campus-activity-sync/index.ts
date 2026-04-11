@@ -92,6 +92,13 @@ type GymSyncResult = {
   zoneName: string
 }
 
+type GymZoneBreakdown = {
+  capacity: number
+  count: number
+  name: string
+  percent: number
+}
+
 type SyncSummary = {
   dining: DiningSyncResult[]
   errors?: {
@@ -511,6 +518,23 @@ function getWeightedGymPercent(locations: GymSourceLocation[]) {
   return Math.round(clampLoad(totals.count / totals.capacity) * 100)
 }
 
+function buildGymZoneBreakdown(locations: GymSourceLocation[]): GymZoneBreakdown[] {
+  return locations
+    .map((location) => {
+      const capacity = Math.max(0, location.TotalCapacity || 0)
+      const count = Math.max(0, location.LastCount || 0)
+
+      return {
+        capacity,
+        count,
+        name: location.LocationName,
+        percent:
+          capacity > 0 ? Math.round(clampLoad(count / capacity) * 100) : 0,
+      }
+    })
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
 async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
   const sourceLocations = await fetchJson<GymSourceLocation[]>(GOBOARD_API_URL)
   const capturedAt = new Date().toISOString()
@@ -528,6 +552,7 @@ async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
     const effectiveHours = getEffectiveGymHours(target.gymLocationId, currentMinutes, weekday)
     const isClosed = !effectiveHours.isOpenNow
     const percent = isClosed ? 0 : getWeightedGymPercent(sourceLocationsForGym)
+    const zoneBreakdown = buildGymZoneBreakdown(sourceLocationsForGym)
 
     const { error: updateGymError } = await admin
       .from('gym_locations')
@@ -549,6 +574,7 @@ async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
         load: clampLoad(percent / 100),
         location_id: target.gymLocationId,
         source: `module-6-campus-activity-sync:${target.facilityName}`,
+        zone_breakdown: zoneBreakdown,
         zone_name: target.facilityName,
       })
 

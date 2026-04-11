@@ -72,6 +72,7 @@ export type Database = {
           location_id: string
           percent_full: number | null
           source: string | null
+          zone_breakdown: Json | null
           zone_name: string | null
         }
         Insert: {
@@ -82,6 +83,7 @@ export type Database = {
           location_id: string
           percent_full?: number | null
           source?: string | null
+          zone_breakdown?: Json | null
           zone_name?: string | null
         }
         Update: {
@@ -92,6 +94,7 @@ export type Database = {
           location_id?: string
           percent_full?: number | null
           source?: string | null
+          zone_breakdown?: Json | null
           zone_name?: string | null
         }
         Relationships: [

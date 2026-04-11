@@ -1158,11 +1158,9 @@ function CustomMealComposer({
                 <AppText variant="headline">
                   {editingMeal ? 'Edit meal' : 'Custom meal'}
                 </AppText>
-                <AppText dimmed>
-                  {editingMeal
-                    ? 'Adjust this meal log or remove it from today.'
-                    : 'Log something that isn’t on the UCLA menu.'}
-                </AppText>
+                {editingMeal ? (
+                  <AppText dimmed>Adjust this meal log or remove it from today.</AppText>
+                ) : null}
               </View>
               <PressScale haptic="none" onPress={onClose}>
                 <View style={styles.sheetCloseButton}>
@@ -1190,39 +1188,47 @@ function CustomMealComposer({
             <InputField
               label="Meal name"
               onChangeText={(value) => onChange({ ...draft, title: value })}
-              placeholder="Chicken bowl, Trader Joe's wrap, protein shake..."
+              placeholder=""
               value={draft.title}
             />
 
             <View style={styles.customMacroGrid}>
-              <InputField
-                keyboardType="numbers-and-punctuation"
-                label="Calories"
-                onChangeText={(value) => onChange({ ...draft, calories: value })}
-                placeholder="420"
-                value={draft.calories}
-              />
-              <InputField
-                keyboardType="numbers-and-punctuation"
-                label="Protein"
-                onChangeText={(value) => onChange({ ...draft, protein: value })}
-                placeholder="35"
-                value={draft.protein}
-              />
-              <InputField
-                keyboardType="numbers-and-punctuation"
-                label="Carbs"
-                onChangeText={(value) => onChange({ ...draft, carbs: value })}
-                placeholder="42"
-                value={draft.carbs}
-              />
-              <InputField
-                keyboardType="numbers-and-punctuation"
-                label="Fat"
-                onChangeText={(value) => onChange({ ...draft, fats: value })}
-                placeholder="12"
-                value={draft.fats}
-              />
+              <View style={styles.customMacroCell}>
+                <AppText variant="micro" dimmed>Calories</AppText>
+                <TextInput
+                  keyboardType="numbers-and-punctuation"
+                  onChangeText={(v) => onChange({ ...draft, calories: v })}
+                  style={styles.customMacroInput}
+                  value={draft.calories}
+                />
+              </View>
+              <View style={styles.customMacroCell}>
+                <AppText variant="micro" dimmed>Protein</AppText>
+                <TextInput
+                  keyboardType="numbers-and-punctuation"
+                  onChangeText={(v) => onChange({ ...draft, protein: v })}
+                  style={styles.customMacroInput}
+                  value={draft.protein}
+                />
+              </View>
+              <View style={styles.customMacroCell}>
+                <AppText variant="micro" dimmed>Carbs</AppText>
+                <TextInput
+                  keyboardType="numbers-and-punctuation"
+                  onChangeText={(v) => onChange({ ...draft, carbs: v })}
+                  style={styles.customMacroInput}
+                  value={draft.carbs}
+                />
+              </View>
+              <View style={styles.customMacroCell}>
+                <AppText variant="micro" dimmed>Fat</AppText>
+                <TextInput
+                  keyboardType="numbers-and-punctuation"
+                  onChangeText={(v) => onChange({ ...draft, fats: v })}
+                  style={styles.customMacroInput}
+                  value={draft.fats}
+                />
+              </View>
             </View>
 
             {editingMeal ? (
@@ -1513,7 +1519,7 @@ function CustomPeriodChip({
   selected: boolean;
 }) {
   return (
-    <PressScale onPress={onPress}>
+    <PressScale containerStyle={{ flex: 1 }} onPress={onPress}>
       <View
         style={[
           styles.customPeriodChip,
@@ -2556,13 +2562,13 @@ const styles = StyleSheet.create({
   },
   customPeriodWrap: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   customPeriodChip: {
-    minHeight: 36,
+    height: 36,
+    alignSelf: 'stretch',
     borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.xs,
     backgroundColor: AppColors.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2581,8 +2587,23 @@ const styles = StyleSheet.create({
   },
   customMacroGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
+    gap: Spacing.sm,
+  },
+  customMacroCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  customMacroInput: {
+    width: '100%',
+    height: 52,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+    backgroundColor: AppColors.surfaceLowest,
+    color: AppColors.text,
+    textAlign: 'center',
+    fontSize: 16,
   },
   mealEditorActions: {
     flexDirection: 'row',

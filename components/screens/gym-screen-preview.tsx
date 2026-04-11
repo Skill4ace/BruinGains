@@ -3,15 +3,17 @@ import { useRouter } from 'expo-router';
 import {
   Alert,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Modal,
   Platform,
   ScrollView,
   StyleSheet,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   getExerciseLibraryImageSource,
@@ -28,7 +30,11 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
 import { Image } from 'expo-image';
-import type { ExerciseLibraryEntry, WorkoutTemplateExerciseDraft } from '@/types/app-data';
+import type {
+  ExerciseLibraryEntry,
+  GymCapacitySnapshot,
+  WorkoutTemplateExerciseDraft,
+} from '@/types/app-data';
 
 type TemplateExerciseDraftRow = {
   bodyPartLabel: string;
@@ -38,6 +44,93 @@ type TemplateExerciseDraftRow = {
   name: string;
   targetSets: string;
 };
+
+function GymCapacityCard({
+  isExpanded,
+  location,
+  onPress,
+}: {
+  isExpanded: boolean;
+  location: GymCapacitySnapshot;
+  onPress: () => void;
+}) {
+  const zones = location.zones ?? [];
+
+  return (
+    <PressScale
+      containerStyle={styles.capacityCardPressable}
+      haptic="none"
+      onPress={onPress}>
+      <View style={styles.capacityCompactCopy}>
+        <View style={styles.capacityTopLine}>
+          <AppText variant="bodyStrong">{location.name}</AppText>
+          <View style={styles.capacityTopRight}>
+            <AppText
+              variant="title"
+              color={
+                location.isClosed
+                  ? AppColors.textSubtle
+                  : location.load >= 0.7
+                    ? '#A56D00'
+                    : AppColors.primary
+              }>
+              {location.isClosed ? 'Closed' : `${location.percent}% full`}
+            </AppText>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={AppColors.textSubtle}
+            />
+          </View>
+        </View>
+        <AppText variant="micro" dimmed>
+          {location.hours}
+        </AppText>
+        {!location.isClosed ? (
+          <View style={styles.capacityBarTrack}>
+            <View
+              style={[
+                styles.capacityBarFill,
+                {
+                  width: `${location.load * 100}%`,
+                  backgroundColor: location.load >= 0.7 ? '#E2A061' : AppColors.primary,
+                },
+              ]}
+            />
+          </View>
+        ) : null}
+        {isExpanded ? (
+          <View style={styles.capacityDetailsPanel}>
+            <View style={styles.capacityZoneList}>
+              {zones.length > 0 ? (
+                zones.map((zone) => (
+                  <View key={`${location.id}-${zone.name}`} style={styles.capacityZoneRow}>
+                    <AppText variant="micro" style={styles.capacityZoneName}>
+                      {zone.name}
+                    </AppText>
+                    <AppText variant="micro" dimmed style={styles.capacityZoneMetric}>
+                      {`${zone.count}/${zone.capacity}`}
+                    </AppText>
+                    <AppText
+                      variant="micro"
+                      color={AppColors.primary}
+                      style={styles.capacityZoneMetric}>
+                      {`${zone.percent}%`}
+                    </AppText>
+                  </View>
+                ))
+              ) : (
+                <AppText variant="micro" dimmed>
+                  No zone breakdown available yet.
+                </AppText>
+              )}
+            </View>
+          </View>
+        ) : null}
+      </View>
+    </PressScale>
+  );
+}
 
 export function GymScreenPreview() {
   const router = useRouter();
@@ -57,6 +150,13 @@ export function GymScreenPreview() {
   const [templateExercisePickerOpen, setTemplateExercisePickerOpen] = useState(false);
   const [templateExerciseSearchQuery, setTemplateExerciseSearchQuery] = useState('');
   const [selectedTemplateExercises, setSelectedTemplateExercises] = useState<TemplateExerciseDraftRow[]>([]);
+  const [expandedGymId, setExpandedGymId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   const exerciseOptions = [...state.exerciseLibrary].sort((left, right) =>
     left.name.localeCompare(right.name),
@@ -66,6 +166,19 @@ export function GymScreenPreview() {
         searchExerciseLibraryEntry(exercise, templateExerciseSearchQuery.trim()),
       )
     : exerciseOptions;
+  const sortedCapacityData = [...capacityState.data].sort((left, right) => {
+    const order = ['wooden', 'bfit'];
+    const leftIndex = order.indexOf(left.id);
+    const rightIndex = order.indexOf(right.id);
+    const normalizedLeftIndex = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+    const normalizedRightIndex = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+
+    if (normalizedLeftIndex !== normalizedRightIndex) {
+      return normalizedLeftIndex - normalizedRightIndex;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
 
   function buildTemplateExerciseDraftRow(
     exercise: ExerciseLibraryEntry,
@@ -251,45 +364,23 @@ export function GymScreenPreview() {
             </AppText>
           ) : null}
           <View style={styles.capacityCompactCard}>
-            {capacityState.data.map((location, index) => (
+            {sortedCapacityData.map((location, index) => (
               <View
                 key={location.id}
                 style={[
                   styles.capacityCompactRow,
-                  index < capacityState.data.length - 1 ? styles.capacityCompactDivider : null,
+                  index < sortedCapacityData.length - 1 ? styles.capacityCompactDivider : null,
                 ]}>
-                <View style={styles.capacityCompactCopy}>
-                  <View style={styles.capacityTopLine}>
-                    <AppText variant="bodyStrong">{location.name}</AppText>
-                    <AppText
-                      variant="title"
-                      color={
-                        location.isClosed
-                          ? AppColors.textSubtle
-                          : location.load >= 0.7
-                            ? '#A56D00'
-                            : AppColors.primary
-                      }>
-                      {location.isClosed ? 'Closed' : `${location.percent}% full`}
-                    </AppText>
-                  </View>
-                  <AppText variant="micro" dimmed>
-                    {location.hours}
-                  </AppText>
-                  {!location.isClosed ? (
-                    <View style={styles.capacityBarTrack}>
-                      <View
-                        style={[
-                          styles.capacityBarFill,
-                          {
-                            width: `${location.load * 100}%`,
-                            backgroundColor: location.load >= 0.7 ? '#E2A061' : AppColors.primary,
-                          },
-                        ]}
-                      />
-                    </View>
-                  ) : null}
-                </View>
+                <GymCapacityCard
+                  isExpanded={expandedGymId === location.id}
+                  location={location}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setExpandedGymId((currentValue) =>
+                      currentValue === location.id ? null : location.id,
+                    );
+                  }}
+                />
               </View>
             ))}
           </View>
@@ -658,13 +749,18 @@ const styles = StyleSheet.create({
     gap: Spacing.lg,
   },
   capacityCompactCard: {
-    gap: Spacing.lg,
-  },
-  capacityCompactRow: {
     gap: Spacing.sm,
   },
+  capacityCompactRow: {
+    gap: Spacing.xs,
+  },
+  capacityCardPressable: {
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceLowest,
+    padding: Spacing.md,
+  },
   capacityCompactDivider: {
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.xs,
   },
   capacityCompactCopy: {
     gap: Spacing.xs,
@@ -675,6 +771,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: Spacing.md,
+  },
+  capacityTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   capacityBarTrack: {
     height: 6,
@@ -687,6 +788,29 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: Radii.pill,
     backgroundColor: AppColors.primary,
+  },
+  capacityDetailsPanel: {
+    marginTop: Spacing.md,
+    borderRadius: Radii.md,
+    backgroundColor: AppColors.surfaceVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  capacityZoneList: {
+    gap: Spacing.sm,
+  },
+  capacityZoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 2,
+  },
+  capacityZoneName: {
+    flex: 1,
+  },
+  capacityZoneMetric: {
+    minWidth: 44,
+    textAlign: 'right',
   },
   templateGrid: {
     flexDirection: 'row',

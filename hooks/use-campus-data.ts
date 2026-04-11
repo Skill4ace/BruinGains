@@ -11,6 +11,7 @@ import type {
   DiningCustomizationOption,
   DiningMenuItem,
   DiningNutritionFact,
+  GymCapacityZone,
   GymCapacitySnapshot,
   PublicDiningHall,
   PublicResourceState,
@@ -18,7 +19,7 @@ import type {
 
 const DINING_CACHE_KEY = '@bruingains/public-dining-halls-v6';
 const DINING_MENU_ITEMS_CACHE_KEY = '@bruingains/public-dining-menu-items-v4';
-const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities-v2';
+const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities-v3';
 const PUBLIC_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_DINING_MENU_ITEMS: DiningMenuItem[] = [];
 const DINING_MENU_PAGE_SIZE = 500;
@@ -136,6 +137,33 @@ function parseCustomizationOptions(value: unknown): DiningCustomizationOption[] 
   });
 }
 
+function parseGymCapacityZones(value: unknown): GymCapacityZone[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return [];
+    }
+
+    const candidate = entry as Record<string, unknown>;
+
+    if (typeof candidate.name !== 'string') {
+      return [];
+    }
+
+    return [
+      {
+        name: candidate.name,
+        count: typeof candidate.count === 'number' ? candidate.count : 0,
+        capacity: typeof candidate.capacity === 'number' ? candidate.capacity : 0,
+        percent: typeof candidate.percent === 'number' ? candidate.percent : 0,
+      },
+    ];
+  });
+}
+
 function isStale(updatedAt: string) {
   return Date.now() - new Date(updatedAt).getTime() > PUBLIC_CACHE_MAX_AGE_MS;
 }
@@ -201,6 +229,7 @@ function mapGymCapacityRow(row: GymCapacitySnapshotRow): GymCapacitySnapshot | n
     hours: row.gym_locations.hours,
     load: row.load,
     percent: row.percent_full ?? Math.round(row.load * 100),
+    zones: parseGymCapacityZones(row.zone_breakdown),
     zoneName: row.zone_name,
     capturedAt: row.captured_at,
   };
@@ -261,7 +290,7 @@ async function fetchGymCapacitiesFromSupabase() {
   const { data, error } = await supabasePublicClient
     .from('gym_capacity_snapshots')
     .select(
-      'id,location_id,load,percent_full,captured_at,is_closed,zone_name,gym_locations!inner(id,name,hours,sort_order)',
+      'id,location_id,load,percent_full,captured_at,is_closed,zone_name,zone_breakdown,gym_locations!inner(id,name,hours,sort_order)',
     )
     .order('captured_at', { ascending: false })
     .limit(10);
