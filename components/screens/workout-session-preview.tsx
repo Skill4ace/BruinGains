@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import {
+  Alert,
   KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
@@ -51,6 +52,25 @@ type PickerState = {
   targetExerciseId: string | null;
 };
 
+type ExerciseFilterGroup =
+  | 'all'
+  | 'arms'
+  | 'back'
+  | 'cardio'
+  | 'chest'
+  | 'core'
+  | 'legs'
+  | 'other'
+  | 'shoulders';
+
+type ExerciseFilterType =
+  | 'all'
+  | 'barbell'
+  | 'bodyweight'
+  | 'cardio'
+  | 'dumbbell'
+  | 'machine';
+
 type ExerciseComposerDraft = {
   durationMinutes: string;
   load: string;
@@ -78,6 +98,27 @@ const SET_TYPE_OPTIONS: { label: string; shortLabel: string; tone: string; value
   { label: 'Failure', shortLabel: 'F', tone: AppColors.danger, value: 'failure' },
 ];
 
+const EXERCISE_FILTER_GROUPS: ExerciseFilterGroup[] = [
+  'all',
+  'core',
+  'arms',
+  'back',
+  'chest',
+  'legs',
+  'shoulders',
+  'other',
+  'cardio',
+];
+
+const EXERCISE_FILTER_TYPES: ExerciseFilterType[] = [
+  'all',
+  'barbell',
+  'dumbbell',
+  'machine',
+  'bodyweight',
+  'cardio',
+];
+
 export function WorkoutSessionPreview() {
   const router = useRouter();
   const {
@@ -100,6 +141,10 @@ export function WorkoutSessionPreview() {
   const [pickerState, setPickerState] = useState<PickerState | null>(null);
   const [composerContext, setComposerContext] = useState<PickerState | null>(null);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
+  const [exerciseFilterGroup, setExerciseFilterGroup] =
+    useState<ExerciseFilterGroup>('all');
+  const [exerciseFilterType, setExerciseFilterType] =
+    useState<ExerciseFilterType>('all');
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ExerciseComposerDraft>(
     DEFAULT_COMPOSER_DRAFT,
@@ -184,16 +229,15 @@ export function WorkoutSessionPreview() {
 
   const filteredExerciseOptions = useMemo(() => {
     const query = exerciseSearchQuery.trim();
-
-    if (!query) {
-      return exerciseOptions;
-    }
-
     return [...exerciseOptions]
-      .filter((exercise) => searchExerciseLibraryEntry(exercise, query))
+      .filter((exercise) =>
+        matchesExerciseFilterGroup(exercise, exerciseFilterGroup) &&
+        matchesExerciseFilterType(exercise, exerciseFilterType),
+      )
+      .filter((exercise) => !query || searchExerciseLibraryEntry(exercise, query))
       .sort((left, right) => {
-        const leftScore = getExerciseSearchScore(left, query);
-        const rightScore = getExerciseSearchScore(right, query);
+        const leftScore = query ? getExerciseSearchScore(left, query) : 0;
+        const rightScore = query ? getExerciseSearchScore(right, query) : 0;
 
         if (leftScore !== rightScore) {
           return rightScore - leftScore;
@@ -201,7 +245,7 @@ export function WorkoutSessionPreview() {
 
         return left.name.localeCompare(right.name);
       });
-  }, [exerciseOptions, exerciseSearchQuery]);
+  }, [exerciseFilterGroup, exerciseFilterType, exerciseOptions, exerciseSearchQuery]);
 
   function getSetRowKey(exerciseId: string, setRow: ActiveWorkoutSetView) {
     return setRow.id ?? `${exerciseId}:${setRow.setNumber}`;
@@ -291,9 +335,13 @@ export function WorkoutSessionPreview() {
     targetExerciseId: string | null = null,
   ) {
     setExerciseSearchQuery('');
+    setExerciseFilterGroup('all');
+    setExerciseFilterType('all');
     setActiveMenuExerciseId(null);
     setActiveSetTypeTarget(null);
-    setPickerState({ mode, targetExerciseId });
+    requestAnimationFrame(() => {
+      setPickerState({ mode, targetExerciseId });
+    });
   }
 
   function handleSelectExerciseDraft(draft: WorkoutExerciseDraft) {
@@ -502,10 +550,23 @@ export function WorkoutSessionPreview() {
                   <PressScale
                     haptic="none"
                     onPress={() => {
-                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                      removeWorkoutExercise(exercise.id);
                       setActiveMenuExerciseId(null);
                       setActiveSetTypeTarget(null);
+                      Alert.alert(
+                        'Remove exercise?',
+                        `Remove "${exercise.name}" from this workout?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Remove',
+                            style: 'destructive',
+                            onPress: () => {
+                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                              removeWorkoutExercise(exercise.id);
+                            },
+                          },
+                        ],
+                      );
                     }}
                   >
                     <View style={styles.exercisePopoverAction}>
@@ -771,6 +832,8 @@ export function WorkoutSessionPreview() {
 
       <ExercisePickerModal
         canCreateCustomExercise={exerciseSearchQuery.trim().length > 0}
+        filterGroup={exerciseFilterGroup}
+        filterType={exerciseFilterType}
         exerciseOptions={filteredExerciseOptions}
         isOpen={Boolean(pickerState)}
         onClose={() => setPickerState(null)}
@@ -786,6 +849,8 @@ export function WorkoutSessionPreview() {
           })
         }
         searchQuery={exerciseSearchQuery}
+        setFilterGroup={setExerciseFilterGroup}
+        setFilterType={setExerciseFilterType}
         setSearchQuery={setExerciseSearchQuery}
         title={pickerState?.mode === 'replace' ? 'Replace exercise' : 'Add exercise'}
       />
@@ -852,22 +917,30 @@ function WorkoutSetInput({
 
 function ExercisePickerModal({
   canCreateCustomExercise,
+  filterGroup,
+  filterType,
   exerciseOptions,
   isOpen,
   onClose,
   onCreateCustom,
   onSelect,
   searchQuery,
+  setFilterGroup,
+  setFilterType,
   setSearchQuery,
   title,
 }: {
   canCreateCustomExercise: boolean;
+  filterGroup: ExerciseFilterGroup;
+  filterType: ExerciseFilterType;
   exerciseOptions: ExerciseLibraryEntry[];
   isOpen: boolean;
   onClose: () => void;
   onCreateCustom: () => void;
   onSelect: (exercise: ExerciseLibraryEntry) => void;
   searchQuery: string;
+  setFilterGroup: (value: ExerciseFilterGroup) => void;
+  setFilterType: (value: ExerciseFilterType) => void;
   setSearchQuery: (value: string) => void;
   title: string;
 }) {
@@ -902,6 +975,32 @@ function ExercisePickerModal({
                 value={searchQuery}
               />
             </View>
+            <ScrollView
+              horizontal
+              contentContainerStyle={styles.filterChipRow}
+              showsHorizontalScrollIndicator={false}>
+              {EXERCISE_FILTER_GROUPS.map((group) => (
+                <FilterChip
+                  key={group}
+                  active={filterGroup === group}
+                  label={formatFilterLabel(group)}
+                  onPress={() => setFilterGroup(group)}
+                />
+              ))}
+            </ScrollView>
+            <ScrollView
+              horizontal
+              contentContainerStyle={styles.filterChipRow}
+              showsHorizontalScrollIndicator={false}>
+              {EXERCISE_FILTER_TYPES.map((type) => (
+                <FilterChip
+                  key={type}
+                  active={filterType === type}
+                  label={formatFilterLabel(type)}
+                  onPress={() => setFilterType(type)}
+                />
+              ))}
+            </ScrollView>
             <PressScale haptic="none" onPress={onCreateCustom}>
               <View style={styles.createCustomButton}>
                 <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
@@ -1120,6 +1219,29 @@ function TrackingModeChip({
   );
 }
 
+function FilterChip({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <PressScale haptic="none" onPress={onPress}>
+      <View style={[styles.filterChip, active ? styles.filterChipActive : null]}>
+        <AppText
+          variant="micro"
+          color={active ? AppColors.white : AppColors.textMuted}
+        >
+          {label}
+        </AppText>
+      </View>
+    </PressScale>
+  );
+}
+
 function getSetTypeBadgeLabel(setRow: ActiveWorkoutSetView) {
   if (setRow.setType === 'warmup') {
     return 'W';
@@ -1231,6 +1353,79 @@ function getExerciseSearchScore(exercise: ExerciseLibraryEntry, query: string) {
   if (normalizedName.includes(normalizedQuery)) score += 2;
 
   return score;
+}
+
+function formatFilterLabel(value: string) {
+  if (value === 'all') {
+    return 'all';
+  }
+
+  if (value === 'bodyweight') {
+    return 'bodyweight';
+  }
+
+  return value;
+}
+
+function getExerciseFilterGroup(exercise: ExerciseLibraryEntry): ExerciseFilterGroup {
+  const bodyPart = exercise.bodyPart?.toLowerCase() ?? '';
+
+  if (bodyPart === 'waist') return 'core';
+  if (bodyPart === 'upper arms' || bodyPart === 'lower arms') return 'arms';
+  if (bodyPart === 'back') return 'back';
+  if (bodyPart === 'chest') return 'chest';
+  if (bodyPart === 'upper legs' || bodyPart === 'lower legs') return 'legs';
+  if (bodyPart === 'shoulders') return 'shoulders';
+  if (bodyPart === 'cardio') return 'cardio';
+
+  return 'other';
+}
+
+function getExerciseFilterType(exercise: ExerciseLibraryEntry): ExerciseFilterType {
+  const equipment = exercise.equipment?.toLowerCase() ?? '';
+  const category = exercise.category?.toLowerCase() ?? '';
+  const bodyPart = exercise.bodyPart?.toLowerCase() ?? '';
+
+  if (bodyPart === 'cardio' || category === 'cardio') {
+    return 'cardio';
+  }
+
+  if (equipment.includes('barbell')) {
+    return 'barbell';
+  }
+
+  if (equipment.includes('dumbbell')) {
+    return 'dumbbell';
+  }
+
+  if (equipment.includes('body weight')) {
+    return 'bodyweight';
+  }
+
+  if (
+    equipment.includes('machine') ||
+    equipment.includes('assisted') ||
+    equipment.includes('sled') ||
+    equipment.includes('smith')
+  ) {
+    return 'machine';
+  }
+
+  return 'all';
+}
+
+function matchesExerciseFilterGroup(
+  exercise: ExerciseLibraryEntry,
+  filterGroup: ExerciseFilterGroup,
+) {
+  return filterGroup === 'all' || getExerciseFilterGroup(exercise) === filterGroup;
+}
+
+function matchesExerciseFilterType(
+  exercise: ExerciseLibraryEntry,
+  filterType: ExerciseFilterType,
+) {
+  return filterType === 'all' || getExerciseFilterType(exercise) === filterType;
 }
 
 const styles = StyleSheet.create({
@@ -1561,6 +1756,21 @@ const styles = StyleSheet.create({
     flex: 1,
     color: AppColors.text,
     fontSize: 15,
+  },
+  filterChipRow: {
+    gap: Spacing.xs,
+    paddingBottom: 2,
+  },
+  filterChip: {
+    minHeight: 30,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  filterChipActive: {
+    backgroundColor: AppColors.primary,
   },
   createCustomButton: {
     minHeight: 50,

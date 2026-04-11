@@ -50,6 +50,9 @@ type AppDataContextValue = {
   startWorkoutFromTemplate: (templateId: string) => string;
   toggleWorkoutSetCompletion: (sessionExerciseId: string, setNumber: number) => void;
   updateWorkoutSessionTitle: (sessionId: string, title: string) => void;
+  updateWorkoutTemplate: (
+    input: { exercises: string[]; name: string; templateId: string },
+  ) => void;
   updateWorkoutSetType: (
     sessionExerciseId: string,
     setNumber: number,
@@ -581,6 +584,69 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         templateExercises: currentState.templateExercises.filter(
           (exercise) => exercise.templateId !== templateId,
         ),
+      };
+    });
+  }
+
+  function updateWorkoutTemplate(input: {
+    exercises: string[];
+    name: string;
+    templateId: string;
+  }) {
+    const trimmedName = input.name.trim();
+    const normalizedExerciseNames = [...new Set(input.exercises.map((exercise) => exercise.trim()).filter(Boolean))];
+
+    if (!trimmedName) {
+      return;
+    }
+
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const targetTemplate = currentState.workoutTemplates.find(
+        (template) => template.id === input.templateId,
+      );
+
+      if (!targetTemplate) {
+        return currentState;
+      }
+
+      const now = new Date().toISOString();
+      const replacementExercises = normalizedExerciseNames.map((exerciseName, index) => {
+        const defaults = buildExerciseDefaults(currentState, exerciseName, 'strength');
+
+        return {
+          id: `${input.templateId}-${index + 1}`,
+          templateId: input.templateId,
+          name: exerciseName,
+          targetSets: 3,
+          repRange: '8-10 reps',
+          previousLoadLabel: defaults.previousLoadLabel,
+          defaultLoad: defaults.currentLoad,
+          defaultReps: defaults.targetReps,
+          order: index,
+        };
+      });
+
+      return {
+        ...currentState,
+        workoutTemplates: currentState.workoutTemplates.map((template) =>
+          template.id === input.templateId
+            ? {
+                ...template,
+                name: trimmedName,
+                updatedAt: now,
+              }
+            : template,
+        ),
+        templateExercises: [
+          ...currentState.templateExercises.filter(
+            (exercise) => exercise.templateId !== input.templateId,
+          ),
+          ...replacementExercises,
+        ],
       };
     });
   }
@@ -1337,6 +1403,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         toggleWorkoutSetCompletion,
         updateMealLog,
         updateWorkoutSessionTitle,
+        updateWorkoutTemplate,
         updateWorkoutSetType,
         updateWorkoutSetValue,
       }}>

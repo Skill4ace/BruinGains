@@ -32,46 +32,38 @@ type TemplateSeed = {
 const templateSeeds: TemplateSeed[] = [
   {
     name: 'Push',
-    focus: 'Upper body',
+    focus: 'Push day',
     exercises: [
-      { name: 'Barbell Bench Press', targetSets: 4, repRange: '6-8 reps', previousLoadLabel: '175 lbs', defaultLoad: 185, defaultReps: 8 },
-      { name: 'Incline Dumbbell Press', targetSets: 3, repRange: '8-10 reps', previousLoadLabel: '60 lbs', defaultLoad: 65, defaultReps: 10 },
-      { name: 'Seated Shoulder Press', targetSets: 3, repRange: '8-10 reps', previousLoadLabel: '45 lbs', defaultLoad: 50, defaultReps: 8 },
-      { name: 'Lateral Raise', targetSets: 3, repRange: '12-15 reps', previousLoadLabel: '20 lbs', defaultLoad: 22.5, defaultReps: 12 },
-      { name: 'Tricep Pressdown', targetSets: 3, repRange: '12 reps', previousLoadLabel: '55 lbs', defaultLoad: 60, defaultReps: 12 },
-    ],
-  },
-  {
-    name: 'Legs',
-    focus: 'Lower body',
-    exercises: [
-      { name: 'Bulgarian Split Squat', targetSets: 4, repRange: '8-10 reps', previousLoadLabel: '95 lbs', defaultLoad: 105, defaultReps: 10 },
-      { name: 'Barbell Back Squat', targetSets: 4, repRange: '6-8 reps', previousLoadLabel: '205 lbs', defaultLoad: 225, defaultReps: 8 },
-      { name: 'Leg Press', targetSets: 3, repRange: '12 reps', previousLoadLabel: '360 lbs', defaultLoad: 405, defaultReps: 12 },
-      { name: 'Romanian Deadlift', targetSets: 3, repRange: '8-10 reps', previousLoadLabel: '165 lbs', defaultLoad: 185, defaultReps: 8 },
-      { name: 'Hamstring Curl', targetSets: 3, repRange: '12-15 reps', previousLoadLabel: '90 lbs', defaultLoad: 95, defaultReps: 12 },
+      { name: 'Barbell Bench Press', targetSets: 4, repRange: '5-8 reps', previousLoadLabel: '185 lbs', defaultLoad: 195, defaultReps: 6 },
+      { name: 'Barbell Incline Bench Press', targetSets: 3, repRange: '8-10 reps', previousLoadLabel: '135 lbs', defaultLoad: 145, defaultReps: 8 },
+      { name: 'Dumbbell Seated Shoulder Press', targetSets: 3, repRange: '8-10 reps', previousLoadLabel: '50 lbs', defaultLoad: 55, defaultReps: 8 },
+      { name: 'Dumbbell Lateral Raise', targetSets: 3, repRange: '12-15 reps', previousLoadLabel: '20 lbs', defaultLoad: 25, defaultReps: 12 },
+      { name: 'Cable Standing Fly', targetSets: 3, repRange: '12-15 reps', previousLoadLabel: '20 lbs', defaultLoad: 25, defaultReps: 12 },
+      { name: 'Cable Pushdown (with Rope Attachment)', targetSets: 3, repRange: '10-12 reps', previousLoadLabel: '55 lbs', defaultLoad: 60, defaultReps: 10 },
     ],
   },
   {
     name: 'Pull',
-    focus: 'Pull focus',
+    focus: 'Pull day',
     exercises: [
-      { name: 'Weighted Pull-Up', targetSets: 4, repRange: '6 reps', previousLoadLabel: '+25 lbs', defaultLoad: 25, defaultReps: 6 },
-      { name: 'Barbell Row', targetSets: 4, repRange: '8 reps', previousLoadLabel: '145 lbs', defaultLoad: 155, defaultReps: 8 },
-      { name: 'Lat Pulldown', targetSets: 3, repRange: '10 reps', previousLoadLabel: '130 lbs', defaultLoad: 140, defaultReps: 10 },
-      { name: 'Face Pull', targetSets: 3, repRange: '12-15 reps', previousLoadLabel: '45 lbs', defaultLoad: 50, defaultReps: 12 },
-      { name: 'Hammer Curl', targetSets: 3, repRange: '10-12 reps', previousLoadLabel: '30 lbs', defaultLoad: 35, defaultReps: 10 },
+      { name: 'Weighted Pull-up', targetSets: 4, repRange: '5-8 reps', previousLoadLabel: '+25 lbs', defaultLoad: 25, defaultReps: 6 },
+      { name: 'Barbell Bent Over Row', targetSets: 4, repRange: '6-10 reps', previousLoadLabel: '155 lbs', defaultLoad: 165, defaultReps: 8 },
+      { name: 'Cable Lat Pulldown Full Range Of Motion', targetSets: 3, repRange: '8-12 reps', previousLoadLabel: '130 lbs', defaultLoad: 140, defaultReps: 10 },
+      { name: 'Cable Rear Delt Row (with Rope)', targetSets: 3, repRange: '12-15 reps', previousLoadLabel: '45 lbs', defaultLoad: 50, defaultReps: 12 },
+      { name: 'Cable Hammer Curl (with Rope)', targetSets: 3, repRange: '10-12 reps', previousLoadLabel: '30 lbs', defaultLoad: 35, defaultReps: 10 },
+      { name: 'Barbell Preacher Curl', targetSets: 3, repRange: '8-12 reps', previousLoadLabel: '60 lbs', defaultLoad: 65, defaultReps: 10 },
     ],
   },
   {
-    name: 'Upper',
-    focus: 'Mixed split',
+    name: 'Legs',
+    focus: 'Leg day',
     exercises: [
-      { name: 'Incline Barbell Press', targetSets: 4, repRange: '6-8 reps', previousLoadLabel: '135 lbs', defaultLoad: 145, defaultReps: 8 },
-      { name: 'Chest Supported Row', targetSets: 4, repRange: '8 reps', previousLoadLabel: '75 lbs', defaultLoad: 80, defaultReps: 8 },
-      { name: 'Cable Fly', targetSets: 3, repRange: '12 reps', previousLoadLabel: '25 lbs', defaultLoad: 27.5, defaultReps: 12 },
-      { name: 'Machine Shoulder Press', targetSets: 3, repRange: '10 reps', previousLoadLabel: '100 lbs', defaultLoad: 110, defaultReps: 10 },
-      { name: 'EZ Bar Curl', targetSets: 3, repRange: '10 reps', previousLoadLabel: '65 lbs', defaultLoad: 70, defaultReps: 10 },
+      { name: 'Barbell Full Squat', targetSets: 4, repRange: '5-8 reps', previousLoadLabel: '225 lbs', defaultLoad: 235, defaultReps: 6 },
+      { name: 'Sled 45° Leg Press', targetSets: 3, repRange: '10-15 reps', previousLoadLabel: '360 lbs', defaultLoad: 405, defaultReps: 12 },
+      { name: 'Barbell Romanian Deadlift', targetSets: 3, repRange: '6-10 reps', previousLoadLabel: '185 lbs', defaultLoad: 195, defaultReps: 8 },
+      { name: 'Lever Seated Leg Curl', targetSets: 3, repRange: '10-15 reps', previousLoadLabel: '95 lbs', defaultLoad: 105, defaultReps: 12 },
+      { name: 'Barbell Lunge', targetSets: 3, repRange: '8-10 reps', previousLoadLabel: '95 lbs', defaultLoad: 105, defaultReps: 8 },
+      { name: 'Lever Standing Calf Raise', targetSets: 4, repRange: '12-20 reps', previousLoadLabel: '140 lbs', defaultLoad: 150, defaultReps: 15 },
     ],
   },
 ];
@@ -244,7 +236,7 @@ function buildSeedWorkoutHistory(now: Date, templateExercises: WorkoutTemplateEx
   const sessionSeeds = [
     { templateId: 'legs', title: 'Leg Day', day: addDays(currentWeekStart, 2), hour: 17 },
     { templateId: 'push', title: 'Push Day', day: addDays(currentWeekStart, 0), hour: 16 },
-    { templateId: 'upper', title: 'Upper', day: addDays(addDays(currentWeekStart, -7), 6), hour: 11 },
+    { templateId: 'pull', title: 'Pull Day', day: addDays(addDays(currentWeekStart, -7), 6), hour: 11 },
     { templateId: 'pull', title: 'Pull Day', day: addDays(addDays(currentWeekStart, -7), 1), hour: 18 },
     { templateId: 'legs', title: 'Leg Day', day: addDays(addDays(currentWeekStart, -14), 4), hour: 15 },
   ];
@@ -395,16 +387,21 @@ export function mergeLocalAppData(
   now = new Date(),
 ): LocalAppData {
   const seed = createDefaultLocalAppData(now);
+  const legacySeedTemplateIds = new Set(['push', 'pull', 'legs', 'upper']);
 
   if (!candidate) {
     return seed;
   }
 
-  const nextWorkoutTemplates = (candidate.workoutTemplates ?? seed.workoutTemplates).map(
-    (template, index) => ({
+  const customWorkoutTemplates = (candidate.workoutTemplates ?? [])
+    .filter((template) => !legacySeedTemplateIds.has(template.id))
+    .map((template, index) => ({
       ...template,
-      order: template.order ?? index,
-    }),
+      order: seed.workoutTemplates.length + index,
+    }));
+  const nextWorkoutTemplates = [...seed.workoutTemplates, ...customWorkoutTemplates];
+  const customTemplateExercises = (candidate.templateExercises ?? []).filter(
+    (exercise) => !legacySeedTemplateIds.has(exercise.templateId),
   );
 
   return {
@@ -421,7 +418,7 @@ export function mergeLocalAppData(
     mealLogs: candidate.mealLogs ?? seed.mealLogs,
     exerciseLibrary: mergeExerciseLibrary(candidate.exerciseLibrary, seed.exerciseLibrary),
     workoutTemplates: nextWorkoutTemplates,
-    templateExercises: candidate.templateExercises ?? seed.templateExercises,
+    templateExercises: [...seed.templateExercises, ...customTemplateExercises],
     workoutSessions: candidate.workoutSessions ?? seed.workoutSessions,
     workoutSessionExercises:
       candidate.workoutSessionExercises ?? seed.workoutSessionExercises,

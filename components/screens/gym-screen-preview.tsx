@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -37,10 +38,12 @@ export function GymScreenPreview() {
     startEmptyWorkout,
     startWorkoutFromTemplate,
     state,
+    updateWorkoutTemplate,
   } = useAppData();
   const capacityState = useGymCapacities();
   const templates = getWorkoutTemplateSummaries(state);
   const [templateComposerOpen, setTemplateComposerOpen] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [templateNameDraft, setTemplateNameDraft] = useState('');
   const [templateExercisePickerOpen, setTemplateExercisePickerOpen] = useState(false);
   const [templateExerciseSearchQuery, setTemplateExerciseSearchQuery] = useState('');
@@ -60,10 +63,18 @@ export function GymScreenPreview() {
       return;
     }
 
-    const templateId = createWorkoutTemplate({
-      exercises: selectedTemplateExercises.map((exercise) => exercise.name),
-      name: templateNameDraft,
-    });
+    const selectedExerciseNames = selectedTemplateExercises.map((exercise) => exercise.name);
+    const templateId = editingTemplateId
+      ? (updateWorkoutTemplate({
+          exercises: selectedExerciseNames,
+          name: templateNameDraft,
+          templateId: editingTemplateId,
+        }),
+        editingTemplateId)
+      : createWorkoutTemplate({
+          exercises: selectedExerciseNames,
+          name: templateNameDraft,
+        });
 
     if (!templateId) {
       return;
@@ -71,9 +82,69 @@ export function GymScreenPreview() {
 
     setTemplateComposerOpen(false);
     setTemplateExercisePickerOpen(false);
+    setEditingTemplateId(null);
     setTemplateNameDraft('');
     setTemplateExerciseSearchQuery('');
     setSelectedTemplateExercises([]);
+  }
+
+  function handleOpenCreateTemplate() {
+    setEditingTemplateId(null);
+    setTemplateNameDraft('');
+    setTemplateExerciseSearchQuery('');
+    setSelectedTemplateExercises([]);
+    setTemplateExercisePickerOpen(false);
+    setTemplateComposerOpen(true);
+  }
+
+  function handleOpenEditTemplate(templateId: string) {
+    const template = state.workoutTemplates.find((entry) => entry.id === templateId);
+
+    if (!template) {
+      return;
+    }
+
+    const templateExercises = state.templateExercises
+      .filter((exercise) => exercise.templateId === templateId)
+      .sort((left, right) => left.order - right.order)
+      .map((exercise) => {
+        const normalizedExerciseName = exercise.name.trim().toLowerCase();
+        return (
+          state.exerciseLibrary.find((entry) => entry.name.trim().toLowerCase() === normalizedExerciseName) ??
+          state.exerciseLibrary.find((entry) =>
+            entry.aliases.some((alias) => alias.trim().toLowerCase() === normalizedExerciseName),
+          )
+        );
+      })
+      .filter((exercise): exercise is ExerciseLibraryEntry => Boolean(exercise));
+
+    setEditingTemplateId(templateId);
+    setTemplateNameDraft(template.name);
+    setTemplateExerciseSearchQuery('');
+    setSelectedTemplateExercises(templateExercises);
+    setTemplateExercisePickerOpen(false);
+    setTemplateComposerOpen(true);
+  }
+
+  function handleDeleteTemplate(templateId: string) {
+    const template = templates.find((entry) => entry.id === templateId);
+
+    if (!template) {
+      return;
+    }
+
+    Alert.alert(
+      'Delete template?',
+      `Delete "${template.name}" and its exercises?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteWorkoutTemplate(templateId),
+        },
+      ],
+    );
   }
 
   function handleAddExerciseToTemplate(exercise: ExerciseLibraryEntry) {
@@ -156,12 +227,7 @@ export function GymScreenPreview() {
             <AppText variant="title">Templates</AppText>
             <PressScale
               haptic="none"
-              onPress={() => {
-                setTemplateNameDraft('');
-                setTemplateExerciseSearchQuery('');
-                setSelectedTemplateExercises([]);
-                setTemplateComposerOpen(true);
-              }}>
+              onPress={handleOpenCreateTemplate}>
               <View style={styles.addTemplateButton}>
                 <Ionicons name="add" size={20} color={AppColors.white} />
               </View>
@@ -169,37 +235,47 @@ export function GymScreenPreview() {
           </View>
           <View style={styles.templateGrid}>
             {templates.map((template) => (
-              <PressScale
-                key={template.id}
-                onPress={() => {
-                  startWorkoutFromTemplate(template.id);
-                  router.push('/workout/session');
-                }}
-                containerStyle={styles.templateCell}>
+              <View key={template.id} style={styles.templateCell}>
                 <SurfaceCard style={styles.templateCard}>
                   <View style={styles.templateTopLine}>
                     <AppText variant="title">{template.name}</AppText>
-                    <PressScale
-                      haptic="none"
-                      onPress={() => deleteWorkoutTemplate(template.id)}>
-                      <View style={styles.templateActionButton}>
-                        <Ionicons name="trash-outline" size={15} color={AppColors.danger} />
-                      </View>
-                    </PressScale>
+                    <View style={styles.templateActions}>
+                      <PressScale
+                        haptic="none"
+                        onPress={() => handleOpenEditTemplate(template.id)}>
+                        <View style={styles.templateActionButton}>
+                          <Ionicons name="pencil-outline" size={15} color={AppColors.primary} />
+                        </View>
+                      </PressScale>
+                      <PressScale
+                        haptic="none"
+                        onPress={() => handleDeleteTemplate(template.id)}>
+                        <View style={styles.templateActionButton}>
+                          <Ionicons name="trash-outline" size={15} color={AppColors.danger} />
+                        </View>
+                      </PressScale>
+                    </View>
                   </View>
                   <AppText variant="body" dimmed>
                     {template.exerciseCount > 0
                       ? `${template.exerciseCount} exercises`
                       : 'Empty template'}
                   </AppText>
-                  <View style={styles.templateFooter}>
-                    <Ionicons name="play-circle" size={18} color={AppColors.primary} />
-                    <AppText variant="label" color={AppColors.primary}>
-                      Start workout
-                    </AppText>
-                  </View>
+                  <PressScale
+                    haptic="none"
+                    onPress={() => {
+                      startWorkoutFromTemplate(template.id);
+                      router.push('/workout/session');
+                    }}>
+                    <View style={styles.templateFooter}>
+                      <Ionicons name="play-circle" size={18} color={AppColors.primary} />
+                      <AppText variant="label" color={AppColors.primary}>
+                        Start workout
+                      </AppText>
+                    </View>
+                  </PressScale>
                 </SurfaceCard>
-              </PressScale>
+              </View>
             ))}
           </View>
           <View style={styles.emptyWorkoutButton}>
@@ -219,10 +295,15 @@ export function GymScreenPreview() {
         isPickerOpen={templateExercisePickerOpen}
         nameValue={templateNameDraft}
         onAddExercise={handleAddExerciseToTemplate}
-        onClose={() => setTemplateComposerOpen(false)}
+        onClose={() => {
+          setTemplateComposerOpen(false);
+          setTemplateExercisePickerOpen(false);
+          setEditingTemplateId(null);
+        }}
         onClosePicker={() => setTemplateExercisePickerOpen(false)}
         onRemoveExercise={handleRemoveExerciseFromTemplate}
         onSave={handleCreateTemplate}
+        primaryActionLabel={editingTemplateId ? 'Save template' : 'Create template'}
         setNameValue={setTemplateNameDraft}
         searchQuery={templateExerciseSearchQuery}
         selectedExercises={selectedTemplateExercises}
@@ -243,6 +324,7 @@ function WorkoutTemplateComposerModal({
   onClosePicker,
   onRemoveExercise,
   onSave,
+  primaryActionLabel,
   setNameValue,
   searchQuery,
   selectedExercises,
@@ -258,6 +340,7 @@ function WorkoutTemplateComposerModal({
   onClosePicker: () => void;
   onRemoveExercise: (exerciseId: string) => void;
   onSave: () => void;
+  primaryActionLabel: string;
   setNameValue: (value: string) => void;
   searchQuery: string;
   selectedExercises: ExerciseLibraryEntry[];
@@ -277,142 +360,132 @@ function WorkoutTemplateComposerModal({
             <SurfaceCard style={styles.modalCardLarge}>
               <View style={styles.modalHandle} />
               <View style={styles.modalHeader}>
-                <AppText variant="title">New template</AppText>
-                <PressScale haptic="none" onPress={onClose}>
+                <AppText variant="title">
+                  {isPickerOpen ? 'Add exercises' : 'Template'}
+                </AppText>
+                <PressScale
+                  haptic="none"
+                  onPress={isPickerOpen ? onClosePicker : onClose}>
                   <View style={styles.modalCloseButton}>
                     <Ionicons name="close" size={18} color={AppColors.text} />
                   </View>
                 </PressScale>
               </View>
-              <View style={styles.inputField}>
-                <AppText variant="micro" dimmed>
-                  Template name
-                </AppText>
-                <TextInput
-                  onChangeText={setNameValue}
-                  placeholder="Push day"
-                  placeholderTextColor={AppColors.textSubtle}
-                  style={styles.input}
-                  value={nameValue}
-                />
-              </View>
-              <View style={styles.templateComposerHeader}>
-                <AppText variant="bodyStrong">
-                  {selectedExercises.length} exercises
-                </AppText>
-                <PressScale haptic="none" onPress={() => setPickerOpen(true)}>
-                  <View style={styles.addExerciseChip}>
-                    <Ionicons name="add" size={16} color={AppColors.primary} />
-                    <AppText variant="label" color={AppColors.primary}>
-                      Add exercise
-                    </AppText>
+              {isPickerOpen ? (
+                <>
+                  <View style={styles.searchField}>
+                    <Ionicons name="search" size={18} color={AppColors.textSubtle} />
+                    <TextInput
+                      autoCapitalize="none"
+                      onChangeText={setSearchQuery}
+                      placeholder="search exercise"
+                      placeholderTextColor={AppColors.textSubtle}
+                      style={styles.searchInput}
+                      value={searchQuery}
+                    />
                   </View>
-                </PressScale>
-              </View>
-              <ScrollView
-                contentContainerStyle={styles.templateExerciseList}
-                showsVerticalScrollIndicator={false}>
-                {selectedExercises.length === 0 ? (
-                  <SurfaceCard style={styles.emptyTemplateCard}>
-                    <AppText variant="bodyStrong">No exercises yet</AppText>
+                  <ScrollView
+                    contentContainerStyle={styles.optionList}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}>
+                    {exerciseOptions.map((exercise) => (
+                      <PressScale
+                        key={exercise.id}
+                        containerStyle={styles.optionPressable}
+                        haptic="none"
+                        onPress={() => onAddExercise(exercise)}>
+                        <View style={styles.optionMain}>
+                          {getExerciseLibraryImageSource(exercise) ? (
+                            <Image
+                              source={getExerciseLibraryImageSource(exercise)}
+                              style={styles.optionImage}
+                              contentFit="contain"
+                            />
+                          ) : (
+                            <View style={styles.optionImageFallback}>
+                              <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
+                            </View>
+                          )}
+                          <View style={styles.optionCopy}>
+                            <AppText variant="bodyStrong" numberOfLines={1}>
+                              {exercise.name}
+                            </AppText>
+                            <AppText variant="micro" dimmed numberOfLines={2}>
+                              {[
+                                exercise.bodyPart,
+                                exercise.target,
+                                exercise.equipment,
+                              ]
+                                .filter(Boolean)
+                                .join(' • ')
+                                .toLowerCase()}
+                            </AppText>
+                          </View>
+                        </View>
+                      </PressScale>
+                    ))}
+                  </ScrollView>
+                  <ActionButton label="Done" onPress={onClosePicker} />
+                </>
+              ) : (
+                <>
+                  <View style={styles.inputField}>
                     <AppText variant="micro" dimmed>
-                      Add at least one exercise before creating this template.
+                      Template name
                     </AppText>
-                  </SurfaceCard>
-                ) : null}
-                {selectedExercises.map((exercise, index) => (
-                  <View key={`${exercise.id}-${index}`} style={styles.templateExerciseRow}>
-                    <View style={styles.templateExerciseCopy}>
-                      <AppText variant="bodyStrong" numberOfLines={1}>
-                        {exercise.name}
-                      </AppText>
-                      <AppText variant="micro" dimmed numberOfLines={1}>
-                        {exercise.bodyPart?.toLowerCase() ?? exercise.focus.toLowerCase()}
-                      </AppText>
-                    </View>
-                    <PressScale haptic="none" onPress={() => onRemoveExercise(exercise.id)}>
-                      <View style={styles.templateExerciseRemoveButton}>
-                        <Ionicons name="close" size={16} color={AppColors.textMuted} />
+                    <TextInput
+                      onChangeText={setNameValue}
+                      placeholder="Push day"
+                      placeholderTextColor={AppColors.textSubtle}
+                      style={styles.input}
+                      value={nameValue}
+                    />
+                  </View>
+                  <View style={styles.templateComposerHeader}>
+                    <AppText variant="bodyStrong">
+                      {selectedExercises.length} exercises
+                    </AppText>
+                    <PressScale haptic="none" onPress={() => setPickerOpen(true)}>
+                      <View style={styles.addExerciseChip}>
+                        <Ionicons name="add" size={16} color={AppColors.primary} />
+                        <AppText variant="label" color={AppColors.primary}>
+                          Add exercise
+                        </AppText>
                       </View>
                     </PressScale>
                   </View>
-                ))}
-              </ScrollView>
-              <ActionButton label="Create template" onPress={onSave} />
-            </SurfaceCard>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
-      <Modal animationType="fade" onRequestClose={onClosePicker} transparent visible={isPickerOpen}>
-        <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
-          <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClosePicker}>
-            <View />
-          </PressScale>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalContainer}>
-            <SurfaceCard style={styles.modalCardLarge}>
-              <View style={styles.modalHandle} />
-              <View style={styles.modalHeader}>
-                <AppText variant="title">Add exercises</AppText>
-                <PressScale haptic="none" onPress={onClosePicker}>
-                  <View style={styles.modalCloseButton}>
-                    <Ionicons name="close" size={18} color={AppColors.text} />
-                  </View>
-                </PressScale>
-              </View>
-              <View style={styles.searchField}>
-                <Ionicons name="search" size={18} color={AppColors.textSubtle} />
-                <TextInput
-                  autoCapitalize="none"
-                  onChangeText={setSearchQuery}
-                  placeholder="search exercise"
-                  placeholderTextColor={AppColors.textSubtle}
-                  style={styles.searchInput}
-                  value={searchQuery}
-                />
-              </View>
-              <ScrollView
-                contentContainerStyle={styles.optionList}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}>
-                {exerciseOptions.map((exercise) => (
-                  <PressScale
-                    key={exercise.id}
-                    containerStyle={styles.optionPressable}
-                    haptic="none"
-                    onPress={() => onAddExercise(exercise)}>
-                    <View style={styles.optionMain}>
-                      {getExerciseLibraryImageSource(exercise) ? (
-                        <Image
-                          source={getExerciseLibraryImageSource(exercise)}
-                          style={styles.optionImage}
-                          contentFit="contain"
-                        />
-                      ) : (
-                        <View style={styles.optionImageFallback}>
-                          <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
+                  <ScrollView
+                    contentContainerStyle={styles.templateExerciseList}
+                    showsVerticalScrollIndicator={false}>
+                    {selectedExercises.length === 0 ? (
+                      <SurfaceCard style={styles.emptyTemplateCard}>
+                        <AppText variant="bodyStrong">No exercises yet</AppText>
+                        <AppText variant="micro" dimmed>
+                          Add at least one exercise before creating this template.
+                        </AppText>
+                      </SurfaceCard>
+                    ) : null}
+                    {selectedExercises.map((exercise, index) => (
+                      <View key={`${exercise.id}-${index}`} style={styles.templateExerciseRow}>
+                        <View style={styles.templateExerciseCopy}>
+                          <AppText variant="bodyStrong" numberOfLines={1}>
+                            {exercise.name}
+                          </AppText>
+                          <AppText variant="micro" dimmed numberOfLines={1}>
+                            {exercise.bodyPart?.toLowerCase() ?? exercise.focus.toLowerCase()}
+                          </AppText>
                         </View>
-                      )}
-                      <View style={styles.optionCopy}>
-                        <AppText variant="bodyStrong" numberOfLines={1}>
-                          {exercise.name}
-                        </AppText>
-                        <AppText variant="micro" dimmed numberOfLines={2}>
-                          {[
-                            exercise.bodyPart,
-                            exercise.target,
-                            exercise.equipment,
-                          ]
-                            .filter(Boolean)
-                            .join(' • ')
-                            .toLowerCase()}
-                        </AppText>
+                        <PressScale haptic="none" onPress={() => onRemoveExercise(exercise.id)}>
+                          <View style={styles.templateExerciseRemoveButton}>
+                            <Ionicons name="close" size={16} color={AppColors.textMuted} />
+                          </View>
+                        </PressScale>
                       </View>
-                    </View>
-                  </PressScale>
-                ))}
-              </ScrollView>
+                    ))}
+                  </ScrollView>
+                  <ActionButton label={primaryActionLabel} onPress={onSave} />
+                </>
+              )}
             </SurfaceCard>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -507,6 +580,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
+  },
+  templateActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   templateActionButton: {
     width: 28,
