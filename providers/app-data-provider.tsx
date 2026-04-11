@@ -20,6 +20,7 @@ import type {
   WorkoutSession,
   WorkoutSessionExercise,
   WorkoutSet,
+  WorkoutTemplateExerciseDraft,
   WorkoutTemplate,
 } from '@/types/app-data';
 
@@ -32,7 +33,9 @@ type AppDataContextValue = {
   addDiningMealLog: (input: CreateDiningMealLogInput) => void;
   cancelWorkoutSession: (sessionId: string) => void;
   clearTodayMealLogs: () => void;
-  createWorkoutTemplate: (input: { exercises: string[]; name: string }) => string | null;
+  createWorkoutTemplate: (
+    input: { exercises: WorkoutTemplateExerciseDraft[]; name: string },
+  ) => string | null;
   deleteWorkoutTemplate: (templateId: string) => void;
   deleteMealLog: (mealLogId: string) => void;
   finishWorkoutSession: (sessionId: string) => void;
@@ -51,7 +54,11 @@ type AppDataContextValue = {
   toggleWorkoutSetCompletion: (sessionExerciseId: string, setNumber: number) => void;
   updateWorkoutSessionTitle: (sessionId: string, title: string) => void;
   updateWorkoutTemplate: (
-    input: { exercises: string[]; name: string; templateId: string },
+    input: {
+      exercises: WorkoutTemplateExerciseDraft[];
+      name: string;
+      templateId: string;
+    },
   ) => void;
   updateWorkoutSetType: (
     sessionExerciseId: string,
@@ -507,11 +514,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }
 
-  function createWorkoutTemplate(input: { exercises: string[]; name: string }) {
+  function createWorkoutTemplate(input: {
+    exercises: WorkoutTemplateExerciseDraft[];
+    name: string;
+  }) {
     const trimmedName = input.name.trim();
-    const normalizedExerciseNames = [...new Set(input.exercises.map((exercise) => exercise.trim()).filter(Boolean))];
+    const normalizedExercises = input.exercises
+      .map((exercise) => ({
+        ...exercise,
+        name: exercise.name.trim(),
+      }))
+      .filter((exercise) => exercise.name);
 
-    if (!trimmedName) {
+    if (!trimmedName || normalizedExercises.length === 0) {
       return null;
     }
 
@@ -530,18 +545,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         order: currentState.workoutTemplates.length,
         updatedAt: now,
       };
-      const newTemplateExercises = normalizedExerciseNames.map((exerciseName, index) => {
-        const defaults = buildExerciseDefaults(currentState, exerciseName, 'strength');
-
+      const newTemplateExercises = normalizedExercises.map((exercise, index) => {
+        const defaults = buildExerciseDefaults(currentState, exercise.name, 'strength');
         return {
           id: `${templateId}-${index + 1}`,
           templateId,
-          name: exerciseName,
-          targetSets: 3,
-          repRange: '8-10 reps',
+          name: exercise.name,
+          targetSets: Math.max(1, exercise.targetSets),
+          repRange: `${Math.max(1, exercise.defaultReps)}-${Math.max(1, exercise.defaultReps)} reps`,
           previousLoadLabel: defaults.previousLoadLabel,
-          defaultLoad: defaults.currentLoad,
-          defaultReps: defaults.targetReps,
+          defaultLoad: Math.max(0, exercise.defaultLoad),
+          defaultReps: Math.max(1, exercise.defaultReps),
           order: index,
         };
       });
@@ -589,14 +603,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }
 
   function updateWorkoutTemplate(input: {
-    exercises: string[];
+    exercises: WorkoutTemplateExerciseDraft[];
     name: string;
     templateId: string;
   }) {
     const trimmedName = input.name.trim();
-    const normalizedExerciseNames = [...new Set(input.exercises.map((exercise) => exercise.trim()).filter(Boolean))];
+    const normalizedExercises = input.exercises
+      .map((exercise) => ({
+        ...exercise,
+        name: exercise.name.trim(),
+      }))
+      .filter((exercise) => exercise.name);
 
-    if (!trimmedName) {
+    if (!trimmedName || normalizedExercises.length === 0) {
       return;
     }
 
@@ -614,18 +633,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       }
 
       const now = new Date().toISOString();
-      const replacementExercises = normalizedExerciseNames.map((exerciseName, index) => {
-        const defaults = buildExerciseDefaults(currentState, exerciseName, 'strength');
-
+      const replacementExercises = normalizedExercises.map((exercise, index) => {
+        const defaults = buildExerciseDefaults(currentState, exercise.name, 'strength');
         return {
           id: `${input.templateId}-${index + 1}`,
           templateId: input.templateId,
-          name: exerciseName,
-          targetSets: 3,
-          repRange: '8-10 reps',
+          name: exercise.name,
+          targetSets: Math.max(1, exercise.targetSets),
+          repRange: `${Math.max(1, exercise.defaultReps)}-${Math.max(1, exercise.defaultReps)} reps`,
           previousLoadLabel: defaults.previousLoadLabel,
-          defaultLoad: defaults.currentLoad,
-          defaultReps: defaults.targetReps,
+          defaultLoad: Math.max(0, exercise.defaultLoad),
+          defaultReps: Math.max(1, exercise.defaultReps),
           order: index,
         };
       });

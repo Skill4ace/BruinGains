@@ -137,7 +137,10 @@ export function WorkoutSessionPreview() {
   } = useAppData();
   const activeWorkout = getActiveWorkoutSessionView(state);
   const [clock, setClock] = useState(() => new Date());
-  const [activeMenuExerciseId, setActiveMenuExerciseId] = useState<string | null>(null);
+  const [activeExerciseAction, setActiveExerciseAction] = useState<{
+    exerciseId: string;
+    exerciseName: string;
+  } | null>(null);
   const [pickerState, setPickerState] = useState<PickerState | null>(null);
   const [composerContext, setComposerContext] = useState<PickerState | null>(null);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
@@ -155,6 +158,7 @@ export function WorkoutSessionPreview() {
   const [activeSetTypeTarget, setActiveSetTypeTarget] = useState<{
     exerciseId: string;
     rowKey: string;
+    setNumber: number;
   } | null>(null);
   const previousCompletionMapRef = useRef<Record<string, boolean>>({});
   const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
@@ -337,7 +341,7 @@ export function WorkoutSessionPreview() {
     setExerciseSearchQuery('');
     setExerciseFilterGroup('all');
     setExerciseFilterType('all');
-    setActiveMenuExerciseId(null);
+    setActiveExerciseAction(null);
     setActiveSetTypeTarget(null);
     requestAnimationFrame(() => {
       setPickerState({ mode, targetExerciseId });
@@ -362,7 +366,7 @@ export function WorkoutSessionPreview() {
     setPickerState(null);
     setComposerContext(null);
     setComposerOpen(false);
-    setActiveMenuExerciseId(null);
+    setActiveExerciseAction(null);
     setActiveSetTypeTarget(null);
   }
 
@@ -496,7 +500,7 @@ export function WorkoutSessionPreview() {
               styles.exerciseCard,
               exercise.allSetsCompleted ? styles.exerciseCardCompleted : null,
               celebratingExerciseId === exercise.id ? styles.exerciseCardCelebrating : null,
-              activeMenuExerciseId === exercise.id ||
+              activeExerciseAction?.exerciseId === exercise.id ||
               activeSetTypeTarget?.exerciseId === exercise.id
                 ? styles.exerciseCardOverlayActive
                 : null,
@@ -512,8 +516,13 @@ export function WorkoutSessionPreview() {
                   onPress={() =>
                     {
                       setActiveSetTypeTarget(null);
-                      setActiveMenuExerciseId((currentValue) =>
-                        currentValue === exercise.id ? null : exercise.id,
+                      setActiveExerciseAction((currentValue) =>
+                        currentValue?.exerciseId === exercise.id
+                          ? null
+                          : {
+                              exerciseId: exercise.id,
+                              exerciseName: exercise.name,
+                            },
                       );
                     }
                   }
@@ -537,46 +546,6 @@ export function WorkoutSessionPreview() {
                   </View>
                 </PressScale>
               </View>
-              {activeMenuExerciseId === exercise.id ? (
-                <View style={styles.exercisePopover}>
-                  <PressScale
-                    haptic="none"
-                    onPress={() => handleOpenExercisePicker('replace', exercise.id)}
-                  >
-                    <View style={styles.exercisePopoverAction}>
-                      <AppText variant="label">Replace exercise</AppText>
-                    </View>
-                  </PressScale>
-                  <PressScale
-                    haptic="none"
-                    onPress={() => {
-                      setActiveMenuExerciseId(null);
-                      setActiveSetTypeTarget(null);
-                      Alert.alert(
-                        'Remove exercise?',
-                        `Remove "${exercise.name}" from this workout?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Remove',
-                            style: 'destructive',
-                            onPress: () => {
-                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                              removeWorkoutExercise(exercise.id);
-                            },
-                          },
-                        ],
-                      );
-                    }}
-                  >
-                    <View style={styles.exercisePopoverAction}>
-                      <AppText variant="label" color={AppColors.danger}>
-                        Remove exercise
-                      </AppText>
-                    </View>
-                  </PressScale>
-                </View>
-              ) : null}
             </View>
 
             <View style={styles.setHeaderRow}>
@@ -623,7 +592,7 @@ export function WorkoutSessionPreview() {
                       }}
                       friction={2}
                       onSwipeableWillOpen={() => {
-                        setActiveMenuExerciseId(null);
+                        setActiveExerciseAction(null);
                         setActiveSetTypeTarget(null);
                         Object.entries(swipeableRefs.current).forEach(([key, instance]) => {
                           if (key !== rowKey) {
@@ -664,7 +633,7 @@ export function WorkoutSessionPreview() {
                         <PressScale
                           haptic="none"
                           onPress={() => {
-                            setActiveMenuExerciseId(null);
+                            setActiveExerciseAction(null);
                             setActiveSetTypeTarget((currentValue) =>
                               currentValue?.exerciseId === exercise.id &&
                               currentValue.rowKey === rowKey
@@ -672,6 +641,7 @@ export function WorkoutSessionPreview() {
                                 : {
                                     exerciseId: exercise.id,
                                     rowKey,
+                                    setNumber: setRow.setNumber,
                                   },
                             );
                           }}
@@ -779,33 +749,6 @@ export function WorkoutSessionPreview() {
                         </PressScale>
                       </View>
                     </Swipeable>
-                    {activeSetTypeTarget?.exerciseId === exercise.id &&
-                    activeSetTypeTarget.rowKey === rowKey ? (
-                      <View style={styles.setTypePopover}>
-                        {SET_TYPE_OPTIONS.map((option) => (
-                          <PressScale
-                            key={`${rowKey}-${option.value}`}
-                            haptic="none"
-                            onPress={() => {
-                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                              updateWorkoutSetType(exercise.id, setRow.setNumber, option.value);
-                              setActiveSetTypeTarget(null);
-                            }}
-                          >
-                            <View style={styles.setTypeOption}>
-                              <AppText
-                                variant="bodyStrong"
-                                color={option.tone}
-                                style={styles.setTypeOptionCode}
-                              >
-                                {option.shortLabel || '•'}
-                              </AppText>
-                              <AppText variant="label">{option.label}</AppText>
-                            </View>
-                          </PressScale>
-                        ))}
-                      </View>
-                    ) : null}
                   </View>
                 );
               })}
@@ -859,23 +802,68 @@ export function WorkoutSessionPreview() {
         draft={composerDraft}
         isOpen={composerOpen}
         onChange={setComposerDraft}
-        onClose={() => setComposerOpen(false)}
+        onClose={() => {
+          setComposerOpen(false);
+          setComposerContext(null);
+          if (pickerState === null) {
+            setExerciseSearchQuery('');
+          }
+        }}
         onSave={handleSaveCustomExercise}
       />
-      {activeMenuExerciseId || activeSetTypeTarget ? (
-        <View pointerEvents="box-none" style={styles.inlineDismissLayer}>
-          <PressScale
-            containerStyle={styles.inlineDismissBackdrop}
-            haptic="none"
-            onPress={() => {
-              setActiveMenuExerciseId(null);
-              setActiveSetTypeTarget(null);
-            }}
-          >
-            <View />
-          </PressScale>
-        </View>
-      ) : null}
+      <ExerciseActionModal
+        isOpen={Boolean(activeExerciseAction)}
+        onClose={() => setActiveExerciseAction(null)}
+        onRemove={() => {
+          if (!activeExerciseAction) {
+            return;
+          }
+
+          const { exerciseId, exerciseName } = activeExerciseAction;
+          setActiveExerciseAction(null);
+          Alert.alert(
+            'Remove exercise?',
+            `Remove "${exerciseName}" from this workout?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Remove',
+                style: 'destructive',
+                onPress: () => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  removeWorkoutExercise(exerciseId);
+                },
+              },
+            ],
+          );
+        }}
+        onReplace={() => {
+          if (!activeExerciseAction) {
+            return;
+          }
+
+          const exerciseId = activeExerciseAction.exerciseId;
+          setActiveExerciseAction(null);
+          handleOpenExercisePicker('replace', exerciseId);
+        }}
+      />
+      <SetTypeModal
+        isOpen={Boolean(activeSetTypeTarget)}
+        onClose={() => setActiveSetTypeTarget(null)}
+        onSelect={(value) => {
+          if (!activeSetTypeTarget) {
+            return;
+          }
+
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          updateWorkoutSetType(
+            activeSetTypeTarget.exerciseId,
+            activeSetTypeTarget.setNumber,
+            value,
+          );
+          setActiveSetTypeTarget(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -944,6 +932,14 @@ function ExercisePickerModal({
   setSearchQuery: (value: string) => void;
   title: string;
 }) {
+  const [activeFilterMenu, setActiveFilterMenu] = useState<'group' | 'type' | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setActiveFilterMenu(null);
+    }
+  }, [isOpen]);
+
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
@@ -975,45 +971,82 @@ function ExercisePickerModal({
                 value={searchQuery}
               />
             </View>
-            <ScrollView
-              horizontal
-              contentContainerStyle={styles.filterChipRow}
-              showsHorizontalScrollIndicator={false}>
-              {EXERCISE_FILTER_GROUPS.map((group) => (
-                <FilterChip
-                  key={group}
-                  active={filterGroup === group}
-                  label={formatFilterLabel(group)}
-                  onPress={() => setFilterGroup(group)}
-                />
-              ))}
-            </ScrollView>
-            <ScrollView
-              horizontal
-              contentContainerStyle={styles.filterChipRow}
-              showsHorizontalScrollIndicator={false}>
-              {EXERCISE_FILTER_TYPES.map((type) => (
-                <FilterChip
-                  key={type}
-                  active={filterType === type}
-                  label={formatFilterLabel(type)}
-                  onPress={() => setFilterType(type)}
-                />
-              ))}
-            </ScrollView>
+            <View style={styles.filterSelectorRow}>
+              <PressScale
+                containerStyle={styles.filterSelectorSlot}
+                haptic="none"
+                onPress={() =>
+                  setActiveFilterMenu((currentValue) =>
+                    currentValue === 'group' ? null : 'group',
+                  )
+                }
+              >
+                <View style={styles.filterSelector}>
+                  <AppText variant="micro" color={AppColors.textMuted}>
+                    {formatFilterLabel(filterGroup)}
+                  </AppText>
+                  <Ionicons
+                    name={activeFilterMenu === 'group' ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={AppColors.textMuted}
+                  />
+                </View>
+              </PressScale>
+              <PressScale
+                containerStyle={styles.filterSelectorSlot}
+                haptic="none"
+                onPress={() =>
+                  setActiveFilterMenu((currentValue) =>
+                    currentValue === 'type' ? null : 'type',
+                  )
+                }
+              >
+                <View style={styles.filterSelector}>
+                  <AppText variant="micro" color={AppColors.textMuted}>
+                    {formatFilterLabel(filterType)}
+                  </AppText>
+                  <Ionicons
+                    name={activeFilterMenu === 'type' ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={AppColors.textMuted}
+                  />
+                </View>
+              </PressScale>
+            </View>
+            {activeFilterMenu ? (
+              <View style={styles.filterDropdownPanel}>
+                <View style={styles.filterDropdownWrap}>
+                  {(activeFilterMenu === 'group'
+                    ? EXERCISE_FILTER_GROUPS
+                    : EXERCISE_FILTER_TYPES
+                  ).map((value) => (
+                    <FilterChip
+                      key={value}
+                      active={
+                        activeFilterMenu === 'group'
+                          ? filterGroup === value
+                          : filterType === value
+                      }
+                      label={formatFilterLabel(value)}
+                      onPress={() => {
+                        if (activeFilterMenu === 'group') {
+                          setFilterGroup(value as ExerciseFilterGroup);
+                        } else {
+                          setFilterType(value as ExerciseFilterType);
+                        }
+                        setActiveFilterMenu(null);
+                      }}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : null}
             <PressScale haptic="none" onPress={onCreateCustom}>
               <View style={styles.createCustomButton}>
                 <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
-                <View style={styles.createCustomCopy}>
-                  <AppText variant="label" color={AppColors.primary}>
-                    add custom exercise
-                  </AppText>
-                  <AppText variant="micro" dimmed numberOfLines={1}>
-                    {canCreateCustomExercise
-                      ? `use "${searchQuery.trim().toLowerCase()}" or enter your own details`
-                      : 'create your own lift, machine, or timed movement'}
-                  </AppText>
-                </View>
+                <AppText variant="label" color={AppColors.primary}>
+                  add custom exercise
+                </AppText>
               </View>
             </PressScale>
             <ScrollView
@@ -1041,6 +1074,7 @@ function ExercisePickerModal({
                       <Image
                         source={getExerciseLibraryImageSource(exercise)}
                         style={styles.optionImage}
+                        autoplay={false}
                         contentFit="contain"
                       />
                     ) : (
@@ -1162,6 +1196,86 @@ function ExerciseComposerModal({
             <ActionButton label="Save exercise" onPress={onSave} />
           </SurfaceCard>
         </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function ExerciseActionModal({
+  isOpen,
+  onClose,
+  onRemove,
+  onReplace,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onRemove: () => void;
+  onReplace: () => void;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
+        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
+          <View />
+        </PressScale>
+        <View style={styles.centerModalContainer}>
+          <SurfaceCard style={styles.smallActionModalCard}>
+            <PressScale haptic="none" onPress={onReplace}>
+              <View style={styles.smallActionModalButton}>
+                <AppText variant="label">Replace exercise</AppText>
+              </View>
+            </PressScale>
+            <PressScale haptic="none" onPress={onRemove}>
+              <View style={styles.smallActionModalButton}>
+                <AppText variant="label" color={AppColors.danger}>
+                  Remove exercise
+                </AppText>
+              </View>
+            </PressScale>
+          </SurfaceCard>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function SetTypeModal({
+  isOpen,
+  onClose,
+  onSelect,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (value: WorkoutSetType) => void;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
+        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
+          <View />
+        </PressScale>
+        <View style={styles.centerModalContainer}>
+          <SurfaceCard style={styles.smallActionModalCard}>
+            {SET_TYPE_OPTIONS.map((option) => (
+              <PressScale
+                key={option.value}
+                haptic="none"
+                onPress={() => onSelect(option.value)}
+              >
+                <View style={styles.smallActionModalButton}>
+                  <AppText
+                    variant="bodyStrong"
+                    color={option.tone}
+                    style={styles.setTypeOptionCode}
+                  >
+                    {option.shortLabel || '•'}
+                  </AppText>
+                  <AppText variant="label">{option.label}</AppText>
+                </View>
+              </PressScale>
+            ))}
+          </SurfaceCard>
+        </View>
       </SafeAreaView>
     </Modal>
   );
@@ -1757,9 +1871,33 @@ const styles = StyleSheet.create({
     color: AppColors.text,
     fontSize: 15,
   },
-  filterChipRow: {
+  filterSelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  filterSelectorSlot: {
+    flex: 1,
+  },
+  filterSelector: {
+    minHeight: 38,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  filterDropdownPanel: {
+    borderRadius: Radii.lg,
+    padding: Spacing.xs,
+    backgroundColor: AppColors.surfaceLowest,
+    ...Shadows.soft,
+  },
+  filterDropdownWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.xs,
-    paddingBottom: 2,
   },
   filterChip: {
     minHeight: 30,
@@ -1780,10 +1918,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     backgroundColor: AppColors.surfaceLow,
-  },
-  createCustomCopy: {
-    flex: 1,
-    gap: 2,
   },
   optionList: {
     gap: Spacing.sm,
@@ -1806,6 +1940,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceHighest,
   },
   optionImageFallback: {
     width: 56,
@@ -1818,6 +1953,27 @@ const styles = StyleSheet.create({
   optionCopy: {
     flex: 1,
     gap: 2,
+  },
+  centerModalContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Layout.pagePadding,
+  },
+  smallActionModalCard: {
+    width: '100%',
+    maxWidth: 280,
+    gap: Spacing.xs,
+    borderRadius: Radii.xl,
+    ...Shadows.soft,
+  },
+  smallActionModalButton: {
+    minHeight: 42,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   inputField: {
     gap: 6,

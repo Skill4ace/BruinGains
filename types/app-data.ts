@@ -89,6 +89,13 @@ export type WorkoutExerciseDraft = {
   trackingMode: WorkoutTrackingMode;
 };
 
+export type WorkoutTemplateExerciseDraft = {
+  defaultLoad: number;
+  defaultReps: number;
+  name: string;
+  targetSets: number;
+};
+
 export type WorkoutTemplate = {
   id: string;
   name: string;

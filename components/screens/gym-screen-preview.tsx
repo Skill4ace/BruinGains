@@ -28,7 +28,16 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
 import { Image } from 'expo-image';
-import type { ExerciseLibraryEntry } from '@/types/app-data';
+import type { ExerciseLibraryEntry, WorkoutTemplateExerciseDraft } from '@/types/app-data';
+
+type TemplateExerciseDraftRow = {
+  bodyPartLabel: string;
+  defaultLoad: string;
+  defaultReps: string;
+  id: string;
+  name: string;
+  targetSets: string;
+};
 
 export function GymScreenPreview() {
   const router = useRouter();
@@ -47,7 +56,7 @@ export function GymScreenPreview() {
   const [templateNameDraft, setTemplateNameDraft] = useState('');
   const [templateExercisePickerOpen, setTemplateExercisePickerOpen] = useState(false);
   const [templateExerciseSearchQuery, setTemplateExerciseSearchQuery] = useState('');
-  const [selectedTemplateExercises, setSelectedTemplateExercises] = useState<ExerciseLibraryEntry[]>([]);
+  const [selectedTemplateExercises, setSelectedTemplateExercises] = useState<TemplateExerciseDraftRow[]>([]);
 
   const exerciseOptions = [...state.exerciseLibrary].sort((left, right) =>
     left.name.localeCompare(right.name),
@@ -58,21 +67,65 @@ export function GymScreenPreview() {
       )
     : exerciseOptions;
 
+  function buildTemplateExerciseDraftRow(
+    exercise: ExerciseLibraryEntry,
+    overrides?: Partial<TemplateExerciseDraftRow>,
+  ): TemplateExerciseDraftRow {
+    return {
+      bodyPartLabel: (exercise.bodyPart ?? exercise.target ?? exercise.focus).toLowerCase(),
+      defaultLoad: '45',
+      defaultReps: '8',
+      id: overrides?.id ?? exercise.id,
+      name: exercise.name,
+      targetSets: '3',
+      ...overrides,
+    };
+  }
+
+  function serializeTemplateExerciseDrafts(): WorkoutTemplateExerciseDraft[] {
+    return selectedTemplateExercises
+      .map((exercise) => ({
+        defaultLoad: Math.max(0, Number.parseFloat(exercise.defaultLoad) || 0),
+        defaultReps: Math.max(1, Math.round(Number.parseFloat(exercise.defaultReps) || 1)),
+        name: exercise.name.trim(),
+        targetSets: Math.max(1, Math.round(Number.parseFloat(exercise.targetSets) || 1)),
+      }))
+      .filter((exercise) => exercise.name);
+  }
+
+  function updateTemplateExerciseField(
+    exerciseId: string,
+    field: 'defaultLoad' | 'defaultReps' | 'targetSets',
+    value: string,
+  ) {
+    setSelectedTemplateExercises((currentValue) =>
+      currentValue.map((exercise) =>
+        exercise.id === exerciseId
+          ? {
+              ...exercise,
+              [field]: value,
+            }
+          : exercise,
+      ),
+    );
+  }
+
   function handleCreateTemplate() {
-    if (!templateNameDraft.trim() || selectedTemplateExercises.length === 0) {
+    const serializedExercises = serializeTemplateExerciseDrafts();
+
+    if (!templateNameDraft.trim() || serializedExercises.length === 0) {
       return;
     }
 
-    const selectedExerciseNames = selectedTemplateExercises.map((exercise) => exercise.name);
     const templateId = editingTemplateId
       ? (updateWorkoutTemplate({
-          exercises: selectedExerciseNames,
+          exercises: serializedExercises,
           name: templateNameDraft,
           templateId: editingTemplateId,
         }),
         editingTemplateId)
       : createWorkoutTemplate({
-          exercises: selectedExerciseNames,
+          exercises: serializedExercises,
           name: templateNameDraft,
         });
 
@@ -109,14 +162,25 @@ export function GymScreenPreview() {
       .sort((left, right) => left.order - right.order)
       .map((exercise) => {
         const normalizedExerciseName = exercise.name.trim().toLowerCase();
-        return (
+        const libraryMatch =
           state.exerciseLibrary.find((entry) => entry.name.trim().toLowerCase() === normalizedExerciseName) ??
           state.exerciseLibrary.find((entry) =>
             entry.aliases.some((alias) => alias.trim().toLowerCase() === normalizedExerciseName),
-          )
-        );
+          );
+
+        if (!libraryMatch) {
+          return null;
+        }
+
+        return buildTemplateExerciseDraftRow(libraryMatch, {
+          bodyPartLabel: (libraryMatch.bodyPart ?? libraryMatch.target ?? libraryMatch.focus).toLowerCase(),
+          defaultLoad: String(exercise.defaultLoad),
+          defaultReps: String(exercise.defaultReps),
+          id: exercise.id,
+          targetSets: String(exercise.targetSets),
+        });
       })
-      .filter((exercise): exercise is ExerciseLibraryEntry => Boolean(exercise));
+      .filter((exercise): exercise is TemplateExerciseDraftRow => Boolean(exercise));
 
     setEditingTemplateId(templateId);
     setTemplateNameDraft(template.name);
@@ -149,9 +213,11 @@ export function GymScreenPreview() {
 
   function handleAddExerciseToTemplate(exercise: ExerciseLibraryEntry) {
     setSelectedTemplateExercises((currentValue) =>
-      currentValue.some((entry) => entry.id === exercise.id)
+      currentValue.some(
+        (entry) => entry.name.trim().toLowerCase() === exercise.name.trim().toLowerCase(),
+      )
         ? currentValue
-        : [...currentValue, exercise],
+        : [...currentValue, buildTemplateExerciseDraftRow(exercise)],
     );
   }
 
@@ -309,6 +375,7 @@ export function GymScreenPreview() {
         selectedExercises={selectedTemplateExercises}
         setPickerOpen={setTemplateExercisePickerOpen}
         setSearchQuery={setTemplateExerciseSearchQuery}
+        updateExerciseField={updateTemplateExerciseField}
       />
     </>
   );
@@ -330,6 +397,7 @@ function WorkoutTemplateComposerModal({
   selectedExercises,
   setPickerOpen,
   setSearchQuery,
+  updateExerciseField,
 }: {
   exerciseOptions: ExerciseLibraryEntry[];
   isOpen: boolean;
@@ -343,9 +411,14 @@ function WorkoutTemplateComposerModal({
   primaryActionLabel: string;
   setNameValue: (value: string) => void;
   searchQuery: string;
-  selectedExercises: ExerciseLibraryEntry[];
+  selectedExercises: TemplateExerciseDraftRow[];
   setPickerOpen: (value: boolean) => void;
   setSearchQuery: (value: string) => void;
+  updateExerciseField: (
+    exerciseId: string,
+    field: 'defaultLoad' | 'defaultReps' | 'targetSets',
+    value: string,
+  ) => void;
 }) {
   return (
     <>
@@ -399,6 +472,7 @@ function WorkoutTemplateComposerModal({
                             <Image
                               source={getExerciseLibraryImageSource(exercise)}
                               style={styles.optionImage}
+                              autoplay={false}
                               contentFit="contain"
                             />
                           ) : (
@@ -467,19 +541,68 @@ function WorkoutTemplateComposerModal({
                     ) : null}
                     {selectedExercises.map((exercise, index) => (
                       <View key={`${exercise.id}-${index}`} style={styles.templateExerciseRow}>
-                        <View style={styles.templateExerciseCopy}>
-                          <AppText variant="bodyStrong" numberOfLines={1}>
-                            {exercise.name}
-                          </AppText>
-                          <AppText variant="micro" dimmed numberOfLines={1}>
-                            {exercise.bodyPart?.toLowerCase() ?? exercise.focus.toLowerCase()}
-                          </AppText>
-                        </View>
-                        <PressScale haptic="none" onPress={() => onRemoveExercise(exercise.id)}>
-                          <View style={styles.templateExerciseRemoveButton}>
-                            <Ionicons name="close" size={16} color={AppColors.textMuted} />
+                        <View style={styles.templateExerciseHeader}>
+                          <View style={styles.templateExerciseCopy}>
+                            <AppText variant="bodyStrong" numberOfLines={1}>
+                              {exercise.name}
+                            </AppText>
+                            <AppText variant="micro" dimmed numberOfLines={1}>
+                              {exercise.bodyPartLabel}
+                            </AppText>
                           </View>
-                        </PressScale>
+                          <PressScale haptic="none" onPress={() => onRemoveExercise(exercise.id)}>
+                            <View style={styles.templateExerciseRemoveButton}>
+                              <Ionicons name="close" size={16} color={AppColors.textMuted} />
+                            </View>
+                          </PressScale>
+                        </View>
+                        <View style={styles.templateExerciseFieldRow}>
+                          <View style={styles.templateExerciseField}>
+                            <AppText variant="micro" dimmed>
+                              sets
+                            </AppText>
+                            <TextInput
+                              keyboardType="numbers-and-punctuation"
+                              onChangeText={(value) =>
+                                updateExerciseField(exercise.id, 'targetSets', value)
+                              }
+                              placeholder="3"
+                              placeholderTextColor={AppColors.textSubtle}
+                              style={styles.templateExerciseInput}
+                              value={exercise.targetSets}
+                            />
+                          </View>
+                          <View style={styles.templateExerciseField}>
+                            <AppText variant="micro" dimmed>
+                              lbs
+                            </AppText>
+                            <TextInput
+                              keyboardType="numbers-and-punctuation"
+                              onChangeText={(value) =>
+                                updateExerciseField(exercise.id, 'defaultLoad', value)
+                              }
+                              placeholder="45"
+                              placeholderTextColor={AppColors.textSubtle}
+                              style={styles.templateExerciseInput}
+                              value={exercise.defaultLoad}
+                            />
+                          </View>
+                          <View style={styles.templateExerciseField}>
+                            <AppText variant="micro" dimmed>
+                              reps
+                            </AppText>
+                            <TextInput
+                              keyboardType="numbers-and-punctuation"
+                              onChangeText={(value) =>
+                                updateExerciseField(exercise.id, 'defaultReps', value)
+                              }
+                              placeholder="8"
+                              placeholderTextColor={AppColors.textSubtle}
+                              style={styles.templateExerciseInput}
+                              value={exercise.defaultReps}
+                            />
+                          </View>
+                        </View>
                       </View>
                     ))}
                   </ScrollView>
@@ -674,14 +797,18 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   templateExerciseRow: {
-    minHeight: 52,
+    minHeight: 92,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingVertical: Spacing.sm,
     gap: Spacing.sm,
     backgroundColor: AppColors.surfaceLow,
+  },
+  templateExerciseHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
   },
   templateExerciseCopy: {
     flex: 1,
@@ -694,6 +821,24 @@ const styles = StyleSheet.create({
     backgroundColor: AppColors.surfaceLowest,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  templateExerciseFieldRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  templateExerciseField: {
+    flex: 1,
+    gap: 4,
+  },
+  templateExerciseInput: {
+    minHeight: 38,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.sm,
+    backgroundColor: AppColors.surfaceLowest,
+    color: AppColors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   searchField: {
     minHeight: 44,
