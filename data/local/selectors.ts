@@ -115,7 +115,20 @@ export function getWorkoutTemplateSummaries(state: LocalAppData): WorkoutTemplat
         (exercise) => exercise.templateId === template.id,
       ).length,
     }))
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => {
+      const leftOrder = left.order ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = right.order ?? Number.MAX_SAFE_INTEGER;
+
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+
+      return left.name.localeCompare(right.name);
+    })
+    .map(({ exerciseCount, ...template }) => ({
+      ...template,
+      exerciseCount,
+    }));
 }
 
 export function getWeeklyActivityCards(

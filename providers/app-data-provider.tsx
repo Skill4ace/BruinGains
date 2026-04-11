@@ -32,7 +32,8 @@ type AppDataContextValue = {
   addDiningMealLog: (input: CreateDiningMealLogInput) => void;
   cancelWorkoutSession: (sessionId: string) => void;
   clearTodayMealLogs: () => void;
-  createWorkoutTemplate: () => void;
+  createWorkoutTemplate: (input: { exercises: string[]; name: string }) => string | null;
+  deleteWorkoutTemplate: (templateId: string) => void;
   deleteMealLog: (mealLogId: string) => void;
   finishWorkoutSession: (sessionId: string) => void;
   addWorkoutSetRow: (sessionExerciseId: string) => void;
@@ -503,27 +504,83 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }
 
-  function createWorkoutTemplate() {
+  function createWorkoutTemplate(input: { exercises: string[]; name: string }) {
+    const trimmedName = input.name.trim();
+    const normalizedExerciseNames = [...new Set(input.exercises.map((exercise) => exercise.trim()).filter(Boolean))];
+
+    if (!trimmedName) {
+      return null;
+    }
+
+    const templateId = createId('template');
+
     setState((currentState) => {
       if (!currentState) {
         return currentState;
       }
 
-      const customTemplateCount = currentState.workoutTemplates.filter((template) =>
-        template.name.startsWith('Custom'),
-      ).length;
       const now = new Date().toISOString();
       const newTemplate: WorkoutTemplate = {
-        id: createId('template'),
-        name: `Custom ${customTemplateCount + 1}`,
-        focus: 'Custom split',
+        id: templateId,
+        name: trimmedName,
         createdAt: now,
+        order: currentState.workoutTemplates.length,
         updatedAt: now,
       };
+      const newTemplateExercises = normalizedExerciseNames.map((exerciseName, index) => {
+        const defaults = buildExerciseDefaults(currentState, exerciseName, 'strength');
+
+        return {
+          id: `${templateId}-${index + 1}`,
+          templateId,
+          name: exerciseName,
+          targetSets: 3,
+          repRange: '8-10 reps',
+          previousLoadLabel: defaults.previousLoadLabel,
+          defaultLoad: defaults.currentLoad,
+          defaultReps: defaults.targetReps,
+          order: index,
+        };
+      });
 
       return {
         ...currentState,
         workoutTemplates: [...currentState.workoutTemplates, newTemplate],
+        templateExercises: [...currentState.templateExercises, ...newTemplateExercises],
+      };
+    });
+
+    return templateId;
+  }
+
+  function deleteWorkoutTemplate(templateId: string) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const targetTemplate = currentState.workoutTemplates.find(
+        (template) => template.id === templateId,
+      );
+
+      if (!targetTemplate) {
+        return currentState;
+      }
+
+      const nextWorkoutTemplates = currentState.workoutTemplates
+        .filter((template) => template.id !== templateId)
+        .map((template) =>
+          template.order > targetTemplate.order
+            ? { ...template, order: template.order - 1 }
+            : template,
+        );
+
+      return {
+        ...currentState,
+        workoutTemplates: nextWorkoutTemplates,
+        templateExercises: currentState.templateExercises.filter(
+          (exercise) => exercise.templateId !== templateId,
+        ),
       };
     });
   }
@@ -1267,6 +1324,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         cancelWorkoutSession,
         clearTodayMealLogs,
         createWorkoutTemplate,
+        deleteWorkoutTemplate,
         deleteMealLog,
         finishWorkoutSession,
         logSet,

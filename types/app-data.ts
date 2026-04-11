@@ -92,8 +92,8 @@ export type WorkoutExerciseDraft = {
 export type WorkoutTemplate = {
   id: string;
   name: string;
-  focus: string;
   createdAt: string;
+  order: number;
   updatedAt: string;
 };
 

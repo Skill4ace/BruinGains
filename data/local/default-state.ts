@@ -190,8 +190,8 @@ function buildTemplateState(now: Date) {
     workoutTemplates.push({
       id: templateId,
       name: seed.name,
-      focus: seed.focus,
       createdAt,
+      order: workoutTemplates.length,
       updatedAt: createdAt,
     });
 
@@ -346,9 +346,7 @@ export function createDefaultLocalAppData(now = new Date()): LocalAppData {
   const exerciseLibrary = buildSeededExerciseLibrary(
     templateExercises.map((exercise) => ({
       name: exercise.name,
-      focus:
-        workoutTemplates.find((template) => template.id === exercise.templateId)?.focus ??
-        gymPreview.templates[0],
+      focus: gymPreview.templates[0],
     })),
   );
 
@@ -402,6 +400,13 @@ export function mergeLocalAppData(
     return seed;
   }
 
+  const nextWorkoutTemplates = (candidate.workoutTemplates ?? seed.workoutTemplates).map(
+    (template, index) => ({
+      ...template,
+      order: template.order ?? index,
+    }),
+  );
+
   return {
     ...seed,
     ...candidate,
@@ -415,7 +420,7 @@ export function mergeLocalAppData(
     },
     mealLogs: candidate.mealLogs ?? seed.mealLogs,
     exerciseLibrary: mergeExerciseLibrary(candidate.exerciseLibrary, seed.exerciseLibrary),
-    workoutTemplates: candidate.workoutTemplates ?? seed.workoutTemplates,
+    workoutTemplates: nextWorkoutTemplates,
     templateExercises: candidate.templateExercises ?? seed.templateExercises,
     workoutSessions: candidate.workoutSessions ?? seed.workoutSessions,
     workoutSessionExercises:

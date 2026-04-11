@@ -98,6 +98,7 @@ export function WorkoutSessionPreview() {
   const [clock, setClock] = useState(() => new Date());
   const [activeMenuExerciseId, setActiveMenuExerciseId] = useState<string | null>(null);
   const [pickerState, setPickerState] = useState<PickerState | null>(null);
+  const [composerContext, setComposerContext] = useState<PickerState | null>(null);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ExerciseComposerDraft>(
@@ -181,29 +182,26 @@ export function WorkoutSessionPreview() {
       .sort((left, right) => left.name.localeCompare(right.name));
   }, [state.exerciseLibrary]);
 
-  const popularExerciseOptions = useMemo(() => {
-    const templateNames = state.templateExercises.map((exercise) => exercise.name.toLowerCase());
-    const popularExercises = exerciseOptions.filter((exercise) => {
-      const lowerName = exercise.name.toLowerCase();
-
-      return (
-        templateNames.includes(lowerName) ||
-        exercise.aliases.some((alias) => templateNames.includes(alias.toLowerCase()))
-      );
-    });
-
-    return popularExercises.length > 0 ? popularExercises : exerciseOptions.slice(0, 24);
-  }, [exerciseOptions, state.templateExercises]);
-
   const filteredExerciseOptions = useMemo(() => {
     const query = exerciseSearchQuery.trim();
 
     if (!query) {
-      return popularExerciseOptions;
+      return exerciseOptions;
     }
 
-    return exerciseOptions.filter((exercise) => searchExerciseLibraryEntry(exercise, query));
-  }, [exerciseOptions, exerciseSearchQuery, popularExerciseOptions]);
+    return [...exerciseOptions]
+      .filter((exercise) => searchExerciseLibraryEntry(exercise, query))
+      .sort((left, right) => {
+        const leftScore = getExerciseSearchScore(left, query);
+        const rightScore = getExerciseSearchScore(right, query);
+
+        if (leftScore !== rightScore) {
+          return rightScore - leftScore;
+        }
+
+        return left.name.localeCompare(right.name);
+      });
+  }, [exerciseOptions, exerciseSearchQuery]);
 
   function getSetRowKey(exerciseId: string, setRow: ActiveWorkoutSetView) {
     return setRow.id ?? `${exerciseId}:${setRow.setNumber}`;
@@ -299,29 +297,38 @@ export function WorkoutSessionPreview() {
   }
 
   function handleSelectExerciseDraft(draft: WorkoutExerciseDraft) {
-    if (!activeWorkout || !pickerState) {
+    const selectionContext = pickerState ?? composerContext;
+
+    if (!activeWorkout || !selectionContext) {
       return;
     }
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
-    if (pickerState.mode === 'add') {
+    if (selectionContext.mode === 'add') {
       addWorkoutExercise(activeWorkout.session.id, draft);
-    } else if (pickerState.targetExerciseId) {
-      replaceWorkoutExercise(pickerState.targetExerciseId, draft);
+    } else if (selectionContext.targetExerciseId) {
+      replaceWorkoutExercise(selectionContext.targetExerciseId, draft);
     }
 
     setPickerState(null);
+    setComposerContext(null);
     setComposerOpen(false);
     setActiveMenuExerciseId(null);
     setActiveSetTypeTarget(null);
   }
 
   function handleOpenCustomComposer() {
+    if (!pickerState) {
+      return;
+    }
+
     setComposerDraft({
       ...DEFAULT_COMPOSER_DRAFT,
       name: exerciseSearchQuery.trim(),
     });
+    setComposerContext(pickerState);
+    setPickerState(null);
     setComposerOpen(true);
   }
 
@@ -608,7 +615,17 @@ export function WorkoutSessionPreview() {
                             );
                           }}
                         >
-                          <View style={styles.setNumberCell}>
+                          <View
+                            style={[
+                              styles.setNumberCell,
+                              {
+                                backgroundColor: getSetTypeBackground(
+                                  setRow.setType,
+                                  setRow.completed,
+                                ),
+                              },
+                            ]}
+                          >
                             <AppText
                               variant="label"
                               color={getSetTypeColor(setRow.setType, setRow.completed)}
@@ -854,123 +871,6 @@ function ExercisePickerModal({
   setSearchQuery: (value: string) => void;
   title: string;
 }) {
-  const [previewExercise, setPreviewExercise] = useState<ExerciseLibraryEntry | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setPreviewExercise(null);
-    }
-  }, [isOpen]);
-
-  return (
-    <>
-      <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
-        <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
-          <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
-            <View />
-          </PressScale>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalContainer}
-          >
-            <SurfaceCard style={styles.modalCard}>
-              <View style={styles.modalHandle} />
-              <View style={styles.modalHeader}>
-                <AppText variant="title">{title}</AppText>
-                <PressScale haptic="none" onPress={onClose}>
-                  <View style={styles.headerButton}>
-                    <Ionicons name="close" size={18} color={AppColors.text} />
-                  </View>
-                </PressScale>
-              </View>
-              <View style={styles.searchField}>
-                <Ionicons name="search" size={18} color={AppColors.textSubtle} />
-                <TextInput
-                  onChangeText={setSearchQuery}
-                  placeholder="Search exercise"
-                  placeholderTextColor={AppColors.textSubtle}
-                  style={styles.searchInput}
-                  value={searchQuery}
-                />
-              </View>
-              {canCreateCustomExercise ? (
-                <PressScale haptic="none" onPress={onCreateCustom}>
-                  <View style={styles.createCustomButton}>
-                    <Ionicons name="create-outline" size={16} color={AppColors.primary} />
-                    <AppText variant="label" color={AppColors.primary}>
-                      Create custom exercise
-                    </AppText>
-                  </View>
-                </PressScale>
-              ) : null}
-              <ScrollView contentContainerStyle={styles.optionList} showsVerticalScrollIndicator={false}>
-                {exerciseOptions.map((exercise) => (
-                  <View key={exercise.id} style={styles.optionRow}>
-                    <PressScale
-                      containerStyle={styles.optionPressable}
-                      haptic="none"
-                      onPress={() => onSelect(exercise)}
-                    >
-                      <View style={styles.optionMain}>
-                        {getExerciseLibraryImageSource(exercise) ? (
-                          <Image
-                            source={getExerciseLibraryImageSource(exercise)}
-                            style={styles.optionImage}
-                            contentFit="contain"
-                          />
-                        ) : (
-                          <View style={styles.optionImageFallback}>
-                            <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
-                          </View>
-                        )}
-                        <View style={styles.optionCopy}>
-                          <AppText variant="bodyStrong" numberOfLines={1}>
-                            {exercise.name}
-                          </AppText>
-                          <AppText variant="micro" dimmed numberOfLines={2}>
-                            {formatExerciseLibraryMeta(exercise)}
-                          </AppText>
-                        </View>
-                      </View>
-                    </PressScale>
-                    <PressScale haptic="none" onPress={() => setPreviewExercise(exercise)}>
-                      <View style={styles.optionInfoButton}>
-                        <Ionicons
-                          name="information-circle-outline"
-                          size={18}
-                          color={AppColors.primary}
-                        />
-                      </View>
-                    </PressScale>
-                  </View>
-                ))}
-              </ScrollView>
-            </SurfaceCard>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
-      <ExerciseLibraryPreviewModal
-        exercise={previewExercise}
-        isOpen={Boolean(previewExercise)}
-        onClose={() => setPreviewExercise(null)}
-      />
-    </>
-  );
-}
-
-function ExerciseLibraryPreviewModal({
-  exercise,
-  isOpen,
-  onClose,
-}: {
-  exercise: ExerciseLibraryEntry | null;
-  isOpen: boolean;
-  onClose: () => void;
-}) {
-  if (!exercise) {
-    return null;
-  }
-
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
@@ -981,96 +881,86 @@ function ExerciseLibraryPreviewModal({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalContainer}
         >
-          <SurfaceCard style={styles.modalCard}>
+          <SurfaceCard style={styles.modalCardLarge}>
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <AppText variant="title">{exercise.name}</AppText>
+              <AppText variant="title">{title}</AppText>
               <PressScale haptic="none" onPress={onClose}>
                 <View style={styles.headerButton}>
                   <Ionicons name="close" size={18} color={AppColors.text} />
                 </View>
               </PressScale>
             </View>
-
-            <View style={styles.exercisePreviewMetaRow}>
-              {exercise.bodyPart ? (
-                <View style={styles.exercisePreviewChip}>
-                  <AppText variant="micro" color={AppColors.primary}>
-                    {exercise.bodyPart}
-                  </AppText>
-                </View>
-              ) : null}
-              {exercise.target ? (
-                <View style={styles.exercisePreviewChip}>
-                  <AppText variant="micro" color={AppColors.primary}>
-                    {exercise.target}
-                  </AppText>
-                </View>
-              ) : null}
-              {exercise.equipment ? (
-                <View style={styles.exercisePreviewChip}>
-                  <AppText variant="micro" color={AppColors.primary}>
-                    {exercise.equipment}
-                  </AppText>
-                </View>
-              ) : null}
-              {exercise.focus ? (
-                <View style={styles.exercisePreviewChip}>
-                  <AppText variant="micro" color={AppColors.primary}>
-                    {exercise.focus}
-                  </AppText>
-                </View>
-              ) : null}
-              {exercise.level ? (
-                <View style={styles.exercisePreviewChip}>
-                  <AppText variant="micro" color={AppColors.primary}>
-                    {exercise.level}
-                  </AppText>
-                </View>
-              ) : null}
+            <View style={styles.searchField}>
+              <Ionicons name="search" size={18} color={AppColors.textSubtle} />
+              <TextInput
+                autoCapitalize="none"
+                onChangeText={setSearchQuery}
+                placeholder="search exercise"
+                placeholderTextColor={AppColors.textSubtle}
+                style={styles.searchInput}
+                value={searchQuery}
+              />
             </View>
-
-            {exercise.description ? (
-              <AppText variant="micro" dimmed style={styles.exercisePreviewDescription}>
-                {exercise.description}
-              </AppText>
-            ) : null}
-
-            {getExerciseLibraryImageSource(exercise) ? (
-              <ScrollView
-                horizontal
-                contentContainerStyle={styles.exercisePreviewImageRow}
-                showsHorizontalScrollIndicator={false}
-              >
-                <Image
-                  source={getExerciseLibraryImageSource(exercise)}
-                  style={styles.exercisePreviewImage}
-                  contentFit="contain"
-                />
-              </ScrollView>
-            ) : null}
-
-            <View style={styles.exercisePreviewSection}>
-              <AppText variant="bodyStrong">Instructions</AppText>
-              <View style={styles.exercisePreviewInstructions}>
-                {exercise.instructions.length > 0 ? (
-                  exercise.instructions.map((instruction, index) => (
-                    <View key={`${exercise.id}-instruction-${index}`} style={styles.exercisePreviewInstructionRow}>
-                      <AppText variant="micro" color={AppColors.primary}>
-                        {index + 1}.
+            <PressScale haptic="none" onPress={onCreateCustom}>
+              <View style={styles.createCustomButton}>
+                <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
+                <View style={styles.createCustomCopy}>
+                  <AppText variant="label" color={AppColors.primary}>
+                    add custom exercise
+                  </AppText>
+                  <AppText variant="micro" dimmed numberOfLines={1}>
+                    {canCreateCustomExercise
+                      ? `use "${searchQuery.trim().toLowerCase()}" or enter your own details`
+                      : 'create your own lift, machine, or timed movement'}
+                  </AppText>
+                </View>
+              </View>
+            </PressScale>
+            <ScrollView
+              contentContainerStyle={styles.optionList}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {exerciseOptions.length === 0 ? (
+                <SurfaceCard style={styles.emptyExerciseCard}>
+                  <AppText variant="bodyStrong">No exercises match yet</AppText>
+                  <AppText variant="micro" dimmed>
+                    try another search or add a custom exercise.
+                  </AppText>
+                </SurfaceCard>
+              ) : null}
+              {exerciseOptions.map((exercise) => (
+                <PressScale
+                  key={exercise.id}
+                  containerStyle={styles.optionPressable}
+                  haptic="none"
+                  onPress={() => onSelect(exercise)}
+                >
+                  <View style={styles.optionMain}>
+                    {getExerciseLibraryImageSource(exercise) ? (
+                      <Image
+                        source={getExerciseLibraryImageSource(exercise)}
+                        style={styles.optionImage}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <View style={styles.optionImageFallback}>
+                        <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
+                      </View>
+                    )}
+                    <View style={styles.optionCopy}>
+                      <AppText variant="bodyStrong" numberOfLines={1}>
+                        {exercise.name}
                       </AppText>
-                      <AppText variant="micro" dimmed style={styles.exercisePreviewInstructionText}>
-                        {instruction}
+                      <AppText variant="micro" dimmed numberOfLines={2}>
+                        {formatExerciseLibraryMeta(exercise)}
                       </AppText>
                     </View>
-                  ))
-                ) : (
-                  <AppText variant="micro" dimmed>
-                    No instructions available yet for this exercise.
-                  </AppText>
-                )}
-              </View>
-            </View>
+                  </View>
+                </PressScale>
+              ))}
+            </ScrollView>
           </SurfaceCard>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -1247,10 +1137,6 @@ function getSetTypeBadgeLabel(setRow: ActiveWorkoutSetView) {
 }
 
 function getSetTypeColor(setType: WorkoutSetType, completed: boolean) {
-  if (completed) {
-    return AppColors.primary;
-  }
-
   if (setType === 'warmup') {
     return '#D58C2F';
   }
@@ -1263,7 +1149,27 @@ function getSetTypeColor(setType: WorkoutSetType, completed: boolean) {
     return AppColors.danger;
   }
 
-  return AppColors.textMuted;
+  return completed ? AppColors.primary : AppColors.textMuted;
+}
+
+function getSetTypeBackground(setType: WorkoutSetType, completed: boolean) {
+  if (completed && setType === 'normal') {
+    return '#EAF1F8';
+  }
+
+  if (setType === 'warmup') {
+    return 'rgba(213, 140, 47, 0.18)';
+  }
+
+  if (setType === 'drop') {
+    return 'rgba(123, 58, 237, 0.16)';
+  }
+
+  if (setType === 'failure') {
+    return 'rgba(231, 100, 92, 0.16)';
+  }
+
+  return AppColors.surfaceLowest;
 }
 
 function formatWorkoutDate(startedAt: string) {
@@ -1296,7 +1202,35 @@ function formatExerciseLibraryMeta(exercise: ExerciseLibraryEntry) {
     exercise.secondaryMuscles[0],
   ].filter(Boolean);
 
-  return parts.length > 0 ? parts.join(' • ') : exercise.focus;
+  return parts.length > 0 ? parts.join(' • ').toLowerCase() : exercise.focus.toLowerCase();
+}
+
+function getExerciseSearchScore(exercise: ExerciseLibraryEntry, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedName = exercise.name.toLowerCase();
+  const normalizedBodyPart = exercise.bodyPart?.toLowerCase() ?? '';
+  const normalizedTarget = exercise.target?.toLowerCase() ?? '';
+  const normalizedCategory = exercise.category?.toLowerCase() ?? '';
+  const normalizedEquipment = exercise.equipment?.toLowerCase() ?? '';
+  const normalizedAliases = exercise.aliases.map((alias) => alias.toLowerCase());
+  const normalizedSecondaryMuscles = exercise.secondaryMuscles.map((muscle) =>
+    muscle.toLowerCase(),
+  );
+
+  let score = 0;
+
+  if (normalizedName === normalizedQuery) score += 12;
+  if (normalizedAliases.includes(normalizedQuery)) score += 10;
+  if (normalizedTarget === normalizedQuery) score += 9;
+  if (normalizedBodyPart === normalizedQuery) score += 9;
+  if (normalizedCategory === normalizedQuery) score += 8;
+  if (normalizedEquipment === normalizedQuery) score += 6;
+  if (normalizedName.startsWith(normalizedQuery)) score += 5;
+  if (normalizedAliases.some((alias) => alias.startsWith(normalizedQuery))) score += 4;
+  if (normalizedSecondaryMuscles.includes(normalizedQuery)) score += 3;
+  if (normalizedName.includes(normalizedQuery)) score += 2;
+
+  return score;
 }
 
 const styles = StyleSheet.create({
@@ -1595,6 +1529,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radii.xl,
     borderTopRightRadius: Radii.xl,
   },
+  modalCardLarge: {
+    maxHeight: '84%',
+    gap: Spacing.md,
+    borderTopLeftRadius: Radii.xl,
+    borderTopRightRadius: Radii.xl,
+  },
   modalHandle: {
     width: 56,
     height: 5,
@@ -1623,28 +1563,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   createCustomButton: {
-    minHeight: 42,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: AppColors.secondaryContainer,
-  },
-  optionList: {
-    gap: Spacing.sm,
-    paddingBottom: Spacing.lg,
-  },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  optionPressable: {
-    flex: 1,
-  },
-  optionMain: {
-    minHeight: 48,
+    minHeight: 50,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
     flexDirection: 'row',
@@ -1652,16 +1571,36 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     backgroundColor: AppColors.surfaceLow,
   },
+  createCustomCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  optionList: {
+    gap: Spacing.sm,
+    paddingBottom: Spacing.xxl,
+  },
+  optionPressable: {
+    width: '100%',
+  },
+  optionMain: {
+    minHeight: 64,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: AppColors.surfaceLow,
+  },
   optionImage: {
-    width: 52,
-    height: 52,
-    borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceHighest,
+    width: 56,
+    height: 56,
+    borderRadius: Radii.lg,
   },
   optionImageFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: Radii.md,
+    width: 56,
+    height: 56,
+    borderRadius: Radii.lg,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: AppColors.surfaceHighest,
@@ -1669,54 +1608,6 @@ const styles = StyleSheet.create({
   optionCopy: {
     flex: 1,
     gap: 2,
-  },
-  optionInfoButton: {
-    width: 38,
-    height: 38,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  exercisePreviewMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
-  exercisePreviewDescription: {
-    lineHeight: 18,
-  },
-  exercisePreviewChip: {
-    minHeight: 28,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.secondaryContainer,
-  },
-  exercisePreviewImageRow: {
-    gap: Spacing.sm,
-  },
-  exercisePreviewImage: {
-    width: 232,
-    height: 232,
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  exercisePreviewSection: {
-    gap: Spacing.sm,
-  },
-  exercisePreviewInstructions: {
-    gap: Spacing.sm,
-  },
-  exercisePreviewInstructionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.xs,
-  },
-  exercisePreviewInstructionText: {
-    flex: 1,
-    lineHeight: 18,
   },
   inputField: {
     gap: 6,
