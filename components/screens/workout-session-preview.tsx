@@ -142,6 +142,7 @@ export function WorkoutSessionPreview() {
     exerciseName: string;
   } | null>(null);
   const [pickerState, setPickerState] = useState<PickerState | null>(null);
+  const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>([]);
   const [composerContext, setComposerContext] = useState<PickerState | null>(null);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
   const [exerciseFilterGroup, setExerciseFilterGroup] =
@@ -339,6 +340,7 @@ export function WorkoutSessionPreview() {
     targetExerciseId: string | null = null,
   ) {
     setExerciseSearchQuery('');
+    setSelectedExerciseIds([]);
     setExerciseFilterGroup('all');
     setExerciseFilterType('all');
     setActiveExerciseAction(null);
@@ -364,6 +366,7 @@ export function WorkoutSessionPreview() {
     }
 
     setPickerState(null);
+    setSelectedExerciseIds([]);
     setComposerContext(null);
     setComposerOpen(false);
     setActiveExerciseAction(null);
@@ -382,6 +385,40 @@ export function WorkoutSessionPreview() {
     setComposerContext(pickerState);
     setPickerState(null);
     setComposerOpen(true);
+  }
+
+  function handleToggleExerciseSelection(exerciseId: string) {
+    setSelectedExerciseIds((currentValue) =>
+      currentValue.includes(exerciseId)
+        ? currentValue.filter((id) => id !== exerciseId)
+        : [...currentValue, exerciseId],
+    );
+  }
+
+  function handleAddSelectedExercises() {
+    if (!activeWorkout || !pickerState || pickerState.mode !== 'add' || selectedExerciseIds.length === 0) {
+      return;
+    }
+
+    const selectedExercises = exerciseOptions.filter((exercise) =>
+      selectedExerciseIds.includes(exercise.id),
+    );
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
+    selectedExercises.forEach((exercise) => {
+      addWorkoutExercise(activeWorkout.session.id, {
+        currentLoad: 45,
+        name: exercise.name,
+        repRange: '8-10',
+        targetReps: 8,
+        targetSets: 3,
+        trackingMode: 'strength',
+      });
+    });
+
+    setPickerState(null);
+    setSelectedExerciseIds([]);
   }
 
   function handleSaveCustomExercise() {
@@ -780,8 +817,14 @@ export function WorkoutSessionPreview() {
         exerciseOptions={filteredExerciseOptions}
         isOpen={Boolean(pickerState)}
         onClose={() => setPickerState(null)}
+        onCommitSelection={handleAddSelectedExercises}
         onCreateCustom={handleOpenCustomComposer}
-        onSelect={(exercise) =>
+        onSelect={(exercise) => {
+          if (pickerState?.mode === 'add') {
+            handleToggleExerciseSelection(exercise.id);
+            return;
+          }
+
           handleSelectExerciseDraft({
             currentLoad: 45,
             name: exercise.name,
@@ -789,9 +832,11 @@ export function WorkoutSessionPreview() {
             targetReps: 8,
             targetSets: 3,
             trackingMode: 'strength',
-          })
-        }
+          });
+        }}
+        pickerMode={pickerState?.mode ?? 'add'}
         searchQuery={exerciseSearchQuery}
+        selectedExerciseIds={selectedExerciseIds}
         setFilterGroup={setExerciseFilterGroup}
         setFilterType={setExerciseFilterType}
         setSearchQuery={setExerciseSearchQuery}
@@ -909,10 +954,13 @@ function ExercisePickerModal({
   filterType,
   exerciseOptions,
   isOpen,
+  onCommitSelection,
   onClose,
   onCreateCustom,
   onSelect,
+  pickerMode,
   searchQuery,
+  selectedExerciseIds,
   setFilterGroup,
   setFilterType,
   setSearchQuery,
@@ -923,10 +971,13 @@ function ExercisePickerModal({
   filterType: ExerciseFilterType;
   exerciseOptions: ExerciseLibraryEntry[];
   isOpen: boolean;
+  onCommitSelection: () => void;
   onClose: () => void;
   onCreateCustom: () => void;
   onSelect: (exercise: ExerciseLibraryEntry) => void;
+  pickerMode: 'add' | 'replace';
   searchQuery: string;
+  selectedExerciseIds: string[];
   setFilterGroup: (value: ExerciseFilterGroup) => void;
   setFilterType: (value: ExerciseFilterType) => void;
   setSearchQuery: (value: string) => void;
@@ -947,18 +998,44 @@ function ExercisePickerModal({
           <View />
         </PressScale>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={undefined}
           style={styles.modalContainer}
         >
           <SurfaceCard style={styles.modalCardLarge}>
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <AppText variant="title">{title}</AppText>
-              <PressScale haptic="none" onPress={onClose}>
-                <View style={styles.headerButton}>
-                  <Ionicons name="close" size={18} color={AppColors.text} />
-                </View>
-              </PressScale>
+              <View style={styles.modalHeaderLeading}>
+                <PressScale haptic="none" onPress={onClose}>
+                  <View style={styles.headerButton}>
+                    <Ionicons name="close" size={18} color={AppColors.text} />
+                  </View>
+                </PressScale>
+                <AppText variant="title">{title}</AppText>
+              </View>
+              {pickerMode === 'add' ? (
+                <PressScale
+                  haptic="none"
+                  onPress={onCommitSelection}
+                  disabled={selectedExerciseIds.length === 0}
+                >
+                  <View style={styles.headerAddButton}>
+                    <AppText
+                      variant="label"
+                      color={
+                        selectedExerciseIds.length > 0
+                          ? AppColors.primary
+                          : AppColors.textSubtle
+                      }
+                    >
+                      {selectedExerciseIds.length > 0
+                        ? `add (${selectedExerciseIds.length})`
+                        : 'add'}
+                    </AppText>
+                  </View>
+                </PressScale>
+              ) : (
+                <View style={styles.headerAddButtonPlaceholder} />
+              )}
             </View>
             <View style={styles.searchField}>
               <Ionicons name="search" size={18} color={AppColors.textSubtle} />
@@ -971,7 +1048,7 @@ function ExercisePickerModal({
                 value={searchQuery}
               />
             </View>
-            <View style={styles.filterSelectorRow}>
+            <View style={styles.filterControlRow}>
               <PressScale
                 containerStyle={styles.filterSelectorSlot}
                 haptic="none"
@@ -983,7 +1060,7 @@ function ExercisePickerModal({
               >
                 <View style={styles.filterSelector}>
                   <AppText variant="micro" color={AppColors.textMuted}>
-                    {formatFilterLabel(filterGroup)}
+                    {formatPrimaryFilterLabel(filterGroup)}
                   </AppText>
                   <Ionicons
                     name={activeFilterMenu === 'group' ? 'chevron-up' : 'chevron-down'}
@@ -1003,13 +1080,24 @@ function ExercisePickerModal({
               >
                 <View style={styles.filterSelector}>
                   <AppText variant="micro" color={AppColors.textMuted}>
-                    {formatFilterLabel(filterType)}
+                    {formatSecondaryFilterLabel(filterType)}
                   </AppText>
                   <Ionicons
                     name={activeFilterMenu === 'type' ? 'chevron-up' : 'chevron-down'}
                     size={16}
                     color={AppColors.textMuted}
                   />
+                </View>
+              </PressScale>
+              <PressScale
+                containerStyle={styles.customActionSlot}
+                haptic="none"
+                onPress={onCreateCustom}>
+                <View style={styles.createCustomCompactButton}>
+                  <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
+                  <AppText variant="micro" color={AppColors.primary}>
+                    add custom exercise
+                  </AppText>
                 </View>
               </PressScale>
             </View>
@@ -1041,15 +1129,8 @@ function ExercisePickerModal({
                 </View>
               </View>
             ) : null}
-            <PressScale haptic="none" onPress={onCreateCustom}>
-              <View style={styles.createCustomButton}>
-                <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
-                <AppText variant="label" color={AppColors.primary}>
-                  add custom exercise
-                </AppText>
-              </View>
-            </PressScale>
             <ScrollView
+              style={styles.optionScroll}
               contentContainerStyle={styles.optionList}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -1069,7 +1150,14 @@ function ExercisePickerModal({
                   haptic="none"
                   onPress={() => onSelect(exercise)}
                 >
-                  <View style={styles.optionMain}>
+                  <View
+                    style={[
+                      styles.optionMain,
+                      pickerMode === 'add' && selectedExerciseIds.includes(exercise.id)
+                        ? styles.optionMainSelected
+                        : null,
+                    ]}
+                  >
                     {getExerciseLibraryImageSource(exercise) ? (
                       <Image
                         source={getExerciseLibraryImageSource(exercise)}
@@ -1090,6 +1178,26 @@ function ExercisePickerModal({
                         {formatExerciseLibraryMeta(exercise)}
                       </AppText>
                     </View>
+                    {pickerMode === 'add' ? (
+                      <View
+                        style={[
+                          styles.optionCheck,
+                          selectedExerciseIds.includes(exercise.id)
+                            ? styles.optionCheckSelected
+                            : null,
+                        ]}
+                      >
+                        <Ionicons
+                          name="checkmark"
+                          size={16}
+                          color={
+                            selectedExerciseIds.includes(exercise.id)
+                              ? AppColors.white
+                              : AppColors.textSubtle
+                          }
+                        />
+                      </View>
+                    ) : null}
                   </View>
                 </PressScale>
               ))}
@@ -1481,6 +1589,14 @@ function formatFilterLabel(value: string) {
   return value;
 }
 
+function formatPrimaryFilterLabel(value: ExerciseFilterGroup) {
+  return value === 'all' ? 'any body part' : formatFilterLabel(value);
+}
+
+function formatSecondaryFilterLabel(value: ExerciseFilterType) {
+  return value === 'all' ? 'any category' : formatFilterLabel(value);
+}
+
 function getExerciseFilterGroup(exercise: ExerciseLibraryEntry): ExerciseFilterGroup {
   const bodyPart = exercise.bodyPart?.toLowerCase() ?? '';
 
@@ -1830,6 +1946,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11, 14, 18, 0.44)',
   },
   modalContainer: {
+    flex: 1,
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -1839,8 +1956,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radii.xl,
   },
   modalCardLarge: {
-    maxHeight: '84%',
-    gap: Spacing.md,
+    height: '88%',
+    gap: Spacing.sm,
     borderTopLeftRadius: Radii.xl,
     borderTopRightRadius: Radii.xl,
   },
@@ -1857,8 +1974,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
+  modalHeaderLeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  headerAddButton: {
+    minHeight: 38,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  headerAddButtonPlaceholder: {
+    width: 56,
+  },
   searchField: {
-    minHeight: 44,
+    minHeight: 42,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
     flexDirection: 'row',
@@ -1871,18 +2005,21 @@ const styles = StyleSheet.create({
     color: AppColors.text,
     fontSize: 15,
   },
-  filterSelectorRow: {
+  filterControlRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   filterSelectorSlot: {
     flex: 1,
   },
+  customActionSlot: {
+    minWidth: 164,
+  },
   filterSelector: {
-    minHeight: 38,
+    minHeight: 36,
     borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1919,9 +2056,22 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     backgroundColor: AppColors.surfaceLow,
   },
+  createCustomCompactButton: {
+    minHeight: 36,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    backgroundColor: AppColors.surfaceLow,
+  },
   optionList: {
     gap: Spacing.sm,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: Spacing.xl,
+  },
+  optionScroll: {
+    flex: 1,
   },
   optionPressable: {
     width: '100%',
@@ -1935,6 +2085,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     backgroundColor: AppColors.surfaceLow,
+  },
+  optionMainSelected: {
+    backgroundColor: '#EAF1F8',
   },
   optionImage: {
     width: 56,
@@ -1953,6 +2106,20 @@ const styles = StyleSheet.create({
   optionCopy: {
     flex: 1,
     gap: 2,
+  },
+  optionCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLowest,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+  },
+  optionCheckSelected: {
+    backgroundColor: AppColors.primary,
+    borderColor: AppColors.primary,
   },
   centerModalContainer: {
     flex: 1,
