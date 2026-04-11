@@ -12,6 +12,7 @@ import type {
   WorkoutSet,
   WorkoutTemplate,
   WorkoutTemplateExercise,
+  WorkoutTemplateSet,
 } from '@/types/app-data';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -176,6 +177,7 @@ function buildTemplateState(now: Date) {
   const createdAt = now.toISOString();
   const workoutTemplates: WorkoutTemplate[] = [];
   const templateExercises: WorkoutTemplateExercise[] = [];
+  const templateExerciseSets: WorkoutTemplateSet[] = [];
 
   templateSeeds.forEach((seed) => {
     const templateId = seed.name.toLowerCase();
@@ -194,21 +196,35 @@ function buildTemplateState(now: Date) {
         name: exercise.name,
         targetSets: exercise.targetSets,
         repRange: exercise.repRange,
-        previousLoadLabel: exercise.previousLoadLabel,
-        defaultLoad: exercise.defaultLoad,
-        defaultReps: exercise.defaultReps,
+        trackingMode: 'strength',
+        currentLoad: exercise.defaultLoad,
+        targetReps: exercise.defaultReps,
+        targetDurationMinutes: null,
         order: index,
       });
+
+      for (let setIndex = 0; setIndex < exercise.targetSets; setIndex += 1) {
+        templateExerciseSets.push({
+          id: `${templateId}-${index + 1}-set-${setIndex + 1}`,
+          templateExerciseId: `${templateId}-${index + 1}`,
+          durationMinutes: null,
+          load: exercise.defaultLoad,
+          reps: exercise.defaultReps,
+          setNumber: setIndex + 1,
+          setType: 'normal',
+        });
+      }
     });
   });
 
-  return { workoutTemplates, templateExercises };
+  return { workoutTemplates, templateExercises, templateExerciseSets };
 }
 
 function cloneTemplateIntoSession(
   templateId: string,
   sessionId: string,
   stateTemplateExercises: WorkoutTemplateExercise[],
+  stateTemplateExerciseSets: WorkoutTemplateSet[],
 ): WorkoutSessionExercise[] {
   return stateTemplateExercises
     .filter((exercise) => exercise.templateId === templateId)
@@ -220,14 +236,46 @@ function cloneTemplateIntoSession(
       name: exercise.name,
       targetSets: exercise.targetSets,
       repRange: exercise.repRange,
-      previousLoadLabel: exercise.previousLoadLabel,
-      currentLoad: exercise.defaultLoad,
-      targetReps: exercise.defaultReps,
+      previousLoadLabel: 'No previous workout',
+      currentLoad: exercise.currentLoad,
+      targetReps: exercise.targetReps,
+      targetDurationMinutes: exercise.targetDurationMinutes ?? null,
+      trackingMode: exercise.trackingMode ?? 'strength',
       order: exercise.order,
     }));
 }
 
-function buildSeedWorkoutHistory(now: Date, templateExercises: WorkoutTemplateExercise[]) {
+function cloneTemplateSetsIntoSession(
+  templateExerciseIdToSessionExerciseId: Map<string, WorkoutSessionExercise>,
+  sessionId: string,
+  stateTemplateExerciseSets: WorkoutTemplateSet[],
+) {
+  return stateTemplateExerciseSets
+    .filter((set) => templateExerciseIdToSessionExerciseId.has(set.templateExerciseId))
+    .sort((left, right) => left.setNumber - right.setNumber)
+    .map((set) => {
+      const sessionExercise = templateExerciseIdToSessionExerciseId.get(set.templateExerciseId)!;
+
+      return {
+        completed: false,
+        durationMinutes: set.durationMinutes ?? sessionExercise.targetDurationMinutes ?? null,
+        id: createId('set'),
+        load: set.load,
+        reps: set.reps,
+        loggedAt: new Date().toISOString(),
+        sessionExerciseId: sessionExercise.id,
+        sessionId,
+        setNumber: set.setNumber,
+        setType: set.setType ?? 'normal',
+      };
+    });
+}
+
+function buildSeedWorkoutHistory(
+  now: Date,
+  templateExercises: WorkoutTemplateExercise[],
+  templateExerciseSets: WorkoutTemplateSet[],
+) {
   const currentWeekStart = startOfWeek(now);
   const workoutSessions: WorkoutSession[] = [];
   const workoutSessionExercises: WorkoutSessionExercise[] = [];
@@ -245,7 +293,15 @@ function buildSeedWorkoutHistory(now: Date, templateExercises: WorkoutTemplateEx
     const sessionId = createId('session');
     const startedAt = new Date(withTime(seed.day, seed.hour, 10));
     const finishedAt = new Date(startedAt.getTime() + 50 * 60 * 1000);
-    const sessionExercises = cloneTemplateIntoSession(seed.templateId, sessionId, templateExercises);
+    const sessionExercises = cloneTemplateIntoSession(
+      seed.templateId,
+      sessionId,
+      templateExercises,
+      templateExerciseSets,
+    );
+    const exerciseMap = new Map(
+      sessionExercises.map((exercise) => [exercise.templateExerciseId ?? '', exercise]),
+    );
 
     workoutSessions.push({
       id: sessionId,
@@ -257,23 +313,18 @@ function buildSeedWorkoutHistory(now: Date, templateExercises: WorkoutTemplateEx
     });
 
     workoutSessionExercises.push(...sessionExercises);
+    const seededSets = cloneTemplateSetsIntoSession(
+      exerciseMap,
+      sessionId,
+      templateExerciseSets,
+    );
 
-    sessionExercises.forEach((exercise) => {
-      const completedSets = Math.max(exercise.targetSets - 1, 2);
-
-      for (let setIndex = 0; setIndex < completedSets; setIndex += 1) {
-        workoutSets.push({
-          completed: true,
-          id: createId('set'),
-          sessionId,
-          sessionExerciseId: exercise.id,
-          load: exercise.currentLoad,
-          reps: exercise.targetReps,
-          loggedAt: new Date(startedAt.getTime() + (setIndex + exercise.order) * 6 * 60 * 1000).toISOString(),
-          setNumber: setIndex + 1,
-          setType: 'normal',
-        });
-      }
+    seededSets.forEach((set, setIndex) => {
+      workoutSets.push({
+        ...set,
+        completed: setIndex % Math.max(1, Math.floor(seededSets.length / 2)) !== 0,
+        loggedAt: new Date(startedAt.getTime() + (setIndex + 1) * 6 * 60 * 1000).toISOString(),
+      });
     });
   });
 
@@ -335,8 +386,8 @@ export function createDefaultLocalAppData(now = new Date()): LocalAppData {
     workoutsPerWeek: 4,
   };
 
-  const { workoutTemplates, templateExercises } = buildTemplateState(now);
-  const workoutHistory = buildSeedWorkoutHistory(now, templateExercises);
+  const { workoutTemplates, templateExercises, templateExerciseSets } = buildTemplateState(now);
+  const workoutHistory = buildSeedWorkoutHistory(now, templateExercises, templateExerciseSets);
   const mealLogs = buildSeedMealLogs(now);
   const exerciseLibrary = buildSeededExerciseLibrary(
     templateExercises.map((exercise) => ({
@@ -357,6 +408,7 @@ export function createDefaultLocalAppData(now = new Date()): LocalAppData {
     exerciseLibrary,
     workoutTemplates,
     templateExercises,
+    templateExerciseSets,
     workoutSessions: workoutHistory.workoutSessions,
     workoutSessionExercises: workoutHistory.workoutSessionExercises,
     workoutSets: workoutHistory.workoutSets,
@@ -406,6 +458,23 @@ export function mergeLocalAppData(
   const customTemplateExercises = (candidate.templateExercises ?? []).filter(
     (exercise) => !legacySeedTemplateIds.has(exercise.templateId),
   );
+  const customTemplateExerciseSets = candidate.templateExerciseSets ?? [];
+  const fallbackTemplateExerciseSets = [
+    ...seed.templateExerciseSets,
+    ...customTemplateExercises.flatMap((exercise) =>
+      Array.from({ length: exercise.targetSets }, (_, index) => ({
+        id: `${exercise.id}-set-${index + 1}`,
+        templateExerciseId: exercise.id,
+        durationMinutes: exercise.trackingMode === 'duration'
+          ? exercise.targetDurationMinutes ?? 20
+          : null,
+        load: exercise.currentLoad,
+        reps: exercise.targetReps,
+        setNumber: index + 1,
+        setType: 'normal' as const,
+      })),
+    ),
+  ];
 
   return {
     ...seed,
@@ -422,6 +491,18 @@ export function mergeLocalAppData(
     exerciseLibrary: mergeExerciseLibrary(candidate.exerciseLibrary, seed.exerciseLibrary),
     workoutTemplates: nextWorkoutTemplates,
     templateExercises: [...seed.templateExercises, ...customTemplateExercises],
+    templateExerciseSets:
+      customTemplateExerciseSets.length > 0
+        ? [
+            ...seed.templateExerciseSets,
+            ...customTemplateExerciseSets.filter((set) => {
+              const owningTemplateExercise = customTemplateExercises.find(
+                (exercise) => exercise.id === set.templateExerciseId,
+              );
+              return Boolean(owningTemplateExercise);
+            }),
+          ]
+        : fallbackTemplateExerciseSets,
     workoutSessions: candidate.workoutSessions ?? seed.workoutSessions,
     workoutSessionExercises:
       candidate.workoutSessionExercises ?? seed.workoutSessionExercises,

@@ -22,6 +22,8 @@ import type {
   WorkoutSet,
   WorkoutTemplateExerciseDraft,
   WorkoutTemplate,
+  WorkoutTemplateExercise,
+  WorkoutTemplateSet,
 } from '@/types/app-data';
 
 type AppDataContextValue = {
@@ -165,13 +167,69 @@ function buildSessionExercisesFromTemplate(
       name: exercise.name,
       targetSets: exercise.targetSets,
       repRange: exercise.repRange,
-      previousLoadLabel: exercise.previousLoadLabel,
-      currentLoad: exercise.defaultLoad,
-      targetReps: exercise.defaultReps,
-      targetDurationMinutes: null,
-      trackingMode: 'strength',
+      previousLoadLabel: buildExerciseDefaults(
+        state,
+        exercise.name,
+        exercise.trackingMode,
+      ).previousLoadLabel,
+      currentLoad: exercise.currentLoad,
+      targetReps: exercise.targetReps,
+      targetDurationMinutes: exercise.targetDurationMinutes ?? null,
+      trackingMode: exercise.trackingMode,
       order: exercise.order,
     }));
+}
+
+function buildWorkoutSetsFromTemplate(
+  state: LocalAppData,
+  templateId: string,
+  sessionId: string,
+  sessionExercises: WorkoutSessionExercise[],
+): WorkoutSet[] {
+  const exerciseByTemplateId = new Map(
+    sessionExercises
+      .filter((exercise) => exercise.templateExerciseId)
+      .map((exercise) => [exercise.templateExerciseId as string, exercise]),
+  );
+
+  return state.templateExerciseSets
+    .filter((set) => {
+      const templateExercise = state.templateExercises.find(
+        (exercise) => exercise.id === set.templateExerciseId,
+      );
+
+      return templateExercise?.templateId === templateId;
+    })
+    .sort((left, right) => {
+      if (left.templateExerciseId !== right.templateExerciseId) {
+        return left.templateExerciseId.localeCompare(right.templateExerciseId);
+      }
+
+      return left.setNumber - right.setNumber;
+    })
+    .flatMap((templateSet) => {
+      const sessionExercise = exerciseByTemplateId.get(templateSet.templateExerciseId);
+
+      if (!sessionExercise) {
+        return [];
+      }
+
+      return [
+        {
+          completed: false,
+          durationMinutes:
+            templateSet.durationMinutes ?? sessionExercise.targetDurationMinutes ?? null,
+          id: createId('set'),
+          sessionId,
+          sessionExerciseId: sessionExercise.id,
+          load: templateSet.load,
+          reps: templateSet.reps,
+          loggedAt: new Date().toISOString(),
+          setNumber: templateSet.setNumber,
+          setType: templateSet.setType ?? 'normal',
+        },
+      ];
+    });
 }
 
 function normalizeExerciseName(value: string) {
@@ -296,6 +354,77 @@ function createSessionExercise(
     order,
     ...overrides,
   };
+}
+
+function buildTemplateRepRange(draft: WorkoutTemplateExerciseDraft) {
+  if (draft.trackingMode === 'duration') {
+    const firstDuration = draft.sets[0]?.durationMinutes ?? draft.targetDurationMinutes ?? 20;
+    return `${Math.max(1, Math.round(firstDuration))} min`;
+  }
+
+  const reps = draft.sets
+    .map((set) => Math.max(0, Math.round(set.reps)))
+    .filter((value) => value > 0);
+
+  if (!reps.length) {
+    return draft.repRange || '8-10 reps';
+  }
+
+  const minReps = Math.min(...reps);
+  const maxReps = Math.max(...reps);
+
+  return minReps === maxReps ? `${minReps} reps` : `${minReps}-${maxReps} reps`;
+}
+
+function buildTemplateExerciseRecord(
+  state: LocalAppData,
+  templateId: string,
+  draft: WorkoutTemplateExerciseDraft,
+  order: number,
+): WorkoutTemplateExercise {
+  const templateExerciseId = createId('template-exercise');
+  const firstSet = draft.sets[0];
+  const defaults = buildExerciseDefaults(state, draft.name, draft.trackingMode);
+
+  return {
+    id: templateExerciseId,
+    templateId,
+    name: draft.name.trim(),
+    targetSets: draft.sets.length,
+    repRange: buildTemplateRepRange(draft),
+    trackingMode: draft.trackingMode,
+    currentLoad:
+      draft.trackingMode === 'duration'
+        ? 0
+        : firstSet?.load ?? defaults.currentLoad,
+    targetReps:
+      draft.trackingMode === 'duration'
+        ? 0
+        : firstSet?.reps ?? defaults.targetReps,
+    targetDurationMinutes:
+      draft.trackingMode === 'duration'
+        ? firstSet?.durationMinutes ?? draft.targetDurationMinutes ?? 20
+        : null,
+    order,
+  };
+}
+
+function buildTemplateSetRecords(
+  templateExerciseId: string,
+  draft: WorkoutTemplateExerciseDraft,
+): WorkoutTemplateSet[] {
+  return draft.sets.map((set, index) => ({
+    id: createId('template-set'),
+    templateExerciseId,
+    durationMinutes:
+      draft.trackingMode === 'duration'
+        ? Math.max(1, Math.round(set.durationMinutes ?? draft.targetDurationMinutes ?? 20))
+        : null,
+    load: draft.trackingMode === 'duration' ? 0 : Math.max(0, set.load),
+    reps: draft.trackingMode === 'duration' ? 0 : Math.max(0, Math.round(set.reps)),
+    setNumber: index + 1,
+    setType: set.setType ?? 'normal',
+  }));
 }
 
 function upsertWorkoutSet(
@@ -522,8 +651,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .map((exercise) => ({
         ...exercise,
         name: exercise.name.trim(),
+        sets: exercise.sets
+          .map((set, index) => ({
+            ...set,
+            setNumber: index + 1,
+          }))
+          .filter((set) => set.setNumber > 0),
       }))
-      .filter((exercise) => exercise.name);
+      .filter((exercise) => exercise.name && exercise.sets.length > 0);
 
     if (!trimmedName || normalizedExercises.length === 0) {
       return null;
@@ -544,25 +679,21 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         order: currentState.workoutTemplates.length,
         updatedAt: now,
       };
-      const newTemplateExercises = normalizedExercises.map((exercise, index) => {
-        const defaults = buildExerciseDefaults(currentState, exercise.name, 'strength');
-        return {
-          id: `${templateId}-${index + 1}`,
-          templateId,
-          name: exercise.name,
-          targetSets: Math.max(1, exercise.targetSets),
-          repRange: `${Math.max(1, exercise.defaultReps)}-${Math.max(1, exercise.defaultReps)} reps`,
-          previousLoadLabel: defaults.previousLoadLabel,
-          defaultLoad: Math.max(0, exercise.defaultLoad),
-          defaultReps: Math.max(1, exercise.defaultReps),
-          order: index,
-        };
-      });
+      const newTemplateExercises = normalizedExercises.map((exercise, index) =>
+        buildTemplateExerciseRecord(currentState, templateId, exercise, index),
+      );
+      const newTemplateExerciseSets = normalizedExercises.flatMap((exercise, index) =>
+        buildTemplateSetRecords(newTemplateExercises[index].id, exercise),
+      );
 
       return {
         ...currentState,
         workoutTemplates: [...currentState.workoutTemplates, newTemplate],
         templateExercises: [...currentState.templateExercises, ...newTemplateExercises],
+        templateExerciseSets: [
+          ...currentState.templateExerciseSets,
+          ...newTemplateExerciseSets,
+        ],
       };
     });
 
@@ -597,6 +728,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         templateExercises: currentState.templateExercises.filter(
           (exercise) => exercise.templateId !== templateId,
         ),
+        templateExerciseSets: currentState.templateExerciseSets.filter((set) => {
+          const templateExercise = currentState.templateExercises.find(
+            (exercise) => exercise.id === set.templateExerciseId,
+          );
+          return templateExercise?.templateId !== templateId;
+        }),
       };
     });
   }
@@ -611,8 +748,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .map((exercise) => ({
         ...exercise,
         name: exercise.name.trim(),
+        sets: exercise.sets
+          .map((set, index) => ({
+            ...set,
+            setNumber: index + 1,
+          }))
+          .filter((set) => set.setNumber > 0),
       }))
-      .filter((exercise) => exercise.name);
+      .filter((exercise) => exercise.name && exercise.sets.length > 0);
 
     if (!trimmedName || normalizedExercises.length === 0) {
       return;
@@ -632,20 +775,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       }
 
       const now = new Date().toISOString();
-      const replacementExercises = normalizedExercises.map((exercise, index) => {
-        const defaults = buildExerciseDefaults(currentState, exercise.name, 'strength');
-        return {
-          id: `${input.templateId}-${index + 1}`,
-          templateId: input.templateId,
-          name: exercise.name,
-          targetSets: Math.max(1, exercise.targetSets),
-          repRange: `${Math.max(1, exercise.defaultReps)}-${Math.max(1, exercise.defaultReps)} reps`,
-          previousLoadLabel: defaults.previousLoadLabel,
-          defaultLoad: Math.max(0, exercise.defaultLoad),
-          defaultReps: Math.max(1, exercise.defaultReps),
-          order: index,
-        };
-      });
+      const replacementExercises = normalizedExercises.map((exercise, index) =>
+        buildTemplateExerciseRecord(currentState, input.templateId, exercise, index),
+      );
+      const replacementExerciseSets = normalizedExercises.flatMap((exercise, index) =>
+        buildTemplateSetRecords(replacementExercises[index].id, exercise),
+      );
+      const existingTemplateExerciseIds = new Set(
+        currentState.templateExercises
+          .filter((exercise) => exercise.templateId === input.templateId)
+          .map((exercise) => exercise.id),
+      );
 
       return {
         ...currentState,
@@ -663,6 +803,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             (exercise) => exercise.templateId !== input.templateId,
           ),
           ...replacementExercises,
+        ],
+        templateExerciseSets: [
+          ...currentState.templateExerciseSets.filter(
+            (set) => !existingTemplateExerciseIds.has(set.templateExerciseId),
+          ),
+          ...replacementExerciseSets,
         ],
       };
     });
@@ -751,7 +897,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         templateId,
         sessionId,
       );
-      const sessionWorkoutSets = buildInitialWorkoutSetsForExercises(sessionExercises);
+      const templateWorkoutSets = buildWorkoutSetsFromTemplate(
+        currentState,
+        templateId,
+        sessionId,
+        sessionExercises,
+      );
+      const sessionWorkoutSets =
+        templateWorkoutSets.length > 0
+          ? templateWorkoutSets
+          : buildInitialWorkoutSetsForExercises(sessionExercises);
       const nextSession: WorkoutSession = {
         id: sessionId,
         title: template?.name ?? 'Workout',

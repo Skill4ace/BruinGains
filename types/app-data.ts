@@ -98,10 +98,19 @@ export type WorkoutExerciseDraft = {
 };
 
 export type WorkoutTemplateExerciseDraft = {
-  defaultLoad: number;
-  defaultReps: number;
   name: string;
-  targetSets: number;
+  repRange: string;
+  sets: WorkoutTemplateSetDraft[];
+  targetDurationMinutes?: number | null;
+  trackingMode: WorkoutTrackingMode;
+};
+
+export type WorkoutTemplateSetDraft = {
+  durationMinutes?: number | null;
+  load: number;
+  reps: number;
+  setNumber: number;
+  setType: WorkoutSetType;
 };
 
 export type WorkoutTemplate = {
@@ -118,10 +127,21 @@ export type WorkoutTemplateExercise = {
   name: string;
   targetSets: number;
   repRange: string;
-  previousLoadLabel: string;
-  defaultLoad: number;
-  defaultReps: number;
+  trackingMode: WorkoutTrackingMode;
+  currentLoad: number;
+  targetReps: number;
+  targetDurationMinutes?: number | null;
   order: number;
+};
+
+export type WorkoutTemplateSet = {
+  id: string;
+  templateExerciseId: string;
+  durationMinutes?: number | null;
+  load: number;
+  reps: number;
+  setNumber: number;
+  setType?: WorkoutSetType;
 };
 
 export type WorkoutSession = {
@@ -193,6 +213,7 @@ export type LocalAppData = {
   exerciseLibrary: ExerciseLibraryEntry[];
   workoutTemplates: WorkoutTemplate[];
   templateExercises: WorkoutTemplateExercise[];
+  templateExerciseSets: WorkoutTemplateSet[];
   workoutSessions: WorkoutSession[];
   workoutSessionExercises: WorkoutSessionExercise[];
   workoutSets: WorkoutSet[];

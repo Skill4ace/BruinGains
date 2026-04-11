@@ -56,6 +56,14 @@ export default function RootLayout() {
                 presentation: 'modal',
               }}
             />
+            <Stack.Screen
+              name="workout/template"
+              options={{
+                animation: 'slide_from_bottom',
+                gestureEnabled: true,
+                presentation: 'modal',
+              }}
+            />
           </Stack>
           <StatusBar style="dark" />
         </ThemeProvider>
