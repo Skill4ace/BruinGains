@@ -21,6 +21,11 @@ import {
   getExerciseLibraryImageSource,
   searchExerciseLibraryEntry,
 } from '@/data/local/exercise-library';
+import {
+  formatDurationInput,
+  formatDurationMinutes,
+  parseDurationMinutesInput,
+} from '@/lib/workout-duration';
 import { useAppData } from '@/providers/app-data-provider';
 import { ActionButton } from '@/components/ui/action-button';
 import { AppText } from '@/components/ui/app-text';
@@ -393,7 +398,7 @@ export function WorkoutTemplateEditorPreview() {
     const draftKey = getDraftKey(exerciseId, rowKey, field);
     setDraftValues((currentValue) => ({
       ...currentValue,
-      [draftKey]: value,
+      [draftKey]: field === 'durationMinutes' ? formatDurationInput(value) : value,
     }));
   }
 
@@ -580,18 +585,20 @@ export function WorkoutTemplateEditorPreview() {
     }
 
     if (composerDraft.trackingMode === 'duration') {
-      const targetDurationMinutes = Math.max(
-        1,
-        Math.round(Number.parseFloat(composerDraft.durationMinutes)),
+      const parsedDurationMinutes = parseDurationMinutesInput(
+        composerDraft.durationMinutes,
+        20,
       );
 
-      if (!Number.isFinite(targetDurationMinutes)) {
+      if (parsedDurationMinutes === null) {
         return;
       }
 
+      const targetDurationMinutes = Math.max(1 / 60, parsedDurationMinutes);
+
       handleSelectExerciseDraft({
         name: trimmedName,
-        repRange: `${targetDurationMinutes} min`,
+        repRange: formatDurationMinutes(targetDurationMinutes),
         targetDurationMinutes,
         targetSets: 1,
         trackingMode: 'duration',
@@ -795,7 +802,7 @@ export function WorkoutTemplateEditorPreview() {
               </AppText>
               {exercise.trackingMode === 'duration' ? (
                 <AppText variant="micro" dimmed style={styles.setInputHeaderWide}>
-                  MINUTES
+                  DURATION
                 </AppText>
               ) : (
                 <>
@@ -897,6 +904,7 @@ export function WorkoutTemplateEditorPreview() {
                         </View>
                         {exercise.trackingMode === 'duration' ? (
                           <WorkoutSetInput
+                            keyboardType="number-pad"
                             onBlur={() =>
                               commitDraftValue(
                                 exercise.id,
@@ -1074,11 +1082,13 @@ export function WorkoutTemplateEditorPreview() {
 }
 
 function WorkoutSetInput({
+  keyboardType = 'numbers-and-punctuation',
   onBlur,
   onChangeText,
   style,
   value,
 }: {
+  keyboardType?: 'number-pad' | 'numbers-and-punctuation';
   onBlur: () => void;
   onChangeText: (value: string) => void;
   style?: object;
@@ -1086,10 +1096,10 @@ function WorkoutSetInput({
 }) {
   return (
     <TextInput
-      keyboardType="numbers-and-punctuation"
+      keyboardType={keyboardType}
       onBlur={onBlur}
       onChangeText={onChangeText}
-      placeholder="0"
+      placeholder="0:00"
       placeholderTextColor={AppColors.textSubtle}
       style={[styles.setInput, style]}
       value={value}
@@ -1400,9 +1410,11 @@ function ExerciseComposerModal({
 
             {draft.trackingMode === 'duration' ? (
               <ExerciseInputField
-                keyboardType="numbers-and-punctuation"
-                label="Minutes per set"
-                onChangeText={(value) => onChange({ ...draft, durationMinutes: value })}
+                keyboardType="number-pad"
+                label="Duration per set"
+                onChangeText={(value) =>
+                  onChange({ ...draft, durationMinutes: formatDurationInput(value) })
+                }
                 value={draft.durationMinutes}
               />
             ) : null}
@@ -1496,7 +1508,7 @@ function ExerciseInputField({
   onChangeText,
   value,
 }: {
-  keyboardType?: 'default' | 'numbers-and-punctuation';
+  keyboardType?: 'default' | 'number-pad' | 'numbers-and-punctuation';
   label: string;
   onChangeText: (value: string) => void;
   value: string;
@@ -1617,49 +1629,6 @@ function formatPreviousSetText(previousLoadLabel: string) {
   }
 
   return trimmedValue;
-}
-
-function formatDurationMinutes(value: number | null | undefined) {
-  const safeValue = Math.max(0, Number.isFinite(value ?? NaN) ? Number(value) : 0);
-  const totalSeconds = Math.round(safeValue * 60);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-function parseDurationMinutesInput(value: string, fallbackMinutes: number) {
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue) {
-    return fallbackMinutes;
-  }
-
-  if (trimmedValue.includes(':')) {
-    const [minutesPart, secondsPart = '0'] = trimmedValue.split(':');
-    const minutes = Number.parseInt(minutesPart, 10);
-    const seconds = Number.parseInt(secondsPart, 10);
-
-    if (
-      Number.isFinite(minutes) &&
-      Number.isFinite(seconds) &&
-      minutes >= 0 &&
-      seconds >= 0 &&
-      seconds < 60
-    ) {
-      return minutes + seconds / 60;
-    }
-
-    return null;
-  }
-
-  const numericValue = Number.parseFloat(trimmedValue);
-
-  if (!Number.isFinite(numericValue) || numericValue < 0) {
-    return null;
-  }
-
-  return numericValue;
 }
 
 function formatExerciseLibraryMeta(exercise: ExerciseLibraryEntry) {

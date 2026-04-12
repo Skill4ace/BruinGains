@@ -4,20 +4,22 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   UIManager,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import {
-  type ReactNode,
   useEffect,
   useMemo,
   useRef,
@@ -33,6 +35,11 @@ import {
   inferExerciseTrackingMode,
   searchExerciseLibraryEntry,
 } from '@/data/local/exercise-library';
+import {
+  formatDurationInput,
+  formatDurationMinutes,
+  parseDurationMinutesInput,
+} from '@/lib/workout-duration';
 import { useAppData } from '@/providers/app-data-provider';
 import { ActionButton } from '@/components/ui/action-button';
 import { AppText } from '@/components/ui/app-text';
@@ -118,8 +125,156 @@ const EXERCISE_FILTER_TYPES: ExerciseFilterType[] = [
   'cardio',
 ];
 
+type WorkoutInputField = 'durationMinutes' | 'load' | 'reps';
+
+type WorkoutInputTarget = {
+  exercise: ActiveWorkoutExerciseView;
+  fallbackValue: number;
+  field: WorkoutInputField;
+  fieldLabel: string;
+  key: string;
+  rowKey: string;
+  setRow: ActiveWorkoutSetView;
+  step: number;
+  unitLabel: string;
+};
+
+const WORKOUT_INPUT_BOARD_DEFAULT_HEIGHT = 332;
+const LOAD_STEP = 5;
+const REPS_STEP = 1;
+const DURATION_STEP_MINUTES = 15 / 60;
+
+function getWorkoutInputKey(
+  exerciseId: string,
+  rowKey: string,
+  field: WorkoutInputField,
+) {
+  return `${exerciseId}:${rowKey}:${field}`;
+}
+
+function sanitizeIntegerInput(value: string) {
+  const digitsOnly = value.replace(/\D/g, '');
+
+  if (!digitsOnly) {
+    return '';
+  }
+
+  return String(Number.parseInt(digitsOnly, 10));
+}
+
+function sanitizeLoadInput(value: string) {
+  const sanitized = value.replace(/[^0-9.]/g, '');
+
+  if (!sanitized) {
+    return '';
+  }
+
+  const includesDecimal = sanitized.includes('.');
+  const [integerPartRaw, ...decimalParts] = sanitized.split('.');
+  const integerPart = integerPartRaw ? String(Number.parseInt(integerPartRaw, 10)) : '0';
+  const decimalPart = decimalParts.join('').slice(0, 2);
+
+  if (!includesDecimal) {
+    return integerPart;
+  }
+
+  if (!decimalPart && sanitized.endsWith('.')) {
+    return `${integerPart}.`;
+  }
+
+  return `${integerPart}.${decimalPart}`;
+}
+
+function formatLoadValue(value: number) {
+  const roundedValue = Math.round(value * 100) / 100;
+
+  if (Number.isInteger(roundedValue)) {
+    return String(roundedValue);
+  }
+
+  return roundedValue.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function appendWorkoutInputValue(
+  field: WorkoutInputField,
+  currentValue: string,
+  token: string,
+  replaceExisting: boolean,
+) {
+  if (field === 'durationMinutes') {
+    const currentDigits = replaceExisting ? '' : currentValue.replace(/\D/g, '');
+    return formatDurationInput(`${currentDigits}${token}`);
+  }
+
+  if (field === 'load') {
+    return sanitizeLoadInput(`${replaceExisting ? '' : currentValue}${token}`);
+  }
+
+  return sanitizeIntegerInput(`${replaceExisting ? '' : currentValue}${token}`);
+}
+
+function removeWorkoutInputCharacter(
+  field: WorkoutInputField,
+  currentValue: string,
+  replaceExisting: boolean,
+) {
+  if (replaceExisting) {
+    return '';
+  }
+
+  if (field === 'durationMinutes') {
+    const nextDigits = currentValue.replace(/\D/g, '').slice(0, -1);
+    return formatDurationInput(nextDigits);
+  }
+
+  if (field === 'load') {
+    return sanitizeLoadInput(currentValue.slice(0, -1));
+  }
+
+  return sanitizeIntegerInput(currentValue.slice(0, -1));
+}
+
+function adjustWorkoutInputValue(
+  target: WorkoutInputTarget,
+  currentValue: string,
+  direction: -1 | 1,
+) {
+  if (target.field === 'durationMinutes') {
+    const numericValue = currentValue.trim()
+      ? parseDurationMinutesInput(currentValue, 0) ?? 0
+      : 0;
+
+    return formatDurationMinutes(
+      Math.max(0, numericValue + direction * target.step),
+    );
+  }
+
+  if (target.field === 'load') {
+    const numericValue = currentValue.trim() ? Number.parseFloat(currentValue) : 0;
+    const nextValue = Math.max(0, numericValue + direction * target.step);
+    return formatLoadValue(nextValue);
+  }
+
+  const numericValue = currentValue.trim() ? Number.parseInt(currentValue, 10) : 0;
+  return String(Math.max(0, numericValue + direction * target.step));
+}
+
+function getWorkoutInputSpecialKey(field: WorkoutInputField) {
+  if (field === 'durationMinutes') {
+    return '00';
+  }
+
+  if (field === 'load') {
+    return '.';
+  }
+
+  return null;
+}
+
 export function WorkoutSessionPreview() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const {
     addWorkoutExercise,
     addWorkoutSetRow,
@@ -155,6 +310,11 @@ export function WorkoutSessionPreview() {
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [titleDraft, setTitleDraft] = useState('');
   const [celebratingExerciseId, setCelebratingExerciseId] = useState<string | null>(null);
+  const [activeInputKey, setActiveInputKey] = useState<string | null>(null);
+  const [replaceInputOnNextKey, setReplaceInputOnNextKey] = useState(false);
+  const [inputBoardHeight, setInputBoardHeight] = useState(
+    WORKOUT_INPUT_BOARD_DEFAULT_HEIGHT,
+  );
   const [activeSetTypeTarget, setActiveSetTypeTarget] = useState<{
     exerciseId: string;
     rowKey: string;
@@ -162,6 +322,9 @@ export function WorkoutSessionPreview() {
   } | null>(null);
   const previousCompletionMapRef = useRef<Record<string, boolean>>({});
   const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollOffsetRef = useRef(0);
+  const setRowRefs = useRef<Record<string, View | null>>({});
   const completedSetCount = useMemo(
     () =>
       activeWorkout?.exercises.reduce(
@@ -169,6 +332,62 @@ export function WorkoutSessionPreview() {
         0,
       ) ?? 0,
     [activeWorkout],
+  );
+  const workoutInputTargets = useMemo<WorkoutInputTarget[]>(
+    () =>
+      activeWorkout?.exercises.flatMap((exercise) =>
+        exercise.sets.flatMap<WorkoutInputTarget>((setRow) => {
+          const rowKey = getSetRowKey(exercise.id, setRow);
+
+          if (exercise.trackingMode === 'duration') {
+            return [
+              {
+                exercise,
+                fallbackValue:
+                  setRow.durationMinutes ?? exercise.targetDurationMinutes ?? 20,
+                field: 'durationMinutes' as const,
+                fieldLabel: 'Duration',
+                key: getWorkoutInputKey(exercise.id, rowKey, 'durationMinutes'),
+                rowKey,
+                setRow,
+                step: DURATION_STEP_MINUTES,
+                unitLabel: 'MM:SS',
+              },
+            ];
+          }
+
+          return [
+            {
+              exercise,
+              fallbackValue: setRow.load,
+              field: 'load' as const,
+              fieldLabel: 'Load',
+              key: getWorkoutInputKey(exercise.id, rowKey, 'load'),
+              rowKey,
+              setRow,
+              step: LOAD_STEP,
+              unitLabel: 'LB',
+            },
+            {
+              exercise,
+              fallbackValue: setRow.reps,
+              field: 'reps' as const,
+              fieldLabel: 'Reps',
+              key: getWorkoutInputKey(exercise.id, rowKey, 'reps'),
+              rowKey,
+              setRow,
+              step: REPS_STEP,
+              unitLabel: 'REPS',
+            },
+          ];
+        }),
+      ) ?? [],
+    [activeWorkout],
+  );
+  const activeInputTarget = useMemo(
+    () =>
+      workoutInputTargets.find((target) => target.key === activeInputKey) ?? null,
+    [activeInputKey, workoutInputTargets],
   );
 
   useEffect(() => {
@@ -188,6 +407,13 @@ export function WorkoutSessionPreview() {
   useEffect(() => {
     setTitleDraft(activeWorkout?.session.title ?? '');
   }, [activeWorkout?.session.id, activeWorkout?.session.title]);
+
+  useEffect(() => {
+    if (activeInputKey && !activeInputTarget) {
+      setActiveInputKey(null);
+      setReplaceInputOnNextKey(false);
+    }
+  }, [activeInputKey, activeInputTarget]);
 
   useEffect(() => {
     if (!activeWorkout) {
@@ -224,6 +450,35 @@ export function WorkoutSessionPreview() {
 
     previousCompletionMapRef.current = nextCompletionMap;
   }, [activeWorkout]);
+
+  useEffect(() => {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      const targetRow = setRowRefs.current[activeInputTarget.rowKey];
+
+      if (!targetRow) {
+        return;
+      }
+
+      targetRow.measureInWindow((_x, y, _width, height) => {
+        const availableBottom =
+          windowHeight - inputBoardHeight - Math.max(insets.bottom, Spacing.sm) - 16;
+        const overflow = y + height - availableBottom;
+
+        if (overflow > 0) {
+          scrollViewRef.current?.scrollTo({
+            animated: true,
+            y: Math.max(0, scrollOffsetRef.current + overflow + 18),
+          });
+        }
+      });
+    }, 40);
+
+    return () => clearTimeout(timeout);
+  }, [activeInputTarget, insets.bottom, inputBoardHeight, windowHeight]);
 
   const exerciseOptions = useMemo(() => {
     return [...state.exerciseLibrary]
@@ -290,7 +545,12 @@ export function WorkoutSessionPreview() {
     const draftKey = getDraftKey(sessionExerciseId, rowKey, field);
     setDraftValues((currentValue) => ({
       ...currentValue,
-      [draftKey]: value,
+      [draftKey]:
+        field === 'durationMinutes'
+          ? formatDurationInput(value)
+          : field === 'load'
+            ? sanitizeLoadInput(value)
+            : sanitizeIntegerInput(value),
     }));
   }
 
@@ -330,10 +590,140 @@ export function WorkoutSessionPreview() {
     }));
   }
 
+  function getTargetInputValue(target: WorkoutInputTarget) {
+    return getInputValue(
+      target.exercise.id,
+      target.rowKey,
+      target.field,
+      target.fallbackValue,
+    );
+  }
+
+  function commitInputTarget(target: WorkoutInputTarget | null) {
+    if (!target) {
+      return;
+    }
+
+    commitDraftValue(target.exercise, target.setRow, target.field, target.fallbackValue);
+  }
+
+  function closeInputBoard(options?: { commit?: boolean }) {
+    if (activeInputKey) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+
+    if (options?.commit !== false) {
+      commitInputTarget(activeInputTarget);
+    }
+
+    setActiveInputKey(null);
+    setReplaceInputOnNextKey(false);
+  }
+
+  function openInputTarget(targetKey: string) {
+    Keyboard.dismiss();
+    setActiveExerciseAction(null);
+    setActiveSetTypeTarget(null);
+
+    if (activeInputTarget && activeInputTarget.key !== targetKey) {
+      commitInputTarget(activeInputTarget);
+    }
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setActiveInputKey(targetKey);
+    setReplaceInputOnNextKey(true);
+  }
+
+  function updateActiveInputDraft(nextValue: string) {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    handleDraftChange(
+      activeInputTarget.exercise.id,
+      activeInputTarget.rowKey,
+      activeInputTarget.field,
+      nextValue,
+    );
+    setReplaceInputOnNextKey(false);
+  }
+
+  function handleInputBoardKeyPress(token: string) {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const nextValue = appendWorkoutInputValue(
+      activeInputTarget.field,
+      getTargetInputValue(activeInputTarget),
+      token,
+      replaceInputOnNextKey,
+    );
+
+    updateActiveInputDraft(nextValue);
+  }
+
+  function handleInputBoardBackspace() {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const nextValue = removeWorkoutInputCharacter(
+      activeInputTarget.field,
+      getTargetInputValue(activeInputTarget),
+      replaceInputOnNextKey,
+    );
+
+    updateActiveInputDraft(nextValue);
+  }
+
+  function handleInputBoardStep(direction: -1 | 1) {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const nextValue = adjustWorkoutInputValue(
+      activeInputTarget,
+      getTargetInputValue(activeInputTarget),
+      direction,
+    );
+
+    updateActiveInputDraft(nextValue);
+  }
+
+  function handleInputBoardNext() {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const currentIndex = workoutInputTargets.findIndex(
+      (target) => target.key === activeInputTarget.key,
+    );
+    const nextTarget = workoutInputTargets[currentIndex + 1] ?? null;
+
+    if (!nextTarget) {
+      closeInputBoard();
+      return;
+    }
+
+    commitInputTarget(activeInputTarget);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setActiveInputKey(nextTarget.key);
+    setReplaceInputOnNextKey(true);
+  }
+
   function handleToggleSet(
     exercise: ActiveWorkoutExerciseView,
     setRow: ActiveWorkoutSetView,
   ) {
+    if (
+      activeInputTarget &&
+      (activeInputTarget.exercise.id !== exercise.id ||
+        activeInputTarget.setRow.setNumber !== setRow.setNumber)
+    ) {
+      commitInputTarget(activeInputTarget);
+    }
+
     if (exercise.trackingMode === 'duration') {
       commitDraftValue(
         exercise,
@@ -354,6 +744,7 @@ export function WorkoutSessionPreview() {
     mode: 'add' | 'replace',
     targetExerciseId: string | null = null,
   ) {
+    closeInputBoard();
     setExerciseSearchQuery('');
     setSelectedExerciseIds([]);
     setExerciseFilterGroup('all');
@@ -386,6 +777,8 @@ export function WorkoutSessionPreview() {
     setComposerOpen(false);
     setActiveExerciseAction(null);
     setActiveSetTypeTarget(null);
+    setActiveInputKey(null);
+    setReplaceInputOnNextKey(false);
   }
 
   function handleOpenCustomComposer() {
@@ -478,6 +871,8 @@ export function WorkoutSessionPreview() {
       return;
     }
 
+    commitInputTarget(activeInputTarget);
+
     if (activeWorkout.exercises.length === 0 || completedSetCount === 0) {
       cancelWorkoutSession(activeWorkout.session.id);
       router.back();
@@ -530,13 +925,20 @@ export function WorkoutSessionPreview() {
     <SafeAreaView edges={['top', 'bottom']} style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <PressScale haptic="none" onPress={() => router.back()}>
+          <PressScale
+            haptic="none"
+            onPress={() => {
+              commitInputTarget(activeInputTarget);
+              router.back();
+            }}
+          >
             <View style={styles.headerButton}>
               <Ionicons name="chevron-back" size={18} color={AppColors.text} />
             </View>
           </PressScale>
           <View style={styles.headerCopy}>
             <TextInput
+              onFocus={() => closeInputBoard()}
               onBlur={() => updateWorkoutSessionTitle(activeWorkout.session.id, titleDraft)}
               onChangeText={setTitleDraft}
               placeholder="Workout"
@@ -559,7 +961,23 @@ export function WorkoutSessionPreview() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={[
+          styles.scrollContent,
+          activeInputTarget
+            ? {
+                paddingBottom:
+                  inputBoardHeight + Math.max(insets.bottom, Spacing.sm) + Spacing.lg,
+              }
+            : null,
+        ]}
+        onScroll={(event) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+      >
         {activeWorkout.exercises.map((exercise) => (
           <SurfaceCard
             key={exercise.id}
@@ -568,7 +986,8 @@ export function WorkoutSessionPreview() {
               exercise.allSetsCompleted ? styles.exerciseCardCompleted : null,
               celebratingExerciseId === exercise.id ? styles.exerciseCardCelebrating : null,
               activeExerciseAction?.exerciseId === exercise.id ||
-              activeSetTypeTarget?.exerciseId === exercise.id
+              activeSetTypeTarget?.exerciseId === exercise.id ||
+              activeInputTarget?.exercise.id === exercise.id
                 ? styles.exerciseCardOverlayActive
                 : null,
             ]}
@@ -582,6 +1001,7 @@ export function WorkoutSessionPreview() {
                   haptic="none"
                   onPress={() =>
                     {
+                      closeInputBoard();
                       setActiveSetTypeTarget(null);
                       setActiveExerciseAction((currentValue) =>
                         currentValue?.exerciseId === exercise.id
@@ -601,6 +1021,7 @@ export function WorkoutSessionPreview() {
                 <PressScale
                   haptic="none"
                   onPress={() => {
+                    closeInputBoard();
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     addWorkoutSetRow(exercise.id);
                   }}
@@ -624,7 +1045,7 @@ export function WorkoutSessionPreview() {
               </AppText>
               {exercise.trackingMode === 'duration' ? (
                 <AppText variant="micro" dimmed style={styles.setInputHeaderWide}>
-                  MM:SS
+                  DURATION
                 </AppText>
               ) : (
                 <>
@@ -646,10 +1067,16 @@ export function WorkoutSessionPreview() {
                 return (
                   <View
                     key={rowKey}
+                    ref={(instance) => {
+                      setRowRefs.current[rowKey] = instance;
+                    }}
                     style={[
                       styles.setRowWrap,
-                      activeSetTypeTarget?.exerciseId === exercise.id &&
-                      activeSetTypeTarget.rowKey === rowKey
+                      (
+                        activeSetTypeTarget?.exerciseId === exercise.id &&
+                        activeSetTypeTarget.rowKey === rowKey
+                      ) ||
+                      activeInputTarget?.rowKey === rowKey
                         ? styles.setRowWrapActive
                         : null,
                     ]}>
@@ -659,6 +1086,7 @@ export function WorkoutSessionPreview() {
                       }}
                       friction={2}
                       onSwipeableWillOpen={() => {
+                        closeInputBoard();
                         setActiveExerciseAction(null);
                         setActiveSetTypeTarget(null);
                         Object.entries(swipeableRefs.current).forEach(([key, instance]) => {
@@ -673,6 +1101,7 @@ export function WorkoutSessionPreview() {
                         <PressScale
                           haptic="none"
                           onPress={() => {
+                            closeInputBoard({ commit: false });
                             swipeableRefs.current[rowKey]?.close();
                             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                             if (
@@ -700,6 +1129,7 @@ export function WorkoutSessionPreview() {
                         <PressScale
                           haptic="none"
                           onPress={() => {
+                            closeInputBoard();
                             setActiveExerciseAction(null);
                             setActiveSetTypeTarget((currentValue) =>
                               currentValue?.exerciseId === exercise.id &&
@@ -739,20 +1169,13 @@ export function WorkoutSessionPreview() {
                         </View>
                         {exercise.trackingMode === 'duration' ? (
                           <WorkoutSetInput
-                            onBlur={() =>
-                              commitDraftValue(
-                                exercise,
-                                setRow,
-                                'durationMinutes',
-                                setRow.durationMinutes ?? exercise.targetDurationMinutes ?? 20,
-                              )
+                            active={
+                              activeInputKey ===
+                              getWorkoutInputKey(exercise.id, rowKey, 'durationMinutes')
                             }
-                            onChangeText={(value) =>
-                              handleDraftChange(
-                                exercise.id,
-                                rowKey,
-                                'durationMinutes',
-                                value,
+                            onPress={() =>
+                              openInputTarget(
+                                getWorkoutInputKey(exercise.id, rowKey, 'durationMinutes'),
                               )
                             }
                             style={styles.durationInput}
@@ -766,11 +1189,14 @@ export function WorkoutSessionPreview() {
                         ) : (
                           <>
                             <WorkoutSetInput
-                              onBlur={() =>
-                                commitDraftValue(exercise, setRow, 'load', setRow.load)
+                              active={
+                                activeInputKey ===
+                                getWorkoutInputKey(exercise.id, rowKey, 'load')
                               }
-                              onChangeText={(value) =>
-                                handleDraftChange(exercise.id, rowKey, 'load', value)
+                              onPress={() =>
+                                openInputTarget(
+                                  getWorkoutInputKey(exercise.id, rowKey, 'load'),
+                                )
                               }
                               value={getInputValue(
                                 exercise.id,
@@ -780,11 +1206,14 @@ export function WorkoutSessionPreview() {
                               )}
                             />
                             <WorkoutSetInput
-                              onBlur={() =>
-                                commitDraftValue(exercise, setRow, 'reps', setRow.reps)
+                              active={
+                                activeInputKey ===
+                                getWorkoutInputKey(exercise.id, rowKey, 'reps')
                               }
-                              onChangeText={(value) =>
-                                handleDraftChange(exercise.id, rowKey, 'reps', value)
+                              onPress={() =>
+                                openInputTarget(
+                                  getWorkoutInputKey(exercise.id, rowKey, 'reps'),
+                                )
                               }
                               value={getInputValue(
                                 exercise.id,
@@ -826,7 +1255,10 @@ export function WorkoutSessionPreview() {
         <View style={styles.footerButtons}>
           <ActionButton
             label="Add Exercise"
-            onPress={() => handleOpenExercisePicker('add')}
+            onPress={() => {
+              closeInputBoard();
+              handleOpenExercisePicker('add');
+            }}
             variant="primary"
           />
           <PressScale haptic="none" onPress={handleCancelWorkout}>
@@ -839,6 +1271,24 @@ export function WorkoutSessionPreview() {
         </View>
         <View style={styles.listFooterSpacer} />
       </ScrollView>
+
+      {activeInputTarget ? (
+        <WorkoutInputBoard
+          activeTarget={activeInputTarget}
+          isLastTarget={
+            workoutInputTargets[workoutInputTargets.length - 1]?.key ===
+            activeInputTarget.key
+          }
+          onBackspace={handleInputBoardBackspace}
+          onDismiss={closeInputBoard}
+          onKeyPress={handleInputBoardKeyPress}
+          onLayout={(event) => {
+            setInputBoardHeight(event.nativeEvent.layout.height);
+          }}
+          onNext={handleInputBoardNext}
+          onStep={handleInputBoardStep}
+        />
+      ) : null}
 
       <ExercisePickerModal
         canCreateCustomExercise={exerciseSearchQuery.trim().length > 0}
@@ -957,26 +1407,180 @@ function HeaderTimer({ value }: { value: string }) {
 }
 
 function WorkoutSetInput({
-  onBlur,
-  onChangeText,
+  active = false,
+  onPress,
   style,
   value,
 }: {
-  onBlur: () => void;
-  onChangeText: (value: string) => void;
+  active?: boolean;
+  onPress: () => void;
   style?: object;
   value: string;
 }) {
   return (
-    <TextInput
-      keyboardType="numbers-and-punctuation"
-      onBlur={onBlur}
-      onChangeText={onChangeText}
-      placeholder="0"
-      placeholderTextColor={AppColors.textSubtle}
-      style={[styles.setInput, style]}
-      value={value}
-    />
+    <PressScale containerStyle={[styles.setInputPressable, style]} haptic="none" onPress={onPress}>
+      <View style={[styles.setInputShell, active ? styles.setInputShellActive : null]}>
+        <AppText
+          variant="bodyStrong"
+          color={active ? AppColors.primary : AppColors.text}
+          numberOfLines={1}
+          style={styles.setInputValue}
+        >
+          {value || '0'}
+        </AppText>
+      </View>
+    </PressScale>
+  );
+}
+
+function WorkoutInputBoard({
+  activeTarget,
+  isLastTarget,
+  onBackspace,
+  onDismiss,
+  onKeyPress,
+  onLayout,
+  onNext,
+  onStep,
+}: {
+  activeTarget: WorkoutInputTarget;
+  isLastTarget: boolean;
+  onBackspace: () => void;
+  onDismiss: () => void;
+  onKeyPress: (token: string) => void;
+  onLayout: (event: { nativeEvent: { layout: { height: number } } }) => void;
+  onNext: () => void;
+  onStep: (direction: -1 | 1) => void;
+}) {
+  const specialKey = getWorkoutInputSpecialKey(activeTarget.field);
+  const keypadRows = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    [specialKey, '0', 'backspace'],
+  ];
+
+  return (
+    <View onLayout={onLayout} style={styles.inputBoardWrap}>
+      <SurfaceCard floating style={styles.inputBoardCard}>
+        <View style={styles.inputBoardHeaderCompact}>
+          <View style={styles.inputBoardHandle} />
+          <Pressable
+            hitSlop={8}
+            onPress={onDismiss}
+            style={({ pressed }) => [
+              styles.inputBoardDismissButton,
+              pressed ? styles.inputBoardButtonPressed : null,
+            ]}
+          >
+            <Ionicons name="chevron-down" size={18} color={AppColors.textMuted} />
+          </Pressable>
+        </View>
+
+        <View style={styles.inputBoardBody}>
+          <View style={styles.inputBoardKeypad}>
+            {keypadRows.map((row, rowIndex) => (
+              <View key={`board-row-${rowIndex}`} style={styles.inputBoardKeypadRow}>
+                {row.map((keyValue) => {
+                  const isBackspaceKey = keyValue === 'backspace';
+                  const isDisabledKey = keyValue === null;
+
+                  return (
+                    <Pressable
+                      key={`board-key-${keyValue ?? 'empty'}-${rowIndex}`}
+                      disabled={isDisabledKey}
+                      onPress={() => {
+                        if (isBackspaceKey) {
+                          onBackspace();
+                          return;
+                        }
+
+                        if (keyValue) {
+                          onKeyPress(keyValue);
+                        }
+                      }}
+                      style={({ pressed }) => [
+                        styles.inputBoardKey,
+                        isDisabledKey ? styles.inputBoardKeyDisabled : null,
+                        pressed ? styles.inputBoardButtonPressed : null,
+                      ]}
+                    >
+                      {isBackspaceKey ? (
+                        <Ionicons name="backspace-outline" size={20} color={AppColors.text} />
+                      ) : (
+                        <AppText
+                          variant="title"
+                          color={isDisabledKey ? AppColors.textSubtle : AppColors.text}
+                        >
+                          {keyValue ?? ''}
+                        </AppText>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.inputBoardRail}>
+            <Pressable
+              hitSlop={8}
+              onPress={onDismiss}
+              style={({ pressed }) => [
+                styles.inputBoardRailButton,
+                pressed ? styles.inputBoardButtonPressed : null,
+              ]}
+            >
+              <Ionicons name="keypad-outline" size={18} color={AppColors.textMuted} />
+              <AppText variant="micro" color={AppColors.textMuted}>
+                Hide
+              </AppText>
+            </Pressable>
+
+            <View style={styles.inputBoardStepperRow}>
+              <Pressable
+                hitSlop={8}
+                onPress={() => onStep(-1)}
+                style={({ pressed }) => [
+                  styles.inputBoardStepperAction,
+                  pressed ? styles.inputBoardButtonPressed : null,
+                ]}
+              >
+                <Ionicons name="remove" size={18} color={AppColors.primary} />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                onPress={() => onStep(1)}
+                style={({ pressed }) => [
+                  styles.inputBoardStepperAction,
+                  pressed ? styles.inputBoardButtonPressed : null,
+                ]}
+              >
+                <Ionicons name="add" size={18} color={AppColors.primary} />
+              </Pressable>
+            </View>
+
+            <Pressable
+              hitSlop={8}
+              onPress={onNext}
+              style={({ pressed }) => [
+                styles.inputBoardNextButton,
+                pressed ? styles.inputBoardNextButtonPressed : null,
+              ]}
+            >
+              <AppText variant="label" color={AppColors.white}>
+                {isLastTarget ? 'Done' : 'Next'}
+              </AppText>
+              <Ionicons
+                name={isLastTarget ? 'checkmark' : 'arrow-forward'}
+                size={16}
+                color={AppColors.white}
+              />
+            </Pressable>
+          </View>
+        </View>
+      </SurfaceCard>
+    </View>
   );
 }
 
@@ -1296,9 +1900,11 @@ function ExerciseComposerModal({
 
             {draft.trackingMode === 'duration' ? (
               <ExerciseInputField
-                keyboardType="numbers-and-punctuation"
-                label="Duration per set (MM:SS)"
-                onChangeText={(value) => onChange({ ...draft, durationMinutes: value })}
+                keyboardType="number-pad"
+                label="Duration per set"
+                onChangeText={(value) =>
+                  onChange({ ...draft, durationMinutes: formatDurationInput(value) })
+                }
                 value={draft.durationMinutes}
               />
             ) : null}
@@ -1309,49 +1915,6 @@ function ExerciseComposerModal({
       </SafeAreaView>
     </Modal>
   );
-}
-
-function formatDurationMinutes(value: number | null | undefined) {
-  const safeValue = Math.max(0, Number.isFinite(value ?? NaN) ? Number(value) : 0);
-  const totalSeconds = Math.round(safeValue * 60);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-function parseDurationMinutesInput(value: string, fallbackMinutes: number) {
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue) {
-    return fallbackMinutes;
-  }
-
-  if (trimmedValue.includes(':')) {
-    const [minutesPart, secondsPart = '0'] = trimmedValue.split(':');
-    const minutes = Number.parseInt(minutesPart, 10);
-    const seconds = Number.parseInt(secondsPart, 10);
-
-    if (
-      Number.isFinite(minutes) &&
-      Number.isFinite(seconds) &&
-      minutes >= 0 &&
-      seconds >= 0 &&
-      seconds < 60
-    ) {
-      return minutes + seconds / 60;
-    }
-
-    return null;
-  }
-
-  const numericValue = Number.parseFloat(trimmedValue);
-
-  if (!Number.isFinite(numericValue) || numericValue < 0) {
-    return null;
-  }
-
-  return numericValue;
 }
 
 function ExerciseActionModal({
@@ -1440,7 +2003,7 @@ function ExerciseInputField({
   onChangeText,
   value,
 }: {
-  keyboardType?: 'default' | 'numbers-and-punctuation';
+  keyboardType?: 'default' | 'number-pad' | 'numbers-and-punctuation';
   label: string;
   onChangeText: (value: string) => void;
   value: string;
@@ -1900,22 +2463,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     justifyContent: 'center',
   },
-  setInput: {
+  setInputPressable: {
     flex: 1,
+  },
+  setInputShell: {
     minHeight: 32,
     borderRadius: Radii.md,
     paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: AppColors.surfaceLowest,
-    color: AppColors.text,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  setInputShellActive: {
+    backgroundColor: '#F2F7FC',
+    borderColor: 'rgba(39, 116, 174, 0.26)',
+    ...Shadows.soft,
+  },
+  setInputValue: {
+    width: '100%',
     textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '700',
   },
   durationInput: {
     flex: 1,
   },
   setCheckButton: {
     width: 32,
+    minHeight: 32,
     height: 32,
     borderRadius: Radii.pill,
     alignItems: 'center',
@@ -1927,6 +2502,117 @@ const styles = StyleSheet.create({
   setCheckButtonCompleted: {
     backgroundColor: AppColors.primary,
     borderColor: AppColors.primary,
+  },
+  inputBoardWrap: {
+    position: 'absolute',
+    left: Layout.pagePadding,
+    right: Layout.pagePadding,
+    bottom: Spacing.sm,
+    zIndex: 140,
+  },
+  inputBoardCard: {
+    gap: Spacing.sm,
+    paddingTop: 8,
+    paddingBottom: Spacing.md,
+    paddingHorizontal: 10,
+    borderRadius: Radii.xl,
+    backgroundColor: AppColors.surfaceLowest,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    elevation: 12,
+  },
+  inputBoardHandle: {
+    width: 64,
+    height: 5,
+    borderRadius: Radii.pill,
+    backgroundColor: AppColors.surfaceHighest,
+  },
+  inputBoardHeaderCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 24,
+    paddingHorizontal: 2,
+  },
+  inputBoardDismissButton: {
+    width: 30,
+    height: 30,
+    borderRadius: Radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  inputBoardBody: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: Spacing.sm,
+  },
+  inputBoardKeypad: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  inputBoardKeypadRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  inputBoardKey: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: Radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  inputBoardKeyDisabled: {
+    opacity: 0.38,
+  },
+  inputBoardButtonPressed: {
+    opacity: 0.78,
+  },
+  inputBoardRail: {
+    width: 92,
+    gap: 10,
+  },
+  inputBoardRailButton: {
+    minHeight: 48,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: AppColors.surfaceLow,
+  },
+  inputBoardStepperRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  inputBoardStepperAction: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: Radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F2F5FA',
+  },
+  inputBoardNextButton: {
+    flex: 1,
+    minHeight: 70,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: AppColors.primary,
+    ...Shadows.soft,
+  },
+  inputBoardNextButtonPressed: {
+    opacity: 0.9,
   },
   deleteSetAction: {
     marginLeft: Spacing.sm,
