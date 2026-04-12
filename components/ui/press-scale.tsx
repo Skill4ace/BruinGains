@@ -9,19 +9,23 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 type PressScaleProps = PressableProps & {
   containerStyle?: StyleProp<ViewStyle>;
   haptic?: 'none' | 'light' | 'medium';
+  pressEffect?: 'none' | 'opacity' | 'scale';
 };
 
 export function PressScale({
   children,
   containerStyle,
   haptic = 'light',
+  pressEffect = 'scale',
   onPressIn,
   onPressOut,
   ...props
 }: PressScaleProps) {
   const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
     transform: [{ scale: scale.value }],
   }));
 
@@ -37,14 +41,38 @@ export function PressScale({
 
   const handlePressIn = useCallback(
     (event: GestureResponderEvent) => {
-      scale.value = withSpring(0.975, {
-        damping: 18,
-        stiffness: 280,
-      });
+      if (pressEffect === 'scale') {
+        scale.value = withSpring(0.975, {
+          damping: 18,
+          stiffness: 280,
+        });
+        opacity.value = withSpring(1, {
+          damping: 18,
+          stiffness: 280,
+        });
+      } else if (pressEffect === 'opacity') {
+        scale.value = withSpring(1, {
+          damping: 18,
+          stiffness: 280,
+        });
+        opacity.value = withSpring(0.82, {
+          damping: 18,
+          stiffness: 280,
+        });
+      } else {
+        scale.value = withSpring(1, {
+          damping: 18,
+          stiffness: 280,
+        });
+        opacity.value = withSpring(1, {
+          damping: 18,
+          stiffness: 280,
+        });
+      }
       triggerHaptic();
       onPressIn?.(event);
     },
-    [onPressIn, scale, triggerHaptic]
+    [onPressIn, opacity, pressEffect, scale, triggerHaptic]
   );
 
   const handlePressOut = useCallback(
@@ -53,9 +81,13 @@ export function PressScale({
         damping: 18,
         stiffness: 220,
       });
+      opacity.value = withSpring(1, {
+        damping: 18,
+        stiffness: 220,
+      });
       onPressOut?.(event);
     },
-    [onPressOut, scale]
+    [onPressOut, opacity, scale]
   );
 
   return (

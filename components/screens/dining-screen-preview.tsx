@@ -488,7 +488,7 @@ export function DiningScreenPreview() {
                       </AppText>
                     </View>
                     {todaysMeals.length > 0 ? (
-                      <PressScale haptic="none" onPress={handleClearAllMeals}>
+                      <PressScale haptic="light" onPress={handleClearAllMeals}>
                         <View style={styles.clearAllMealsButton}>
                           <AppText variant="label" color={AppColors.danger}>
                             Clear all
@@ -497,7 +497,7 @@ export function DiningScreenPreview() {
                       </PressScale>
                     ) : null}
                   </View>
-                  <PressScale haptic="none" onPress={handleCustomMealOpen}>
+                  <PressScale haptic="light" onPress={handleCustomMealOpen}>
                     <View style={styles.customMealButton}>
                       <Ionicons name="add" size={18} color={AppColors.primary} />
                     </View>
@@ -511,7 +511,7 @@ export function DiningScreenPreview() {
                     {todaysMeals.map((meal, index) => (
                       <PressScale
                         key={meal.id}
-                        haptic="none"
+                        haptic="light"
                         onPress={() => handleMealLogEdit(meal)}>
                         <View
                           style={[
@@ -830,7 +830,7 @@ function DiningHallModal({
                             </AppText>
                           </View>
                           <PressScale
-                            haptic="none"
+                            haptic="light"
                             onPress={() => onOpenItem(item)}>
                             <View style={styles.menuAddButtonCompact}>
                               <Ionicons name="add" size={17} color={AppColors.primary} />
@@ -1293,26 +1293,11 @@ function StepperButton({
   onPress: () => void;
 }) {
   return (
-    <PressScale haptic="none" onPress={onPress}>
+    <PressScale haptic="light" onPress={onPress}>
       <View style={styles.stepperButton}>
         <Ionicons name={icon} size={18} color={AppColors.text} />
       </View>
     </PressScale>
-  );
-}
-
-function MacroMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.metricCard}>
-      <AppText variant="headline">{value}</AppText>
-      <AppText dimmed>{label}</AppText>
-    </View>
   );
 }
 
@@ -1462,24 +1447,6 @@ function DetailTag({
         {label}
       </AppText>
     </View>
-  );
-}
-
-function DetailToggleButton({
-  label,
-  onPress,
-}: {
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <PressScale haptic="none" onPress={onPress}>
-      <View style={styles.detailToggleButton}>
-        <AppText variant="label" color={AppColors.primary}>
-          {label}
-        </AppText>
-      </View>
-    </PressScale>
   );
 }
 
@@ -1643,7 +1610,7 @@ function HallRow({
     hall.fitPercent !== null && currentDiningActivityPeriod === selectedPeriod;
 
   return (
-    <PressScale haptic="none" onPress={onPress}>
+    <PressScale haptic="light" onPress={onPress}>
       <SurfaceCard style={styles.hallCard}>
         <Image
           source={getDiningHallImageSource(hall.id)}

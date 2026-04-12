@@ -30,6 +30,7 @@ import type {
 type AppDataContextValue = {
   isHydrated: boolean;
   addWorkoutExercise: (sessionId: string, draft: WorkoutExerciseDraft) => void;
+  addWorkoutExercises: (sessionId: string, drafts: WorkoutExerciseDraft[]) => void;
   state: LocalAppData;
   addQuickMealLog: (period: MealLogPeriod) => void;
   addCustomMealLog: (input: CreateCustomMealLogInput) => void;
@@ -150,6 +151,30 @@ function createPlaceholderWorkoutSet(
     loggedAt: new Date().toISOString(),
     setNumber,
     setType: 'normal',
+  };
+}
+
+function createCustomExerciseLibraryEntry(draft: WorkoutExerciseDraft) {
+  return {
+    aliases: [],
+    bodyPart: null,
+    category: null,
+    description: null,
+    difficulty: null,
+    equipment: null,
+    force: null,
+    imageAssetId: null,
+    imageUrls: [],
+    id: createId('exercise'),
+    instructions: [],
+    level: null,
+    mechanic: null,
+    name: draft.name.trim(),
+    focus: draft.trackingMode === 'duration' ? 'Conditioning' : 'Custom',
+    primaryMuscles: [],
+    secondaryMuscles: [],
+    source: 'custom' as const,
+    target: null,
   };
 }
 
@@ -996,27 +1021,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           ? currentState.exerciseLibrary
           : [
               ...currentState.exerciseLibrary,
-              {
-                aliases: [],
-                bodyPart: null,
-                category: null,
-                description: null,
-                difficulty: null,
-                equipment: null,
-                force: null,
-                imageAssetId: null,
-                imageUrls: [],
-                id: createId('exercise'),
-                instructions: [],
-                level: null,
-                mechanic: null,
-                name: draft.name.trim(),
-                focus: draft.trackingMode === 'duration' ? 'Conditioning' : 'Custom',
-                primaryMuscles: [],
-                secondaryMuscles: [],
-                source: 'custom',
-                target: null,
-              },
+              createCustomExerciseLibraryEntry(draft),
             ],
         workoutSessionExercises: [
           ...currentState.workoutSessionExercises,
@@ -1026,6 +1031,64 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         workoutSessions: currentState.workoutSessions.map((session) =>
           session.id === sessionId && !session.activeExerciseId
             ? { ...session, activeExerciseId: nextExercise.id }
+            : session,
+        ),
+      };
+    });
+  }
+
+  function addWorkoutExercises(sessionId: string, drafts: WorkoutExerciseDraft[]) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const validDrafts = drafts.filter((draft) => draft.name.trim());
+
+      if (!validDrafts.length) {
+        return currentState;
+      }
+
+      const sessionExercises = currentState.workoutSessionExercises
+        .filter((exercise) => exercise.sessionId === sessionId)
+        .sort((left, right) => left.order - right.order);
+      const nextExercises = validDrafts.map((draft, index) =>
+        createSessionExercise(
+          currentState,
+          sessionId,
+          draft,
+          sessionExercises.length + index,
+        ),
+      );
+      const nextExerciseSets = buildInitialWorkoutSetsForExercises(nextExercises);
+      const existingExerciseNames = new Set(
+        currentState.exerciseLibrary.map((exercise) => normalizeExerciseName(exercise.name)),
+      );
+      const nextExerciseLibraryEntries = validDrafts.flatMap((draft) => {
+        const normalizedName = normalizeExerciseName(draft.name);
+
+        if (existingExerciseNames.has(normalizedName)) {
+          return [];
+        }
+
+        existingExerciseNames.add(normalizedName);
+        return [createCustomExerciseLibraryEntry(draft)];
+      });
+
+      return {
+        ...currentState,
+        exerciseLibrary:
+          nextExerciseLibraryEntries.length > 0
+            ? [...currentState.exerciseLibrary, ...nextExerciseLibraryEntries]
+            : currentState.exerciseLibrary,
+        workoutSessionExercises: [
+          ...currentState.workoutSessionExercises,
+          ...nextExercises,
+        ],
+        workoutSets: [...currentState.workoutSets, ...nextExerciseSets],
+        workoutSessions: currentState.workoutSessions.map((session) =>
+          session.id === sessionId && !session.activeExerciseId
+            ? { ...session, activeExerciseId: nextExercises[0]?.id ?? null }
             : session,
         ),
       };
@@ -1069,27 +1132,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           ? currentState.exerciseLibrary
           : [
               ...currentState.exerciseLibrary,
-              {
-                aliases: [],
-                bodyPart: null,
-                category: null,
-                description: null,
-                difficulty: null,
-                equipment: null,
-                force: null,
-                imageAssetId: null,
-                imageUrls: [],
-                id: createId('exercise'),
-                instructions: [],
-                level: null,
-                mechanic: null,
-                name: draft.name.trim(),
-                focus: draft.trackingMode === 'duration' ? 'Conditioning' : 'Custom',
-                primaryMuscles: [],
-                secondaryMuscles: [],
-                source: 'custom',
-                target: null,
-              },
+              createCustomExerciseLibraryEntry(draft),
             ],
         workoutSessionExercises: currentState.workoutSessionExercises.map((exercise) =>
           exercise.id === sessionExerciseId ? replacementExercise : exercise,
@@ -1497,6 +1540,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         isHydrated: true,
         state,
         addWorkoutExercise,
+        addWorkoutExercises,
         addWorkoutSetRow,
         addQuickMealLog,
         addCustomMealLog,

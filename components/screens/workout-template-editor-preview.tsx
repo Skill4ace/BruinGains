@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
@@ -467,9 +468,7 @@ export function WorkoutTemplateEditorPreview() {
     setExerciseFilterType('all');
     setActiveExerciseAction(null);
     setActiveSetTypeTarget(null);
-    requestAnimationFrame(() => {
-      setPickerState({ mode, targetExerciseId });
-    });
+    setPickerState({ mode, targetExerciseId });
   }
 
   function handleSelectExerciseDraft(draft: WorkoutExerciseDraft) {
@@ -478,8 +477,6 @@ export function WorkoutTemplateEditorPreview() {
     if (!selectionContext) {
       return;
     }
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
     setExercises((currentValue) => {
       const nextExercise = createTemplateExerciseFromDraft(
@@ -536,7 +533,6 @@ export function WorkoutTemplateEditorPreview() {
       selectedExerciseIds.includes(exercise.id),
     );
 
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExercises((currentValue) => {
       const nextExercises = [...currentValue];
 
@@ -616,7 +612,6 @@ export function WorkoutTemplateEditorPreview() {
   }
 
   function handleAddSet(exerciseId: string) {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExercises((currentValue) =>
       currentValue.map((exercise) => {
         if (exercise.id !== exerciseId) {
@@ -644,7 +639,6 @@ export function WorkoutTemplateEditorPreview() {
   }
 
   function handleRemoveSet(exerciseId: string, setId: string) {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExercises((currentValue) =>
       currentValue.map((exercise) => {
         if (exercise.id !== exerciseId) {
@@ -739,7 +733,7 @@ export function WorkoutTemplateEditorPreview() {
               Template editor
             </AppText>
           </View>
-          <PressScale haptic="none" onPress={handleSaveTemplate}>
+          <PressScale haptic="medium" onPress={handleSaveTemplate}>
             <View style={styles.saveButton}>
               <AppText variant="label" color={AppColors.white}>
                 Save
@@ -766,7 +760,7 @@ export function WorkoutTemplateEditorPreview() {
               </View>
               <View style={styles.exerciseHeaderActions}>
                 <PressScale
-                  haptic="none"
+                  haptic="light"
                   onPress={() => {
                     setActiveSetTypeTarget(null);
                     setActiveExerciseAction((currentValue) =>
@@ -782,7 +776,7 @@ export function WorkoutTemplateEditorPreview() {
                     <Ionicons name="ellipsis-horizontal" size={16} color={AppColors.text} />
                   </View>
                 </PressScale>
-                <PressScale haptic="none" onPress={() => handleAddSet(exercise.id)}>
+                <PressScale haptic="light" onPress={() => handleAddSet(exercise.id)}>
                   <View style={styles.addSetHeaderButton}>
                     <Ionicons name="add" size={16} color={AppColors.primary} />
                     <AppText variant="label" color={AppColors.primary}>
@@ -848,7 +842,7 @@ export function WorkoutTemplateEditorPreview() {
                       rightThreshold={72}
                       renderRightActions={() => (
                         <PressScale
-                          haptic="none"
+                          haptic="light"
                           onPress={() => {
                             swipeableRefs.current[rowKey]?.close();
                             if (
@@ -1170,8 +1164,9 @@ function ExercisePickerModal({
               </View>
               {pickerMode === 'add' ? (
                 <PressScale
-                  haptic="none"
+                  haptic="light"
                   onPress={onCommitSelection}
+                  pressEffect="opacity"
                   disabled={selectedExerciseIds.length === 0}>
                   <View style={styles.headerAddButton}>
                     <AppText
@@ -1242,7 +1237,7 @@ function ExercisePickerModal({
                 </View>
               </PressScale>
               {canCreateCustomExercise ? (
-                <PressScale containerStyle={styles.customActionSlot} haptic="none" onPress={onCreateCustom}>
+                <PressScale containerStyle={styles.customActionSlot} haptic="light" onPress={onCreateCustom}>
                   <View style={styles.createCustomCompactButton}>
                     <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
                     <AppText variant="micro" color={AppColors.primary}>
@@ -1280,75 +1275,79 @@ function ExercisePickerModal({
                 </View>
               </View>
             ) : null}
-            <ScrollView
+            <FlatList
+              data={exerciseOptions}
+              extraData={selectedExerciseIds}
+              initialNumToRender={16}
+              keyboardShouldPersistTaps="handled"
+              keyExtractor={(exercise) => exercise.id}
+              maxToRenderPerBatch={24}
+              removeClippedSubviews={Platform.OS === 'android'}
+              renderItem={({ item: exercise }) => {
+                const selected =
+                  pickerMode === 'add' && selectedExerciseIds.includes(exercise.id);
+
+                return (
+                  <PressScale
+                    containerStyle={styles.optionPressable}
+                    haptic="light"
+                    pressEffect="opacity"
+                    onPress={() => onSelect(exercise)}>
+                    <View
+                      style={[
+                        styles.optionMain,
+                        selected ? styles.optionMainSelected : null,
+                      ]}>
+                      {getExerciseLibraryImageSource(exercise) ? (
+                        <Image
+                          source={getExerciseLibraryImageSource(exercise)}
+                          style={styles.optionImage}
+                          autoplay={false}
+                          contentFit="contain"
+                        />
+                      ) : (
+                        <View style={styles.optionImageFallback}>
+                          <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
+                        </View>
+                      )}
+                      <View style={styles.optionCopy}>
+                        <AppText variant="bodyStrong" numberOfLines={1}>
+                          {exercise.name}
+                        </AppText>
+                        <AppText variant="micro" dimmed numberOfLines={2}>
+                          {formatExerciseLibraryMeta(exercise)}
+                        </AppText>
+                      </View>
+                      {pickerMode === 'add' ? (
+                        <View
+                          style={[
+                            styles.optionCheck,
+                            selected ? styles.optionCheckSelected : null,
+                          ]}>
+                          <Ionicons
+                            name="checkmark"
+                            size={16}
+                            color={selected ? AppColors.white : AppColors.textSubtle}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+                  </PressScale>
+                );
+              }}
+              showsVerticalScrollIndicator={false}
               style={styles.optionScroll}
               contentContainerStyle={styles.optionList}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}>
-              {exerciseOptions.length === 0 ? (
+              windowSize={8}
+              ListEmptyComponent={
                 <SurfaceCard style={styles.emptyExerciseCard}>
                   <AppText variant="bodyStrong">No exercises match yet</AppText>
                   <AppText variant="micro" dimmed>
                     try another search or add a custom exercise.
                   </AppText>
                 </SurfaceCard>
-              ) : null}
-              {exerciseOptions.map((exercise) => (
-                <PressScale
-                  key={exercise.id}
-                  containerStyle={styles.optionPressable}
-                  haptic="none"
-                  onPress={() => onSelect(exercise)}>
-                  <View
-                    style={[
-                      styles.optionMain,
-                      pickerMode === 'add' && selectedExerciseIds.includes(exercise.id)
-                        ? styles.optionMainSelected
-                        : null,
-                    ]}>
-                    {getExerciseLibraryImageSource(exercise) ? (
-                      <Image
-                        source={getExerciseLibraryImageSource(exercise)}
-                        style={styles.optionImage}
-                        autoplay={false}
-                        contentFit="contain"
-                      />
-                    ) : (
-                      <View style={styles.optionImageFallback}>
-                        <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
-                      </View>
-                    )}
-                    <View style={styles.optionCopy}>
-                      <AppText variant="bodyStrong" numberOfLines={1}>
-                        {exercise.name}
-                      </AppText>
-                      <AppText variant="micro" dimmed numberOfLines={2}>
-                        {formatExerciseLibraryMeta(exercise)}
-                      </AppText>
-                    </View>
-                    {pickerMode === 'add' ? (
-                      <View
-                        style={[
-                          styles.optionCheck,
-                          selectedExerciseIds.includes(exercise.id)
-                            ? styles.optionCheckSelected
-                            : null,
-                        ]}>
-                        <Ionicons
-                          name="checkmark"
-                          size={16}
-                          color={
-                            selectedExerciseIds.includes(exercise.id)
-                              ? AppColors.white
-                              : AppColors.textSubtle
-                          }
-                        />
-                      </View>
-                    ) : null}
-                  </View>
-                </PressScale>
-              ))}
-            </ScrollView>
+              }
+            />
           </SurfaceCard>
         </KeyboardAvoidingView>
       </SafeAreaView>

@@ -1,7 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { Alert, LayoutAnimation, Platform, StyleSheet, UIManager, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useMemo, useState } from 'react';
 
 import { getWorkoutTemplateSummaries } from '@/data/local/selectors';
@@ -28,7 +27,7 @@ function GymCapacityCard({
   const zones = location.zones ?? [];
 
   return (
-    <PressScale containerStyle={styles.capacityCardPressable} haptic="none" onPress={onPress}>
+    <PressScale containerStyle={styles.capacityCardPressable} haptic="light" onPress={onPress}>
       <View style={styles.capacityCompactCopy}>
         <View style={styles.capacityTopLine}>
           <AppText variant="bodyStrong">{location.name}</AppText>
@@ -189,7 +188,7 @@ export function GymScreenPreview() {
       <View style={styles.stack}>
         <View style={styles.templatesHeader}>
           <AppText variant="title">Templates</AppText>
-          <PressScale haptic="none" onPress={() => router.push('/workout/template')}>
+          <PressScale haptic="light" onPress={() => router.push('/workout/template')}>
             <View style={styles.addTemplateButton}>
               <Ionicons name="add" size={20} color={AppColors.white} />
             </View>
@@ -203,7 +202,7 @@ export function GymScreenPreview() {
                   <AppText variant="title">{template.name}</AppText>
                   <View style={styles.templateActions}>
                     <PressScale
-                      haptic="none"
+                      haptic="light"
                       onPress={() =>
                         router.push({
                           pathname: '/workout/template',
@@ -215,7 +214,7 @@ export function GymScreenPreview() {
                       </View>
                     </PressScale>
                     <PressScale
-                      haptic="none"
+                      haptic="light"
                       onPress={() => handleDeleteTemplate(template.id)}>
                       <View style={styles.templateActionButton}>
                         <Ionicons name="trash-outline" size={15} color={AppColors.danger} />
@@ -229,7 +228,7 @@ export function GymScreenPreview() {
                     : 'Empty template'}
                 </AppText>
                 <PressScale
-                  haptic="none"
+                  haptic="light"
                   onPress={() => {
                     startWorkoutFromTemplate(template.id);
                     router.push('/workout/session');
