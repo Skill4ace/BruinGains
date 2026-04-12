@@ -1,7 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import { Alert, LayoutAnimation, Platform, StyleSheet, UIManager, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Modal,
+  Platform,
+  StyleSheet,
+  TextInput,
+  UIManager,
+  View,
+} from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getWorkoutTemplateSummaries } from '@/data/local/selectors';
 import { useGymCapacities } from '@/hooks/use-campus-data';
@@ -14,6 +25,11 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
 import type { GymCapacitySnapshot } from '@/types/app-data';
+
+type TemplateActionTarget = {
+  templateId: string;
+  templateName: string;
+};
 
 function GymCapacityCard({
   isExpanded,
@@ -96,12 +112,157 @@ function GymCapacityCard({
   );
 }
 
+function TemplateActionModal({
+  isOpen,
+  onClose,
+  onDelete,
+  onDuplicate,
+  onEdit,
+  onRename,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onEdit: () => void;
+  onRename: () => void;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
+        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
+          <View />
+        </PressScale>
+        <View style={styles.centerModalContainer}>
+          <SurfaceCard style={styles.smallActionModalCard}>
+            <PressScale haptic="none" onPress={onRename}>
+              <View style={styles.smallActionModalButton}>
+                <AppText variant="label">Rename template</AppText>
+              </View>
+            </PressScale>
+            <PressScale haptic="none" onPress={onEdit}>
+              <View style={styles.smallActionModalButton}>
+                <AppText variant="label">Edit template</AppText>
+              </View>
+            </PressScale>
+            <PressScale haptic="none" onPress={onDuplicate}>
+              <View style={styles.smallActionModalButton}>
+                <AppText variant="label">Duplicate template</AppText>
+              </View>
+            </PressScale>
+            <PressScale haptic="none" onPress={onDelete}>
+              <View style={styles.smallActionModalButton}>
+                <AppText variant="label" color={AppColors.danger}>
+                  Delete template
+                </AppText>
+              </View>
+            </PressScale>
+          </SurfaceCard>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function RenameTemplateModal({
+  draft,
+  isOpen,
+  onChangeDraft,
+  onClose,
+  onSave,
+}: {
+  draft: string;
+  isOpen: boolean;
+  onChangeDraft: (value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
+        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
+          <View />
+        </PressScale>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.centerModalContainer}>
+          <SurfaceCard style={styles.renameModalCard}>
+            <View style={styles.renameModalHeader}>
+              <View style={styles.renameModalCopy}>
+                <AppText variant="title">Rename template</AppText>
+                <AppText variant="micro" dimmed>
+                  Update how this workout shows up in your template list.
+                </AppText>
+              </View>
+              <PressScale haptic="none" onPress={onClose}>
+                <View style={styles.renameCloseButton}>
+                  <Ionicons name="close" size={18} color={AppColors.text} />
+                </View>
+              </PressScale>
+            </View>
+
+            <View style={styles.renameInputField}>
+              <AppText variant="micro" dimmed>
+                Template name
+              </AppText>
+              <TextInput
+                autoFocus
+                onChangeText={onChangeDraft}
+                onSubmitEditing={onSave}
+                placeholder="Push Day"
+                placeholderTextColor={AppColors.textSubtle}
+                returnKeyType="done"
+                selectTextOnFocus
+                style={styles.renameInput}
+                value={draft}
+              />
+            </View>
+
+            <View style={styles.renameActionRow}>
+              <PressScale
+                containerStyle={styles.renameActionSlot}
+                haptic="none"
+                onPress={onClose}>
+                <View style={styles.renameSecondaryButton}>
+                  <AppText variant="label">Cancel</AppText>
+                </View>
+              </PressScale>
+              <PressScale
+                containerStyle={styles.renameActionSlot}
+                haptic="light"
+                onPress={onSave}>
+                <View style={styles.renamePrimaryButton}>
+                  <AppText variant="label" color={AppColors.white}>
+                    Save
+                  </AppText>
+                </View>
+              </PressScale>
+            </View>
+          </SurfaceCard>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export function GymScreenPreview() {
   const router = useRouter();
-  const { deleteWorkoutTemplate, startEmptyWorkout, startWorkoutFromTemplate, state } = useAppData();
+  const {
+    deleteWorkoutTemplate,
+    duplicateWorkoutTemplate,
+    renameWorkoutTemplate,
+    startEmptyWorkout,
+    startWorkoutFromTemplate,
+    state,
+  } = useAppData();
   const capacityState = useGymCapacities();
   const templates = getWorkoutTemplateSummaries(state);
   const [expandedGymId, setExpandedGymId] = useState<string | null>(null);
+  const [activeTemplateAction, setActiveTemplateAction] = useState<TemplateActionTarget | null>(
+    null,
+  );
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renamingTemplate, setRenamingTemplate] = useState<TemplateActionTarget | null>(null);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -126,25 +287,58 @@ export function GymScreenPreview() {
     });
   }, [capacityState.data]);
 
-  function handleDeleteTemplate(templateId: string) {
-    const template = templates.find((entry) => entry.id === templateId);
-
-    if (!template) {
-      return;
-    }
-
+  function handleDeleteTemplate(template: TemplateActionTarget) {
+    setActiveTemplateAction(null);
     Alert.alert(
       'Delete template?',
-      `Delete "${template.name}" and its exercises?`,
+      `Delete "${template.templateName}" and its exercises?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteWorkoutTemplate(templateId),
+          onPress: () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            deleteWorkoutTemplate(template.templateId);
+          },
         },
       ],
     );
+  }
+
+  function handleEditTemplate(templateId: string) {
+    setActiveTemplateAction(null);
+    router.push({
+      pathname: '/workout/template',
+      params: { templateId },
+    });
+  }
+
+  function handleOpenRenameModal(template: TemplateActionTarget) {
+    setActiveTemplateAction(null);
+    setRenameDraft(template.templateName);
+    setRenamingTemplate(template);
+  }
+
+  function handleCloseRenameModal() {
+    setRenameDraft('');
+    setRenamingTemplate(null);
+  }
+
+  function handleSaveRename() {
+    if (!renamingTemplate) {
+      return;
+    }
+
+    const trimmedName = renameDraft.trim();
+
+    if (!trimmedName) {
+      Alert.alert('Template name required', 'Enter a name before saving.');
+      return;
+    }
+
+    renameWorkoutTemplate(renamingTemplate.templateId, trimmedName);
+    handleCloseRenameModal();
   }
 
   return (
@@ -200,28 +394,21 @@ export function GymScreenPreview() {
               <View key={template.id} style={styles.templateCell}>
                 <SurfaceCard style={styles.templateCard}>
                   <View style={styles.templateTopLine}>
-                    <AppText variant="title">{template.name}</AppText>
-                    <View style={styles.templateActions}>
-                      <PressScale
-                        haptic="light"
-                        onPress={() =>
-                          router.push({
-                            pathname: '/workout/template',
-                            params: { templateId: template.id },
-                          })
-                        }>
-                        <View style={styles.templateActionButton}>
-                          <Ionicons name="pencil-outline" size={15} color={AppColors.primary} />
-                        </View>
-                      </PressScale>
-                      <PressScale
-                        haptic="light"
-                        onPress={() => handleDeleteTemplate(template.id)}>
-                        <View style={styles.templateActionButton}>
-                          <Ionicons name="trash-outline" size={15} color={AppColors.danger} />
-                        </View>
-                      </PressScale>
-                    </View>
+                    <AppText numberOfLines={1} style={styles.templateTitle} variant="title">
+                      {template.name}
+                    </AppText>
+                    <PressScale
+                      haptic="light"
+                      onPress={() =>
+                        setActiveTemplateAction({
+                          templateId: template.id,
+                          templateName: template.name,
+                        })
+                      }>
+                      <View style={styles.templateMoreButton}>
+                        <Ionicons name="ellipsis-horizontal" size={16} color={AppColors.text} />
+                      </View>
+                    </PressScale>
                   </View>
                   <AppText variant="body" dimmed>
                     {template.exerciseCount > 0
@@ -263,6 +450,49 @@ export function GymScreenPreview() {
           />
         </View>
       </View>
+
+      <TemplateActionModal
+        isOpen={Boolean(activeTemplateAction)}
+        onClose={() => setActiveTemplateAction(null)}
+        onDelete={() => {
+          if (!activeTemplateAction) {
+            return;
+          }
+
+          handleDeleteTemplate(activeTemplateAction);
+        }}
+        onDuplicate={() => {
+          if (!activeTemplateAction) {
+            return;
+          }
+
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          duplicateWorkoutTemplate(activeTemplateAction.templateId);
+          setActiveTemplateAction(null);
+        }}
+        onEdit={() => {
+          if (!activeTemplateAction) {
+            return;
+          }
+
+          handleEditTemplate(activeTemplateAction.templateId);
+        }}
+        onRename={() => {
+          if (!activeTemplateAction) {
+            return;
+          }
+
+          handleOpenRenameModal(activeTemplateAction);
+        }}
+      />
+
+      <RenameTemplateModal
+        draft={renameDraft}
+        isOpen={Boolean(renamingTemplate)}
+        onChangeDraft={setRenameDraft}
+        onClose={handleCloseRenameModal}
+        onSave={handleSaveRename}
+      />
     </AppScreen>
   );
 }
@@ -385,23 +615,107 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.sm,
   },
+  templateTitle: {
+    flex: 1,
+  },
   templateFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
   },
-  templateActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  templateActionButton: {
-    width: 28,
-    height: 28,
+  templateMoreButton: {
+    width: 30,
+    height: 30,
     borderRadius: Radii.pill,
     backgroundColor: AppColors.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11, 14, 18, 0.44)',
+  },
+  centerModalContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  smallActionModalCard: {
+    width: '100%',
+    maxWidth: 280,
+    gap: Spacing.xs,
+    borderRadius: Radii.xl,
+  },
+  smallActionModalButton: {
+    minHeight: 42,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  renameModalCard: {
+    width: '100%',
+    maxWidth: 320,
+    gap: Spacing.md,
+    borderRadius: Radii.xl,
+  },
+  renameModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  renameModalCopy: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  renameCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  renameInputField: {
+    gap: Spacing.xs,
+  },
+  renameInput: {
+    minHeight: 46,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: AppColors.surfaceLow,
+    color: AppColors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  renameActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  renameActionSlot: {
+    flex: 1,
+  },
+  renameSecondaryButton: {
+    minHeight: 40,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  renamePrimaryButton: {
+    minHeight: 40,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.primary,
   },
   emptyWorkoutButton: {
     marginTop: Spacing.lg,

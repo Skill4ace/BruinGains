@@ -68,6 +68,7 @@ type AppDataContextValue = {
     input: { exercises: WorkoutTemplateExerciseDraft[]; name: string },
   ) => string | null;
   deleteWorkoutTemplate: (templateId: string) => void;
+  duplicateWorkoutTemplate: (templateId: string) => void;
   deleteMealLog: (mealLogId: string) => void;
   finishWorkoutSession: (sessionId: string) => void;
   addWorkoutSetRow: (sessionExerciseId: string) => void;
@@ -78,6 +79,7 @@ type AppDataContextValue = {
   ) => void;
   removeWorkoutExercise: (sessionExerciseId: string) => void;
   replaceWorkoutExercise: (sessionExerciseId: string, draft: WorkoutExerciseDraft) => void;
+  renameWorkoutTemplate: (templateId: string, name: string) => void;
   setPreferredDiningPeriod: (period: MealPeriod) => void;
   startEmptyWorkout: () => string;
   startWorkoutFromTemplate: (templateId: string) => string;
@@ -483,6 +485,51 @@ function buildTemplateSetRecords(
   }));
 }
 
+function buildTemplateExerciseDraftsFromState(
+  state: LocalAppData,
+  templateId: string,
+): WorkoutTemplateExerciseDraft[] {
+  return state.templateExercises
+    .filter((exercise) => exercise.templateId === templateId)
+    .sort((left, right) => left.order - right.order)
+    .map((exercise) => ({
+      name: exercise.name,
+      repRange: exercise.repRange,
+      sets: state.templateExerciseSets
+        .filter((set) => set.templateExerciseId === exercise.id)
+        .sort((left, right) => left.setNumber - right.setNumber)
+        .map((set) => ({
+          durationMinutes:
+            exercise.trackingMode === 'duration'
+              ? set.durationMinutes ?? exercise.targetDurationMinutes ?? null
+              : null,
+          load: set.load,
+          reps: set.reps,
+          setNumber: set.setNumber,
+          setType: set.setType ?? 'normal',
+        })),
+      targetDurationMinutes: exercise.targetDurationMinutes ?? null,
+      trackingMode: exercise.trackingMode,
+    }));
+}
+
+function buildDuplicateTemplateName(
+  existingTemplateNames: Set<string>,
+  templateName: string,
+) {
+  const normalizedBaseName = templateName.trim().replace(/ Copy(?: \d+)?$/, '') || 'Template';
+  const duplicateBaseName = `${normalizedBaseName} Copy`;
+  let candidateName = duplicateBaseName;
+  let copyIndex = 2;
+
+  while (existingTemplateNames.has(normalizeExerciseName(candidateName))) {
+    candidateName = `${duplicateBaseName} ${copyIndex}`;
+    copyIndex += 1;
+  }
+
+  return candidateName;
+}
+
 function toWorkoutExerciseDraft(
   draft: WorkoutTemplateExerciseDraft,
 ): WorkoutExerciseDraft {
@@ -827,6 +874,107 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           );
           return templateExercise?.templateId !== templateId;
         }),
+      };
+    });
+  }
+
+  function renameWorkoutTemplate(templateId: string, name: string) {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      return;
+    }
+
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const targetTemplate = currentState.workoutTemplates.find(
+        (template) => template.id === templateId,
+      );
+
+      if (!targetTemplate || targetTemplate.name === trimmedName) {
+        return currentState;
+      }
+
+      const now = new Date().toISOString();
+
+      return {
+        ...currentState,
+        workoutTemplates: currentState.workoutTemplates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                name: trimmedName,
+                updatedAt: now,
+              }
+            : template,
+        ),
+      };
+    });
+  }
+
+  function duplicateWorkoutTemplate(templateId: string) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const targetTemplate = currentState.workoutTemplates.find(
+        (template) => template.id === templateId,
+      );
+
+      if (!targetTemplate) {
+        return currentState;
+      }
+
+      const duplicateTemplateId = createId('template');
+      const duplicateExercises = buildTemplateExerciseDraftsFromState(
+        currentState,
+        templateId,
+      );
+      const existingTemplateNames = new Set(
+        currentState.workoutTemplates.map((template) => normalizeExerciseName(template.name)),
+      );
+      const duplicateName = buildDuplicateTemplateName(
+        existingTemplateNames,
+        targetTemplate.name,
+      );
+      const now = new Date().toISOString();
+      const nextTemplateOrder = targetTemplate.order + 1;
+      const duplicateTemplate: WorkoutTemplate = {
+        id: duplicateTemplateId,
+        name: duplicateName,
+        createdAt: now,
+        order: nextTemplateOrder,
+        updatedAt: now,
+      };
+      const duplicateTemplateExercises = duplicateExercises.map((exercise, index) =>
+        buildTemplateExerciseRecord(currentState, duplicateTemplateId, exercise, index),
+      );
+      const duplicateTemplateSets = duplicateExercises.flatMap((exercise, index) =>
+        buildTemplateSetRecords(duplicateTemplateExercises[index].id, exercise),
+      );
+
+      return {
+        ...currentState,
+        workoutTemplates: [
+          ...currentState.workoutTemplates.map((template) =>
+            template.order > targetTemplate.order
+              ? { ...template, order: template.order + 1 }
+              : template,
+          ),
+          duplicateTemplate,
+        ],
+        templateExercises: [
+          ...currentState.templateExercises,
+          ...duplicateTemplateExercises,
+        ],
+        templateExerciseSets: [
+          ...currentState.templateExerciseSets,
+          ...duplicateTemplateSets,
+        ],
       };
     });
   }
@@ -1786,10 +1934,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         clearTodayMealLogs,
         createWorkoutTemplate,
         deleteWorkoutTemplate,
+        duplicateWorkoutTemplate,
         deleteMealLog,
         finishWorkoutSession,
         removeWorkoutSetRow,
         removeWorkoutExercise,
+        renameWorkoutTemplate,
         replaceWorkoutExercise,
         setPreferredDiningPeriod,
         startEmptyWorkout,
