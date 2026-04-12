@@ -5,8 +5,8 @@ import { createClient } from '@supabase/supabase-js'
 const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu'
 const UCLA_DINING_ACTIVITY_PATH = '/wp-content/plugins/activity-meter/activity_ajax.php'
 const UCLA_TIME_ZONE = 'America/Los_Angeles'
-const GOBOARD_API_URL =
-  'https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount?AccountAPIKey=73829a91-48cb-4b7b-bd0b-8cf4134c04cd'
+const GOBOARD_API_BASE_URL =
+  'https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount'
 const USER_AGENT = 'BruinGainsCampusActivitySync/1.0 (+https://afxptjzzctiowrqqcyzh.supabase.co)'
 const FETCH_TIMEOUT_MS = 15000
 const DINING_FETCH_CONCURRENCY = 3
@@ -110,6 +110,10 @@ type SyncSummary = {
   trigger: string
 }
 
+type JwtPayload = {
+  role?: string
+}
+
 function getRequiredEnv(name: string) {
   const value = Deno.env.get(name)
 
@@ -131,6 +135,58 @@ function createAdminClient() {
       },
     },
   )
+}
+
+function getGoBoardApiUrl() {
+  const url = new URL(GOBOARD_API_BASE_URL)
+  url.searchParams.set('AccountAPIKey', getRequiredEnv('GOBOARD_API_KEY'))
+  return url.toString()
+}
+
+function getBearerToken(req: Request) {
+  const authorization = req.headers.get('authorization')
+
+  if (!authorization) {
+    return null
+  }
+
+  const [scheme, token] = authorization.split(/\s+/, 2)
+
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    return null
+  }
+
+  return token
+}
+
+function decodeJwtPayload(token: string): JwtPayload | null {
+  const parts = token.split('.')
+
+  if (parts.length !== 3) {
+    return null
+  }
+
+  try {
+    const normalized = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
+
+    return JSON.parse(atob(normalized)) as JwtPayload
+  } catch {
+    return null
+  }
+}
+
+// These jobs are backend-only and should only accept verified service-role JWTs.
+function hasServiceRoleToken(req: Request) {
+  const token = getBearerToken(req)
+
+  if (!token) {
+    return false
+  }
+
+  return decodeJwtPayload(token)?.role === 'service_role'
 }
 
 function cleanText(value: string | null | undefined) {
@@ -536,7 +592,7 @@ function buildGymZoneBreakdown(locations: GymSourceLocation[]): GymZoneBreakdown
 }
 
 async function syncGymCapacities(admin: ReturnType<typeof createAdminClient>) {
-  const sourceLocations = await fetchJson<GymSourceLocation[]>(GOBOARD_API_URL)
+  const sourceLocations = await fetchJson<GymSourceLocation[]>(getGoBoardApiUrl())
   const capturedAt = new Date().toISOString()
   const currentMinutes = getLosAngelesCurrentMinutes()
   const weekday = getLosAngelesWeekday()
@@ -609,6 +665,10 @@ Deno.serve(async (req) => {
     return jsonResponse(405, { error: 'Method not allowed' })
   }
 
+  if (!hasServiceRoleToken(req)) {
+    return jsonResponse(401, { error: 'Unauthorized' })
+  }
+
   const body = (await req.json().catch(() => ({}))) as SyncRequest
   const includeDining = body.includeDining ?? true
   const includeGyms = body.includeGyms ?? true
@@ -624,8 +684,8 @@ Deno.serve(async (req) => {
       try {
         dining = await syncDiningActivity(admin)
       } catch (error) {
-        errors.dining = error instanceof Error ? error.message : String(error)
         console.error('Dining activity sync failed', error)
+        errors.dining = 'Dining activity sync failed'
       }
     }
 
@@ -633,8 +693,8 @@ Deno.serve(async (req) => {
       try {
         gyms = await syncGymCapacities(admin)
       } catch (error) {
-        errors.gyms = error instanceof Error ? error.message : String(error)
         console.error('Gym capacity sync failed', error)
+        errors.gyms = 'Gym capacity sync failed'
       }
     }
 
@@ -660,7 +720,7 @@ Deno.serve(async (req) => {
     console.error('Campus activity sync failed', error)
 
     return jsonResponse(500, {
-      error: error instanceof Error ? error.message : String(error),
+      error: 'Campus activity sync failed',
       trigger,
     })
   }

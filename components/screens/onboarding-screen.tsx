@@ -549,48 +549,51 @@ export function OnboardingScreen() {
 
   const currentStep = STEPS[stepIndex];
   const progress = buildProgress(stepIndex);
-  const resolvedAge = draft.age ?? 20;
-  const resolvedHeightInches = draft.heightInches ?? 69;
-  const resolvedWeightPounds = draft.weightPounds ?? 165;
-  const recommendedPackId = useMemo(
-    () => getRecommendedStarterPackId(draft.workoutsPerWeek),
-    [draft.workoutsPerWeek],
-  );
+  const resolvedAge = draft.age ?? state.profile.age;
+  const resolvedHeightInches = draft.heightInches ?? state.profile.heightInches;
+  const resolvedWeightPounds = draft.weightPounds ?? state.profile.weightPounds;
   const splashMotionStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: splashFloat.value },
       { rotateZ: `${splashRotate.value}deg` },
     ],
   }));
+  const effectiveProfileInputs = useMemo(
+    () => ({
+      age: draft.age ?? state.profile.age,
+      activityLevel: draft.activityLevel ?? state.profile.activityLevel,
+      heightInches: draft.heightInches ?? state.profile.heightInches,
+      nutritionGoal: draft.nutritionGoal ?? state.profile.nutritionGoal,
+      sex: draft.sex ?? state.profile.sex,
+      weightPounds: draft.weightPounds ?? state.profile.weightPounds,
+    }),
+    [
+      draft.activityLevel,
+      draft.age,
+      draft.heightInches,
+      draft.nutritionGoal,
+      draft.sex,
+      draft.weightPounds,
+      state.profile.age,
+      state.profile.activityLevel,
+      state.profile.heightInches,
+      state.profile.nutritionGoal,
+      state.profile.sex,
+      state.profile.weightPounds,
+    ],
+  );
   const suggestedSummaryTargets = useMemo(() => {
-    if (
-      draft.sex === null ||
-      draft.age === null ||
-      draft.heightInches === null ||
-      draft.weightPounds === null ||
-      draft.activityLevel === null ||
-      draft.nutritionGoal === null
-    ) {
-      return state.goals;
-    }
+    return calculateGoalTargets(effectiveProfileInputs);
+  }, [effectiveProfileInputs]);
+  const resolvedWorkoutsPerWeek = draft.workoutsPerWeek ?? state.goals.workoutsPerWeek;
+  const resolvedSelectedSex = draft.sex ?? state.profile.sex;
+  const resolvedActivityLevel = draft.activityLevel ?? state.profile.activityLevel;
+  const resolvedNutritionGoal = draft.nutritionGoal ?? state.profile.nutritionGoal;
 
-    return calculateGoalTargets({
-      age: draft.age,
-      activityLevel: draft.activityLevel,
-      heightInches: draft.heightInches,
-      nutritionGoal: draft.nutritionGoal,
-      sex: draft.sex,
-      weightPounds: draft.weightPounds,
-    });
-  }, [
-    draft.activityLevel,
-    draft.age,
-    draft.heightInches,
-    draft.nutritionGoal,
-    draft.sex,
-    draft.weightPounds,
-    state.goals,
-  ]);
+  const recommendedPackId = useMemo(
+    () => getRecommendedStarterPackId(resolvedWorkoutsPerWeek),
+    [resolvedWorkoutsPerWeek],
+  );
 
   useEffect(() => {
     if (currentStep !== 'summary') {
@@ -725,18 +728,18 @@ export function OnboardingScreen() {
     const fatsValue = Number.parseInt(draft.fatsTarget.trim(), 10);
 
     completeOnboarding({
-      activityLevel: draft.activityLevel,
-      age: draft.age,
+      activityLevel: resolvedActivityLevel,
+      age: resolvedAge,
       calories: Number.isFinite(caloriesValue) ? caloriesValue : suggestedSummaryTargets.calories,
       carbs: Number.isFinite(carbsValue) ? carbsValue : suggestedSummaryTargets.carbs,
       fats: Number.isFinite(fatsValue) ? fatsValue : suggestedSummaryTargets.fats,
-      heightInches: draft.heightInches,
-      nutritionGoal: draft.nutritionGoal,
+      heightInches: resolvedHeightInches,
+      nutritionGoal: resolvedNutritionGoal,
       protein: Number.isFinite(proteinValue) ? proteinValue : suggestedSummaryTargets.protein,
-      sex: draft.sex,
+      sex: resolvedSelectedSex,
       starterPackIds: draft.selectedPackIds,
-      weightPounds: draft.weightPounds,
-      workoutsPerWeek: draft.workoutsPerWeek,
+      weightPounds: resolvedWeightPounds,
+      workoutsPerWeek: resolvedWorkoutsPerWeek,
     });
     router.replace(draft.selectedPackIds.length > 0 ? '/gym' : '/');
   }

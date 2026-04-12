@@ -32,6 +32,10 @@ type SyncRequest = {
   trigger?: string
 }
 
+type JwtPayload = {
+  role?: string
+}
+
 type DiningHallRow = {
   breakfast_hours?: string | null
   dinner_hours?: string | null
@@ -188,6 +192,52 @@ function createAdminClient() {
       },
     },
   )
+}
+
+function getBearerToken(req: Request) {
+  const authorization = req.headers.get('authorization')
+
+  if (!authorization) {
+    return null
+  }
+
+  const [scheme, token] = authorization.split(/\s+/, 2)
+
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    return null
+  }
+
+  return token
+}
+
+function decodeJwtPayload(token: string): JwtPayload | null {
+  const parts = token.split('.')
+
+  if (parts.length !== 3) {
+    return null
+  }
+
+  try {
+    const normalized = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
+
+    return JSON.parse(atob(normalized)) as JwtPayload
+  } catch {
+    return null
+  }
+}
+
+// These jobs are backend-only and should only accept verified service-role JWTs.
+function hasServiceRoleToken(req: Request) {
+  const token = getBearerToken(req)
+
+  if (!token) {
+    return false
+  }
+
+  return decodeJwtPayload(token)?.role === 'service_role'
 }
 
 function formatDateInTimeZone(date: Date, timeZone: string) {
@@ -2103,6 +2153,12 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (!hasServiceRoleToken(req)) {
+    return jsonResponse(401, {
+      error: 'Unauthorized',
+    })
+  }
+
   const body = (await req.json().catch(() => ({}))) as SyncRequest
   const targetDate = body.targetDate ?? getLosAngelesToday()
   const triggerSource = body.trigger ?? 'manual'
@@ -2136,7 +2192,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Dining ingestion failed', error)
     return jsonResponse(500, {
-      error: error instanceof Error ? error.message : String(error),
+      error: 'Dining ingestion failed',
       targetDate,
     })
   }
