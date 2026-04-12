@@ -23,6 +23,7 @@ const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities-v3';
 const PUBLIC_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_DINING_MENU_ITEMS: DiningMenuItem[] = [];
 const DINING_MENU_PAGE_SIZE = 500;
+const DINING_MENU_MAX_PAGES = 20;
 
 type CacheEnvelope<T> = {
   data: T;
@@ -320,8 +321,13 @@ async function fetchLatestDiningMenuItemsFromSupabase() {
 
   const rows: LatestDiningMenuItemRow[] = [];
   let pageStart = 0;
+  let pageCount = 0;
 
   while (true) {
+    if (pageCount >= DINING_MENU_MAX_PAGES) {
+      throw new Error('Dining menu refresh exceeded safe page limit');
+    }
+
     const pageEnd = pageStart + DINING_MENU_PAGE_SIZE - 1;
     const { data, error } = await supabasePublicClient
       .from('latest_menu_items')
@@ -347,6 +353,7 @@ async function fetchLatestDiningMenuItemsFromSupabase() {
       break;
     }
 
+    pageCount += 1;
     pageStart += DINING_MENU_PAGE_SIZE;
   }
 
