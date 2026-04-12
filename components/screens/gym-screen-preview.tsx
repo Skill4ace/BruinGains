@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import {
   Alert,
@@ -6,6 +7,7 @@ import {
   LayoutAnimation,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   TextInput,
   UIManager,
@@ -14,6 +16,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getExerciseLibraryImageSource } from '@/data/local/exercise-library';
 import { getWorkoutTemplateSummaries } from '@/data/local/selectors';
 import { useGymCapacities } from '@/hooks/use-campus-data';
 import { useAppData } from '@/providers/app-data-provider';
@@ -24,12 +27,45 @@ import { PressScale } from '@/components/ui/press-scale';
 import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
-import type { GymCapacitySnapshot } from '@/types/app-data';
+import type { ExerciseLibraryEntry, GymCapacitySnapshot } from '@/types/app-data';
 
 type TemplateActionTarget = {
   templateId: string;
   templateName: string;
 };
+
+type TemplatePreviewExercise = {
+  id: string;
+  imageEntry: ExerciseLibraryEntry | null;
+  meta: string;
+  name: string;
+};
+
+type TemplatePreviewData = {
+  exercises: TemplatePreviewExercise[];
+  templateId: string;
+  templateName: string;
+};
+
+function normalizeExerciseLookupKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function formatTemplateExerciseMeta(exercise: {
+  repRange: string;
+  targetDurationMinutes?: number | null;
+  targetSets: number;
+  trackingMode: 'strength' | 'duration';
+}, imageEntry: ExerciseLibraryEntry | null) {
+  const focusLabel =
+    imageEntry?.target ?? imageEntry?.bodyPart ?? imageEntry?.focus ?? 'Exercise';
+  const setLabel =
+    exercise.trackingMode === 'duration'
+      ? `${exercise.targetSets} sets • ${exercise.targetDurationMinutes ?? 20} min`
+      : `${exercise.targetSets} sets • ${exercise.repRange}`;
+
+  return `${focusLabel} • ${setLabel}`;
+}
 
 function GymCapacityCard({
   isExpanded,
@@ -245,6 +281,84 @@ function RenameTemplateModal({
   );
 }
 
+function TemplatePreviewModal({
+  isOpen,
+  onClose,
+  onStartWorkout,
+  preview,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onStartWorkout: () => void;
+  preview: TemplatePreviewData | null;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
+        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
+          <View />
+        </PressScale>
+        <View style={styles.centerModalContainer}>
+          <SurfaceCard style={styles.previewModalCard}>
+            <View style={styles.previewModalHeader}>
+              <View style={styles.previewModalCopy}>
+                <AppText variant="title">{preview?.templateName ?? 'Template'}</AppText>
+                <AppText variant="micro" dimmed>
+                  {preview
+                    ? `${preview.exercises.length} exercise${
+                        preview.exercises.length === 1 ? '' : 's'
+                      }`
+                    : ''}
+                </AppText>
+              </View>
+              <PressScale haptic="none" onPress={onClose}>
+                <View style={styles.renameCloseButton}>
+                  <Ionicons name="close" size={18} color={AppColors.text} />
+                </View>
+              </PressScale>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.previewExerciseList}>
+              {preview?.exercises.map((exercise) => {
+                const imageSource = exercise.imageEntry
+                  ? getExerciseLibraryImageSource(exercise.imageEntry)
+                  : null;
+
+                return (
+                  <View key={exercise.id} style={styles.previewExerciseRow}>
+                    {imageSource ? (
+                      <Image
+                        source={imageSource}
+                        style={styles.previewExerciseImage}
+                        autoplay={false}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <View style={styles.previewExerciseImageFallback}>
+                        <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
+                      </View>
+                    )}
+                    <View style={styles.previewExerciseCopy}>
+                      <AppText variant="bodyStrong">{exercise.name}</AppText>
+                      <AppText variant="micro" dimmed>
+                        {exercise.meta}
+                      </AppText>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <ActionButton label="Start Workout" onPress={onStartWorkout} />
+          </SurfaceCard>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export function GymScreenPreview() {
   const router = useRouter();
   const {
@@ -261,6 +375,7 @@ export function GymScreenPreview() {
   const [activeTemplateAction, setActiveTemplateAction] = useState<TemplateActionTarget | null>(
     null,
   );
+  const [activeTemplatePreviewId, setActiveTemplatePreviewId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [renamingTemplate, setRenamingTemplate] = useState<TemplateActionTarget | null>(null);
 
@@ -286,6 +401,53 @@ export function GymScreenPreview() {
       return left.name.localeCompare(right.name);
     });
   }, [capacityState.data]);
+
+  const exerciseLibraryLookup = useMemo(() => {
+    const nextLookup = new Map<string, ExerciseLibraryEntry>();
+
+    state.exerciseLibrary.forEach((exercise) => {
+      [exercise.name, ...exercise.aliases].forEach((value) => {
+        const normalizedKey = normalizeExerciseLookupKey(value);
+
+        if (normalizedKey && !nextLookup.has(normalizedKey)) {
+          nextLookup.set(normalizedKey, exercise);
+        }
+      });
+    });
+
+    return nextLookup;
+  }, [state.exerciseLibrary]);
+
+  const activeTemplatePreview = useMemo(() => {
+    if (!activeTemplatePreviewId) {
+      return null;
+    }
+
+    const template = templates.find((entry) => entry.id === activeTemplatePreviewId);
+
+    if (!template) {
+      return null;
+    }
+
+    return {
+      exercises: state.templateExercises
+        .filter((exercise) => exercise.templateId === activeTemplatePreviewId)
+        .sort((left, right) => left.order - right.order)
+        .map((exercise) => {
+          const imageEntry =
+            exerciseLibraryLookup.get(normalizeExerciseLookupKey(exercise.name)) ?? null;
+
+          return {
+            id: exercise.id,
+            imageEntry,
+            meta: formatTemplateExerciseMeta(exercise, imageEntry),
+            name: exercise.name,
+          };
+        }),
+      templateId: template.id,
+      templateName: template.name,
+    } satisfies TemplatePreviewData;
+  }, [activeTemplatePreviewId, exerciseLibraryLookup, state.templateExercises, templates]);
 
   function handleDeleteTemplate(template: TemplateActionTarget) {
     setActiveTemplateAction(null);
@@ -323,6 +485,10 @@ export function GymScreenPreview() {
   function handleCloseRenameModal() {
     setRenameDraft('');
     setRenamingTemplate(null);
+  }
+
+  function handleCloseTemplatePreview() {
+    setActiveTemplatePreviewId(null);
   }
 
   function handleSaveRename() {
@@ -391,7 +557,12 @@ export function GymScreenPreview() {
         {templates.length > 0 ? (
           <View style={styles.templateGrid}>
             {templates.map((template) => (
-              <View key={template.id} style={styles.templateCell}>
+              <PressScale
+                key={template.id}
+                containerStyle={styles.templateCell}
+                haptic="light"
+                pressEffect="opacity"
+                onPress={() => setActiveTemplatePreviewId(template.id)}>
                 <SurfaceCard style={styles.templateCard}>
                   <View style={styles.templateTopLine}>
                     <AppText numberOfLines={1} style={styles.templateTitle} variant="title">
@@ -399,12 +570,13 @@ export function GymScreenPreview() {
                     </AppText>
                     <PressScale
                       haptic="light"
-                      onPress={() =>
+                      onPress={(event) => {
+                        event.stopPropagation();
                         setActiveTemplateAction({
                           templateId: template.id,
                           templateName: template.name,
-                        })
-                      }>
+                        });
+                      }}>
                       <View style={styles.templateMoreButton}>
                         <Ionicons name="ellipsis-horizontal" size={16} color={AppColors.text} />
                       </View>
@@ -415,21 +587,14 @@ export function GymScreenPreview() {
                       ? `${template.exerciseCount} exercises`
                       : 'Empty template'}
                   </AppText>
-                  <PressScale
-                    haptic="light"
-                    onPress={() => {
-                      startWorkoutFromTemplate(template.id);
-                      router.push('/workout/session');
-                    }}>
-                    <View style={styles.templateFooter}>
-                      <Ionicons name="play-circle" size={18} color={AppColors.primary} />
-                      <AppText variant="label" color={AppColors.primary}>
-                        Start workout
-                      </AppText>
-                    </View>
-                  </PressScale>
+                  <View style={styles.templateFooter}>
+                    <Ionicons name="play-circle" size={18} color={AppColors.primary} />
+                    <AppText variant="label" color={AppColors.primary}>
+                      Start workout
+                    </AppText>
+                  </View>
                 </SurfaceCard>
-              </View>
+              </PressScale>
             ))}
           </View>
         ) : (
@@ -492,6 +657,21 @@ export function GymScreenPreview() {
         onChangeDraft={setRenameDraft}
         onClose={handleCloseRenameModal}
         onSave={handleSaveRename}
+      />
+
+      <TemplatePreviewModal
+        isOpen={Boolean(activeTemplatePreview)}
+        onClose={handleCloseTemplatePreview}
+        onStartWorkout={() => {
+          if (!activeTemplatePreview) {
+            return;
+          }
+
+          handleCloseTemplatePreview();
+          startWorkoutFromTemplate(activeTemplatePreview.templateId);
+          router.push('/workout/session');
+        }}
+        preview={activeTemplatePreview}
       />
     </AppScreen>
   );
@@ -605,6 +785,7 @@ const styles = StyleSheet.create({
   templateCard: {
     gap: Spacing.md,
     minHeight: 128,
+    justifyContent: 'space-between',
   },
   emptyTemplateState: {
     gap: Spacing.sm,
@@ -702,6 +883,54 @@ const styles = StyleSheet.create({
   },
   renameActionSlot: {
     flex: 1,
+  },
+  previewModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    maxHeight: '78%',
+    gap: Spacing.md,
+    borderRadius: Radii.xl,
+  },
+  previewModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  previewModalCopy: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  previewExerciseList: {
+    gap: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  previewExerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    backgroundColor: AppColors.surfaceLow,
+  },
+  previewExerciseImage: {
+    width: 56,
+    height: 56,
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceHighest,
+  },
+  previewExerciseImageFallback: {
+    width: 56,
+    height: 56,
+    borderRadius: Radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceHighest,
+  },
+  previewExerciseCopy: {
+    flex: 1,
+    gap: 2,
   },
   renameSecondaryButton: {
     minHeight: 40,
