@@ -20,14 +20,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type TemplateSeed = {
   name: string;
   focus: string;
-  exercises: Array<{
+  exercises: {
     name: string;
     targetSets: number;
     repRange: string;
     previousLoadLabel: string;
     defaultLoad: number;
     defaultReps: number;
-  }>;
+  }[];
 };
 
 const templateSeeds: TemplateSeed[] = [
@@ -288,8 +288,17 @@ function buildSeedWorkoutHistory(
     { templateId: 'pull', title: 'Pull Day', day: addDays(addDays(currentWeekStart, -7), 1), hour: 18 },
     { templateId: 'legs', title: 'Leg Day', day: addDays(addDays(currentWeekStart, -14), 4), hour: 15 },
   ];
+  const seededWorkoutDays = new Set<string>();
 
   sessionSeeds.forEach((seed) => {
+    const seedDayKey = startOfLocalDay(seed.day).toISOString().slice(0, 10);
+
+    if (seededWorkoutDays.has(seedDayKey)) {
+      return;
+    }
+
+    seededWorkoutDays.add(seedDayKey);
+
     const sessionId = createId('session');
     const startedAt = new Date(withTime(seed.day, seed.hour, 10));
     const finishedAt = new Date(startedAt.getTime() + 50 * 60 * 1000);
