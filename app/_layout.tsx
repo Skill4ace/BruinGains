@@ -19,6 +19,7 @@ import 'react-native-reanimated';
 
 import { AppDataProvider } from '@/providers/app-data-provider';
 import { NavigationTheme } from '@/constants/theme';
+import { ensureAnonymousSupabaseSession, hasSupabasePublicEnv } from '@/lib/supabase/client';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -37,6 +38,16 @@ export default function RootLayout() {
       void SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  useEffect(() => {
+    if (!hasSupabasePublicEnv) {
+      return;
+    }
+
+    void ensureAnonymousSupabaseSession().catch(() => {
+      // Campus data hooks already fall back to cached and bundled data.
+    });
+  }, []);
 
   if (!loaded) {
     return null;

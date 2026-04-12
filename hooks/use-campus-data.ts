@@ -5,8 +5,11 @@ import {
   fallbackDiningHalls,
   fallbackGymCapacities,
 } from '@/data/public/campus-fallbacks';
-import { hasSupabasePublicEnv, supabasePublicClient } from '@/lib/supabase/client';
-import type { Database } from '@/types/supabase';
+import {
+  ensureAnonymousSupabaseSession,
+  hasSupabasePublicEnv,
+  supabasePublicClient,
+} from '@/lib/supabase/client';
 import type {
   DiningCustomizationOption,
   DiningMenuItem,
@@ -22,41 +25,16 @@ const DINING_MENU_ITEMS_CACHE_KEY = '@bruingains/public-dining-menu-items-v4';
 const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities-v3';
 const PUBLIC_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_DINING_MENU_ITEMS: DiningMenuItem[] = [];
-const DINING_MENU_PAGE_SIZE = 500;
-const DINING_MENU_MAX_PAGES = 20;
 
 type CacheEnvelope<T> = {
   data: T;
   updatedAt: string;
 };
 
-type DiningHallRow = Database['public']['Tables']['dining_halls']['Row'];
-type GymLocationRow = Database['public']['Tables']['gym_locations']['Row'];
-type GymCapacitySnapshotRow = Database['public']['Tables']['gym_capacity_snapshots']['Row'] & {
-  gym_locations: GymLocationRow | null;
-};
-type LatestDiningMenuItemRow = {
-  allergen_labels: unknown;
-  badge_labels: unknown;
-  hall_id: string;
-  hall_name: string;
-  hall_sort_order: number;
-  service_date: string;
-  meal_period: DiningMenuItem['mealPeriod'];
-  snapshot_status: string;
-  fetched_at: string;
-  recipe_id: number | null;
-  station_name: string | null;
-  item_name: string;
-  serving_size: string | null;
-  calories: number | null;
-  protein_g: number | null;
-  carbs_g: number | null;
-  fats_g: number | null;
-  customization_options: unknown;
-  ingredients: unknown;
-  item_order: number;
-  nutrition_facts: unknown;
+type CampusDataBundle = {
+  diningHalls: PublicDiningHall[];
+  diningMenuItems: DiningMenuItem[];
+  gymCapacities: GymCapacitySnapshot[];
 };
 
 function parseJsonStringArray(value: unknown) {
@@ -204,161 +182,66 @@ function createInitialState<T>(fallbackData: T): PublicResourceState<T> {
   };
 }
 
-function mapDiningHallRow(row: DiningHallRow): PublicDiningHall {
-  return {
-    id: row.id,
-    name: row.name,
-    fitPercent: row.fit_percent,
-    hours: {
-      breakfast: row.breakfast_hours,
-      lunch: row.lunch_hours,
-      dinner: row.dinner_hours,
-      lateNight: row.late_night_hours,
-    },
-  };
-}
+let campusDataInFlight: Promise<CampusDataBundle | null> | null = null;
 
-function mapGymCapacityRow(row: GymCapacitySnapshotRow): GymCapacitySnapshot | null {
-  if (!row.gym_locations) {
+function normalizeCampusDataBundle(value: unknown): CampusDataBundle | null {
+  if (!value || typeof value !== 'object') {
     return null;
   }
 
+  const candidate = value as Record<string, unknown>;
+
   return {
-    id: row.location_id,
-    isClosed: row.is_closed,
-    name: row.gym_locations.name,
-    hours: row.gym_locations.hours,
-    load: row.load,
-    percent: row.percent_full ?? Math.round(row.load * 100),
-    zones: parseGymCapacityZones(row.zone_breakdown),
-    zoneName: row.zone_name,
-    capturedAt: row.captured_at,
+    diningHalls: Array.isArray(candidate.diningHalls)
+      ? (candidate.diningHalls as PublicDiningHall[])
+      : [],
+    diningMenuItems: Array.isArray(candidate.diningMenuItems)
+      ? (candidate.diningMenuItems as DiningMenuItem[])
+      : [],
+    gymCapacities: Array.isArray(candidate.gymCapacities)
+      ? (candidate.gymCapacities as GymCapacitySnapshot[])
+      : [],
   };
 }
 
-function mapLatestDiningMenuItemRow(row: LatestDiningMenuItemRow): DiningMenuItem {
-  return {
-    allergenLabels: parseJsonStringArray(row.allergen_labels),
-    badgeLabels: parseJsonStringArray(row.badge_labels),
-    hallId: row.hall_id,
-    hallName: row.hall_name,
-    hallSortOrder: row.hall_sort_order,
-    serviceDate: row.service_date,
-    mealPeriod: row.meal_period,
-    snapshotStatus: row.snapshot_status,
-    fetchedAt: row.fetched_at,
-    recipeId: row.recipe_id,
-    stationName: row.station_name ?? 'Station',
-    itemName: row.item_name,
-    servingSize: row.serving_size,
-    calories: row.calories,
-    proteinG: row.protein_g,
-    carbsG: row.carbs_g,
-    fatsG: row.fats_g,
-    ingredients: parseJsonStringArray(row.ingredients),
-    itemOrder: row.item_order,
-    nutritionFacts: parseNutritionFacts(row.nutrition_facts),
-    customizationOptions: parseCustomizationOptions(row.customization_options),
-  };
-}
-
-async function fetchDiningHallsFromSupabase() {
+async function fetchCampusDataBundleFromFunction() {
   if (!hasSupabasePublicEnv || !supabasePublicClient) {
     return null;
   }
 
-  const { data, error } = await supabasePublicClient
-    .from('dining_halls')
-    .select(
-      'id,name,fit_percent,breakfast_hours,lunch_hours,dinner_hours,late_night_hours,sort_order',
-    )
-    .eq('is_active', true)
-    .order('sort_order', { ascending: true });
-
-  if (error || !data) {
-    throw error ?? new Error('Unable to load dining halls');
+  if (campusDataInFlight) {
+    return campusDataInFlight;
   }
 
-  const mapped = (data as DiningHallRow[]).map(mapDiningHallRow);
-  return mapped.length > 0 ? mapped : null;
-}
-
-async function fetchGymCapacitiesFromSupabase() {
-  if (!hasSupabasePublicEnv || !supabasePublicClient) {
-    return null;
-  }
-
-  const { data, error } = await supabasePublicClient
-    .from('gym_capacity_snapshots')
-    .select(
-      'id,location_id,load,percent_full,captured_at,is_closed,zone_name,zone_breakdown,gym_locations!inner(id,name,hours,sort_order)',
-    )
-    .order('captured_at', { ascending: false })
-    .limit(10);
-
-  if (error || !data) {
-    throw error ?? new Error('Unable to load gym capacities');
-  }
-
-  const deduped = new Map<string, GymCapacitySnapshot>();
-
-  (data as GymCapacitySnapshotRow[]).forEach((row) => {
-    const mapped = mapGymCapacityRow(row);
-
-    if (mapped && !deduped.has(mapped.id)) {
-      deduped.set(mapped.id, mapped);
-    }
-  });
-
-  const snapshots = [...deduped.values()];
-  return snapshots.length > 0 ? snapshots : null;
-}
-
-async function fetchLatestDiningMenuItemsFromSupabase() {
-  if (!hasSupabasePublicEnv || !supabasePublicClient) {
-    return null;
-  }
-
-  const rows: LatestDiningMenuItemRow[] = [];
-  let pageStart = 0;
-  let pageCount = 0;
-
-  while (true) {
-    if (pageCount >= DINING_MENU_MAX_PAGES) {
-      throw new Error('Dining menu refresh exceeded safe page limit');
-    }
-
-    const pageEnd = pageStart + DINING_MENU_PAGE_SIZE - 1;
-    const { data, error } = await supabasePublicClient
-      .from('latest_menu_items')
-      .select(
-        'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,customization_options,ingredients,item_order,nutrition_facts',
-      )
-      .order('hall_sort_order', { ascending: true })
-      .order('meal_period', { ascending: true })
-      .order('item_order', { ascending: true })
-      .range(pageStart, pageEnd);
+  campusDataInFlight = (async () => {
+    await ensureAnonymousSupabaseSession();
+    const { data, error } = await supabasePublicClient.functions.invoke('campus-data');
 
     if (error) {
       throw error;
     }
 
-    if (!data || data.length === 0) {
-      break;
-    }
+    return normalizeCampusDataBundle(data);
+  })().finally(() => {
+    campusDataInFlight = null;
+  });
 
-    rows.push(...(data as LatestDiningMenuItemRow[]));
+  return campusDataInFlight;
+}
 
-    if (data.length < DINING_MENU_PAGE_SIZE) {
-      break;
-    }
+async function fetchDiningHallsFromSupabase() {
+  const bundle = await fetchCampusDataBundleFromFunction();
+  return bundle && bundle.diningHalls.length > 0 ? bundle.diningHalls : null;
+}
 
-    pageCount += 1;
-    pageStart += DINING_MENU_PAGE_SIZE;
-  }
+async function fetchGymCapacitiesFromSupabase() {
+  const bundle = await fetchCampusDataBundleFromFunction();
+  return bundle && bundle.gymCapacities.length > 0 ? bundle.gymCapacities : null;
+}
 
-  const items = rows.map(mapLatestDiningMenuItemRow);
-  return items.length > 0 ? items : null;
+async function fetchLatestDiningMenuItemsFromSupabase() {
+  const bundle = await fetchCampusDataBundleFromFunction();
+  return bundle && bundle.diningMenuItems.length > 0 ? bundle.diningMenuItems : null;
 }
 
 function useCachedCampusResource<T>(
