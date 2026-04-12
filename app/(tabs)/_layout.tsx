@@ -1,9 +1,16 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 
 import { AppTabBar } from '@/components/ui/app-tab-bar';
 import { AppColors } from '@/constants/theme';
+import { useAppData } from '@/providers/app-data-provider';
 
 export default function TabLayout() {
+  const { isOnboardingComplete } = useAppData();
+
+  if (!isOnboardingComplete) {
+    return <Redirect href="/onboarding" />;
+  }
+
   return (
     <Tabs
       tabBar={(props) => <AppTabBar {...props} />}

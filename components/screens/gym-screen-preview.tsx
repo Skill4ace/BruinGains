@@ -194,56 +194,65 @@ export function GymScreenPreview() {
             </View>
           </PressScale>
         </View>
-        <View style={styles.templateGrid}>
-          {templates.map((template) => (
-            <View key={template.id} style={styles.templateCell}>
-              <SurfaceCard style={styles.templateCard}>
-                <View style={styles.templateTopLine}>
-                  <AppText variant="title">{template.name}</AppText>
-                  <View style={styles.templateActions}>
-                    <PressScale
-                      haptic="light"
-                      onPress={() =>
-                        router.push({
-                          pathname: '/workout/template',
-                          params: { templateId: template.id },
-                        })
-                      }>
-                      <View style={styles.templateActionButton}>
-                        <Ionicons name="pencil-outline" size={15} color={AppColors.primary} />
-                      </View>
-                    </PressScale>
-                    <PressScale
-                      haptic="light"
-                      onPress={() => handleDeleteTemplate(template.id)}>
-                      <View style={styles.templateActionButton}>
-                        <Ionicons name="trash-outline" size={15} color={AppColors.danger} />
-                      </View>
-                    </PressScale>
+        {templates.length > 0 ? (
+          <View style={styles.templateGrid}>
+            {templates.map((template) => (
+              <View key={template.id} style={styles.templateCell}>
+                <SurfaceCard style={styles.templateCard}>
+                  <View style={styles.templateTopLine}>
+                    <AppText variant="title">{template.name}</AppText>
+                    <View style={styles.templateActions}>
+                      <PressScale
+                        haptic="light"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/workout/template',
+                            params: { templateId: template.id },
+                          })
+                        }>
+                        <View style={styles.templateActionButton}>
+                          <Ionicons name="pencil-outline" size={15} color={AppColors.primary} />
+                        </View>
+                      </PressScale>
+                      <PressScale
+                        haptic="light"
+                        onPress={() => handleDeleteTemplate(template.id)}>
+                        <View style={styles.templateActionButton}>
+                          <Ionicons name="trash-outline" size={15} color={AppColors.danger} />
+                        </View>
+                      </PressScale>
+                    </View>
                   </View>
-                </View>
-                <AppText variant="body" dimmed>
-                  {template.exerciseCount > 0
-                    ? `${template.exerciseCount} exercises`
-                    : 'Empty template'}
-                </AppText>
-                <PressScale
-                  haptic="light"
-                  onPress={() => {
-                    startWorkoutFromTemplate(template.id);
-                    router.push('/workout/session');
-                  }}>
-                  <View style={styles.templateFooter}>
-                    <Ionicons name="play-circle" size={18} color={AppColors.primary} />
-                    <AppText variant="label" color={AppColors.primary}>
-                      Start workout
-                    </AppText>
-                  </View>
-                </PressScale>
-              </SurfaceCard>
-            </View>
-          ))}
-        </View>
+                  <AppText variant="body" dimmed>
+                    {template.exerciseCount > 0
+                      ? `${template.exerciseCount} exercises`
+                      : 'Empty template'}
+                  </AppText>
+                  <PressScale
+                    haptic="light"
+                    onPress={() => {
+                      startWorkoutFromTemplate(template.id);
+                      router.push('/workout/session');
+                    }}>
+                    <View style={styles.templateFooter}>
+                      <Ionicons name="play-circle" size={18} color={AppColors.primary} />
+                      <AppText variant="label" color={AppColors.primary}>
+                        Start workout
+                      </AppText>
+                    </View>
+                  </PressScale>
+                </SurfaceCard>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <SurfaceCard style={styles.emptyTemplateState}>
+            <AppText variant="title">No templates yet</AppText>
+            <AppText variant="body" dimmed>
+              Add one from the + button or start an empty workout and build from there.
+            </AppText>
+          </SurfaceCard>
+        )}
         <View style={styles.emptyWorkoutButton}>
           <ActionButton
             label="Start Empty Workout"
@@ -366,6 +375,9 @@ const styles = StyleSheet.create({
   templateCard: {
     gap: Spacing.md,
     minHeight: 128,
+  },
+  emptyTemplateState: {
+    gap: Spacing.sm,
   },
   templateTopLine: {
     flexDirection: 'row',

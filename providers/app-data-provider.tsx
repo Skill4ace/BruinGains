@@ -7,7 +7,13 @@ import {
   type ReactNode,
 } from 'react';
 
+import { loadOnboardingState, saveOnboardingState } from '@/data/local/onboarding-storage';
 import { loadLocalAppData, saveLocalAppData } from '@/data/local/storage';
+import { calculateGoalTargets } from '@/lib/goal-calculator';
+import {
+  getStarterTemplatePack,
+  type StarterTemplatePackId,
+} from '@/lib/starter-template-packs';
 import { formatDurationMinutes } from '@/lib/workout-duration';
 import type {
   CreateCustomMealLogInput,
@@ -16,6 +22,9 @@ import type {
   MealLog,
   MealLogPeriod,
   MealPeriod,
+  ProfileActivityLevel,
+  ProfileNutritionGoal,
+  ProfileSex,
   UpdateGoalPlanInput,
   UpdateMealLogInput,
   WorkoutExerciseDraft,
@@ -28,8 +37,25 @@ import type {
   WorkoutTemplateSet,
 } from '@/types/app-data';
 
+type CompleteOnboardingInput = {
+  activityLevel?: ProfileActivityLevel | null;
+  age?: number | null;
+  calories?: number | null;
+  carbs?: number | null;
+  fats?: number | null;
+  heightInches?: number | null;
+  nutritionGoal?: ProfileNutritionGoal | null;
+  protein?: number | null;
+  sex?: ProfileSex | null;
+  starterPackIds?: StarterTemplatePackId[];
+  weightPounds?: number | null;
+  workoutsPerWeek?: number | null;
+};
+
 type AppDataContextValue = {
+  completeOnboarding: (input: CompleteOnboardingInput) => void;
   isHydrated: boolean;
+  isOnboardingComplete: boolean;
   addWorkoutExercise: (sessionId: string, draft: WorkoutExerciseDraft) => void;
   addWorkoutExercises: (sessionId: string, drafts: WorkoutExerciseDraft[]) => void;
   state: LocalAppData;
@@ -77,6 +103,8 @@ type AppDataContextValue = {
     field: 'durationMinutes' | 'load' | 'reps',
     value: number,
   ) => void;
+  reopenOnboarding: () => void;
+  skipOnboarding: () => void;
 };
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
@@ -455,6 +483,27 @@ function buildTemplateSetRecords(
   }));
 }
 
+function toWorkoutExerciseDraft(
+  draft: WorkoutTemplateExerciseDraft,
+): WorkoutExerciseDraft {
+  const firstSet = draft.sets[0];
+
+  return {
+    currentLoad:
+      draft.trackingMode === 'duration' ? 0 : firstSet?.load ?? 45,
+    name: draft.name,
+    repRange: draft.repRange,
+    targetDurationMinutes:
+      draft.trackingMode === 'duration'
+        ? firstSet?.durationMinutes ?? draft.targetDurationMinutes ?? 20
+        : undefined,
+    targetReps:
+      draft.trackingMode === 'duration' ? undefined : firstSet?.reps ?? 8,
+    targetSets: draft.sets.length,
+    trackingMode: draft.trackingMode,
+  };
+}
+
 function upsertWorkoutSet(
   workoutSets: WorkoutSet[],
   nextSet: WorkoutSet,
@@ -549,12 +598,17 @@ function ensureOpenWorkoutSetRows(state: LocalAppData) {
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<LocalAppData | null>(null);
+  const [isOnboardingComplete, setIsOnboardingComplete] = useState<boolean | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function hydrate() {
-      const nextState = ensureOpenWorkoutSetRows(await loadLocalAppData());
+      const [nextAppState, nextOnboardingState] = await Promise.all([
+        loadLocalAppData(),
+        loadOnboardingState(),
+      ]);
+      const nextState = ensureOpenWorkoutSetRows(nextAppState);
 
       if (!isMounted) {
         return;
@@ -562,6 +616,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
       startTransition(() => {
         setState(nextState);
+        setIsOnboardingComplete(nextOnboardingState.completed);
       });
     }
 
@@ -580,7 +635,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     void saveLocalAppData(state);
   }, [state]);
 
-  if (!state) {
+  useEffect(() => {
+    if (isOnboardingComplete === null) {
+      return;
+    }
+
+    void saveOnboardingState({
+      completed: isOnboardingComplete,
+    });
+  }, [isOnboardingComplete]);
+
+  if (!state || isOnboardingComplete === null) {
     return null;
   }
 
@@ -923,6 +988,145 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         },
       };
     });
+  }
+
+  function completeOnboarding(input: CompleteOnboardingInput) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const nextProfile = {
+        ...currentState.profile,
+        age:
+          input.age != null ? Math.max(13, Math.round(input.age)) : currentState.profile.age,
+        activityLevel: input.activityLevel ?? currentState.profile.activityLevel,
+        heightInches:
+          input.heightInches != null
+            ? Math.max(48, Math.round(input.heightInches))
+            : currentState.profile.heightInches,
+        nutritionGoal: input.nutritionGoal ?? currentState.profile.nutritionGoal,
+        sex: input.sex ?? currentState.profile.sex,
+        weightPounds:
+          input.weightPounds != null
+            ? Math.max(80, input.weightPounds)
+            : currentState.profile.weightPounds,
+      };
+      const calculatedGoals = calculateGoalTargets({
+        age: nextProfile.age,
+        activityLevel: nextProfile.activityLevel,
+        heightInches: nextProfile.heightInches,
+        nutritionGoal: nextProfile.nutritionGoal,
+        sex: nextProfile.sex,
+        weightPounds: nextProfile.weightPounds,
+      });
+      const nextGoals = {
+        ...currentState.goals,
+        calories:
+          input.calories != null
+            ? Math.max(1200, Math.round(input.calories))
+            : calculatedGoals.calories,
+        carbs:
+          input.carbs != null
+            ? Math.max(50, Math.round(input.carbs))
+            : calculatedGoals.carbs,
+        fats:
+          input.fats != null
+            ? Math.max(20, Math.round(input.fats))
+            : calculatedGoals.fats,
+        protein:
+          input.protein != null
+            ? Math.max(60, Math.round(input.protein))
+            : calculatedGoals.protein,
+        workoutsPerWeek:
+          input.workoutsPerWeek != null
+            ? Math.max(1, Math.min(7, Math.round(input.workoutsPerWeek)))
+            : currentState.goals.workoutsPerWeek,
+      };
+      const existingTemplateNames = new Set(
+        currentState.workoutTemplates.map((template) => normalizeExerciseName(template.name)),
+      );
+      const existingExerciseNames = new Set(
+        currentState.exerciseLibrary.map((exercise) => normalizeExerciseName(exercise.name)),
+      );
+      const now = new Date().toISOString();
+      const newTemplates: WorkoutTemplate[] = [];
+      const newTemplateExercises: WorkoutTemplateExercise[] = [];
+      const newTemplateSets: WorkoutTemplateSet[] = [];
+      const nextExerciseLibraryEntries: LocalAppData['exerciseLibrary'] = [];
+
+      for (const packId of input.starterPackIds ?? []) {
+        const pack = getStarterTemplatePack(packId);
+
+        if (!pack) {
+          continue;
+        }
+
+        for (const starterTemplate of pack.templates) {
+          const normalizedTemplateName = normalizeExerciseName(starterTemplate.name);
+
+          if (existingTemplateNames.has(normalizedTemplateName)) {
+            continue;
+          }
+
+          existingTemplateNames.add(normalizedTemplateName);
+          const templateId = createId('template');
+          const templateOrder = currentState.workoutTemplates.length + newTemplates.length;
+          const builtTemplateExercises = starterTemplate.exercises.map((exercise, index) =>
+            buildTemplateExerciseRecord(currentState, templateId, exercise, index),
+          );
+
+          newTemplates.push({
+            id: templateId,
+            name: starterTemplate.name,
+            createdAt: now,
+            order: templateOrder,
+            updatedAt: now,
+          });
+          newTemplateExercises.push(...builtTemplateExercises);
+
+          starterTemplate.exercises.forEach((exercise, index) => {
+            newTemplateSets.push(
+              ...buildTemplateSetRecords(builtTemplateExercises[index].id, exercise),
+            );
+
+            const normalizedExerciseName = normalizeExerciseName(exercise.name);
+
+            if (existingExerciseNames.has(normalizedExerciseName)) {
+              return;
+            }
+
+            existingExerciseNames.add(normalizedExerciseName);
+            nextExerciseLibraryEntries.push(
+              createCustomExerciseLibraryEntry(toWorkoutExerciseDraft(exercise)),
+            );
+          });
+        }
+      }
+
+      return {
+        ...currentState,
+        profile: nextProfile,
+        goals: nextGoals,
+        exerciseLibrary:
+          nextExerciseLibraryEntries.length > 0
+            ? [...currentState.exerciseLibrary, ...nextExerciseLibraryEntries]
+            : currentState.exerciseLibrary,
+        workoutTemplates: [...currentState.workoutTemplates, ...newTemplates],
+        templateExercises: [...currentState.templateExercises, ...newTemplateExercises],
+        templateExerciseSets: [...currentState.templateExerciseSets, ...newTemplateSets],
+      };
+    });
+
+    setIsOnboardingComplete(true);
+  }
+
+  function skipOnboarding() {
+    setIsOnboardingComplete(true);
+  }
+
+  function reopenOnboarding() {
+    setIsOnboardingComplete(false);
   }
 
   function deleteMealLog(mealLogId: string) {
@@ -1568,7 +1772,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   return (
     <AppDataContext.Provider
       value={{
+        completeOnboarding,
         isHydrated: true,
+        isOnboardingComplete,
         state,
         addWorkoutExercise,
         addWorkoutExercises,
@@ -1595,6 +1801,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         updateWorkoutTemplate,
         updateWorkoutSetType,
         updateWorkoutSetValue,
+        reopenOnboarding,
+        skipOnboarding,
       }}>
       {children}
     </AppDataContext.Provider>

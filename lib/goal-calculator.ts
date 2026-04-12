@@ -71,6 +71,7 @@ export const SEX_OPTIONS: {
 }[] = [
   { label: 'Male', value: 'male' },
   { label: 'Female', value: 'female' },
+  { label: 'Other', value: 'other' },
 ];
 
 export const WORKOUTS_PER_WEEK_OPTIONS = [2, 3, 4, 5, 6, 7] as const;
@@ -118,7 +119,10 @@ function getMifflinStJeorBmr({
   sex: ProfileSex;
   weightKg: number;
 }) {
-  const sexOffset = sex === 'male' ? 5 : -161;
+  // Use the midpoint between the standard male/female offsets when the user
+  // selects "Other" so target generation stays available without forcing a
+  // binary selection.
+  const sexOffset = sex === 'male' ? 5 : sex === 'female' ? -161 : -78;
   return 10 * weightKg + 6.25 * heightCm - 5 * age + sexOffset;
 }
 

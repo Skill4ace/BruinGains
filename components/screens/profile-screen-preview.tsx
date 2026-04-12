@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -584,7 +585,8 @@ function buildProfileHistory(state: LocalAppData, referenceDate = new Date()) {
 }
 
 export function ProfileScreenPreview() {
-  const { state, updateGoalPlan } = useAppData();
+  const router = useRouter();
+  const { reopenOnboarding, state, updateGoalPlan } = useAppData();
   const referenceDate = useMemo(() => new Date(), []);
   const todayDayId = getDateKey(referenceDate);
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
@@ -1060,6 +1062,17 @@ export function ProfileScreenPreview() {
             </>
           ) : null}
         </SurfaceCard>
+
+        <ActionButton
+          compact
+          label="Reopen onboarding"
+          onPress={() => {
+            reopenOnboarding();
+            router.replace('/onboarding');
+          }}
+          style={styles.testingButton}
+          variant="ghost"
+        />
       </View>
 
       <Modal
@@ -1940,6 +1953,9 @@ const styles = StyleSheet.create({
   },
   logsCard: {
     gap: Spacing.md,
+  },
+  testingButton: {
+    alignSelf: 'stretch',
   },
   logsHeader: {
     flexDirection: 'row',

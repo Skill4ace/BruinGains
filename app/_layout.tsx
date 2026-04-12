@@ -49,6 +49,13 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen
+              name="onboarding"
+              options={{
+                animation: 'slide_from_right',
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
               name="workout/session"
               options={{
                 animation: 'slide_from_bottom',

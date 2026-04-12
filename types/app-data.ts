@@ -4,7 +4,7 @@ export type MealLogPeriod = MealPeriod | 'snack';
 
 export type PublicDiningHallHours = Record<MealPeriod, string | null>;
 
-export type ProfileSex = 'female' | 'male';
+export type ProfileSex = 'female' | 'male' | 'other';
 export type ProfileActivityLevel =
   | 'inactive'
   | 'low_active'
