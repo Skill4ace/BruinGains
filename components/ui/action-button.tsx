@@ -11,6 +11,7 @@ type ActionButtonProps = {
   variant?: 'primary' | 'secondary' | 'ghost';
   style?: StyleProp<ViewStyle>;
   compact?: boolean;
+  pressEffect?: 'none' | 'opacity' | 'scale';
 };
 
 export function ActionButton({
@@ -19,9 +20,10 @@ export function ActionButton({
   variant = 'primary',
   style,
   compact = false,
+  pressEffect = 'scale',
 }: ActionButtonProps) {
   return (
-    <PressScale containerStyle={style} onPress={onPress}>
+    <PressScale containerStyle={style} onPress={onPress} pressEffect={pressEffect}>
       {variant === 'primary' ? (
         <View style={[styles.button, styles.primary, compact && styles.buttonCompact]}>
           <AppText variant="bodyStrong" color={AppColors.white}>

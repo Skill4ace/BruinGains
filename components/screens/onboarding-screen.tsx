@@ -160,7 +160,7 @@ const GOAL_OPTIONS: {
 ];
 
 const FREQUENCY_OPTIONS: {
-  description: string;
+  description?: string;
   iconName: keyof typeof Ionicons.glyphMap;
   title: string;
   value: number;
@@ -168,25 +168,21 @@ const FREQUENCY_OPTIONS: {
   {
     value: 2,
     title: '0-2',
-    description: 'A few sessions.',
     iconName: 'partly-sunny-outline',
   },
   {
     value: 4,
     title: '3-4',
-    description: 'Most common split.',
     iconName: 'calendar-outline',
   },
   {
     value: 6,
     title: '5-6',
-    description: 'High consistency.',
     iconName: 'barbell-outline',
   },
   {
     value: 7,
     title: '6+',
-    description: 'Training-focused.',
     iconName: 'flame-outline',
   },
 ];
@@ -202,31 +198,31 @@ function toFeetAndInches(totalInches: number) {
 
 function getStepSubtitle(step: StepId) {
   if (step === 'sex') {
-    return 'For your targets.';
+    return null;
   }
 
   if (step === 'age') {
-    return 'For your targets.';
+    return null;
   }
 
   if (step === 'height') {
-    return 'Choose your height.';
+    return null;
   }
 
   if (step === 'weight') {
-    return 'Choose your weight.';
+    return null;
   }
 
   if (step === 'activity') {
-    return 'Your normal week.';
+    return null;
   }
 
   if (step === 'goal') {
-    return 'Choose direction.';
+    return null;
   }
 
   if (step === 'frequency') {
-    return 'Weekly goal.';
+    return null;
   }
 
   if (step === 'packs') {
@@ -242,6 +238,7 @@ function buildProgress(stepIndex: number) {
 
 const WHEEL_ITEM_HEIGHT = 56;
 const WHEEL_VISIBLE_ROWS = 5;
+const WEIGHT_WHEEL_ITEM_HEIGHT = 48;
 const WHEEL_FRAME_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ROWS;
 const WHEEL_VERTICAL_PADDING = (WHEEL_FRAME_HEIGHT - WHEEL_ITEM_HEIGHT) / 2;
 
@@ -252,15 +249,19 @@ type WheelItem = {
 
 function WheelPicker({
   items,
+  itemHeight = WHEEL_ITEM_HEIGHT,
   onChange,
   selectedValue,
   style,
 }: {
   items: WheelItem[];
+  itemHeight?: number;
   onChange: (value: number) => void;
   selectedValue: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const frameHeight = itemHeight * WHEEL_VISIBLE_ROWS;
+  const verticalPadding = (frameHeight - itemHeight) / 2;
   const scrollRef = useRef<ScrollView | null>(null);
   const lastCommittedValueRef = useRef(selectedValue);
   const selectedIndex = Math.max(
@@ -275,13 +276,13 @@ function WheelPicker({
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       scrollRef.current?.scrollTo({
-        y: selectedIndex * WHEEL_ITEM_HEIGHT,
+        y: selectedIndex * itemHeight,
         animated: false,
       });
     }, 0);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedIndex]);
+  }, [itemHeight, selectedIndex]);
 
   function snapToIndex(index: number, animated: boolean) {
     const clampedIndex = Math.max(0, Math.min(items.length - 1, index));
@@ -294,7 +295,7 @@ function WheelPicker({
     }
 
     scrollRef.current?.scrollTo({
-      y: clampedIndex * WHEEL_ITEM_HEIGHT,
+      y: clampedIndex * itemHeight,
       animated,
     });
   }
@@ -306,26 +307,26 @@ function WheelPicker({
         decelerationRate="fast"
         onMomentumScrollEnd={(event) => {
           snapToIndex(
-            Math.round(event.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT),
+            Math.round(event.nativeEvent.contentOffset.y / itemHeight),
             true,
           );
         }}
         onScrollEndDrag={(event) => {
           snapToIndex(
-            Math.round(event.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT),
+            Math.round(event.nativeEvent.contentOffset.y / itemHeight),
             true,
           );
         }}
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
-        snapToInterval={WHEEL_ITEM_HEIGHT}
-        snapToOffsets={items.map((_, index) => index * WHEEL_ITEM_HEIGHT)}
-        contentContainerStyle={styles.wheelContent}>
+        snapToInterval={itemHeight}
+        snapToOffsets={items.map((_, index) => index * itemHeight)}
+        contentContainerStyle={[styles.wheelContent, { paddingVertical: verticalPadding }]}>
         {items.map((item) => {
           const selected = item.value === selectedValue;
 
           return (
-            <View key={`${item.label}-${item.value}`} style={styles.wheelRow}>
+            <View key={`${item.label}-${item.value}`} style={[styles.wheelRow, { height: itemHeight }]}>
               <AppText
                 variant={selected ? 'heroNumber' : 'title'}
                 color={selected ? AppColors.text : AppColors.textMuted}
@@ -336,7 +337,16 @@ function WheelPicker({
           );
         })}
       </ScrollView>
-      <View pointerEvents="none" style={styles.wheelSelectionBand} />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.wheelSelectionBand,
+          {
+            height: itemHeight,
+            top: verticalPadding,
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -424,7 +434,7 @@ function ChoiceCard({
   title: string;
 }) {
   return (
-    <PressScale onPress={onPress}>
+    <PressScale onPress={onPress} pressEffect="none">
       <View style={[styles.choiceCard, selected ? styles.choiceCardSelected : null]}>
         <View style={styles.choiceCardHeader}>
           <View style={[styles.choiceIcon, selected ? styles.choiceIconSelected : null]}>
@@ -463,7 +473,6 @@ function PackCard({
   recommended,
   selected,
   subtitle,
-  templateCount,
   title,
 }: {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -471,11 +480,10 @@ function PackCard({
   recommended: boolean;
   selected: boolean;
   subtitle: string;
-  templateCount: number;
   title: string;
 }) {
   return (
-    <PressScale onPress={onPress}>
+    <PressScale onPress={onPress} pressEffect="none">
       <View style={[styles.packCard, selected ? styles.packCardSelected : null]}>
         <View style={styles.packMainRow}>
           <View style={styles.packLead}>
@@ -493,20 +501,15 @@ function PackCard({
               <AppText numberOfLines={1} variant="micro" color={AppColors.textMuted}>
                 {subtitle}
               </AppText>
-              <View style={styles.packMetaRow}>
-                <View style={[styles.templateCountPill, selected ? styles.templateCountPillSelected : null]}>
-                  <AppText variant="label" color={AppColors.primary}>
-                    {`${templateCount} templates`}
-                  </AppText>
-                </View>
-                {recommended ? (
+              {recommended ? (
+                <View style={styles.packMetaRow}>
                   <View style={styles.recommendedBadge}>
                     <AppText variant="micro" color={AppColors.primary}>
                       Recommended
                     </AppText>
                   </View>
-                ) : null}
-              </View>
+                </View>
+              ) : null}
             </View>
           </View>
           <View style={[styles.selectionBadge, selected ? styles.selectionBadgeSelected : null]}>
@@ -594,24 +597,13 @@ export function OnboardingScreen() {
       return;
     }
 
-    setDraft((currentValue) => {
-      if (
-        currentValue.caloriesTarget ||
-        currentValue.proteinTarget ||
-        currentValue.carbsTarget ||
-        currentValue.fatsTarget
-      ) {
-        return currentValue;
-      }
-
-      return {
-        ...currentValue,
-        caloriesTarget: String(suggestedSummaryTargets.calories),
-        proteinTarget: String(suggestedSummaryTargets.protein),
-        carbsTarget: String(suggestedSummaryTargets.carbs),
-        fatsTarget: String(suggestedSummaryTargets.fats),
-      };
-    });
+    setDraft((currentValue) => ({
+      ...currentValue,
+      caloriesTarget: String(suggestedSummaryTargets.calories),
+      proteinTarget: String(suggestedSummaryTargets.protein),
+      carbsTarget: String(suggestedSummaryTargets.carbs),
+      fatsTarget: String(suggestedSummaryTargets.fats),
+    }));
   }, [currentStep, suggestedSummaryTargets]);
 
   useEffect(() => {
@@ -648,7 +640,14 @@ export function OnboardingScreen() {
   }
 
   function retreatStep() {
-    setStepIndex((currentValue) => Math.max(currentValue - 1, 0));
+    setStepIndex((currentValue) => {
+      if (currentValue === 0) {
+        setHasStarted(false);
+        return 0;
+      }
+
+      return Math.max(currentValue - 1, 0);
+    });
   }
 
   function handleSkipAll() {
@@ -767,7 +766,7 @@ export function OnboardingScreen() {
           </View>
           <View style={styles.heroCopy}>
             <AppText variant="headline" style={styles.heroTitle}>
-              Track Food & Lifts
+              Track Meals & Lifts
             </AppText>
           </View>
         </View>
@@ -896,6 +895,7 @@ export function OnboardingScreen() {
     return (
       <View style={[styles.stepBody, styles.wheelStepBody]}>
         <WheelPicker
+          itemHeight={WEIGHT_WHEEL_ITEM_HEIGHT}
           items={weightItems}
           onChange={(value) =>
             setDraft((currentValue) => ({
@@ -983,13 +983,12 @@ export function OnboardingScreen() {
           <View key={pack.id} style={styles.packRowWrap}>
             <PackCard
               iconName={pack.iconName as keyof typeof Ionicons.glyphMap}
-            onPress={() => togglePack(pack.id)}
-            recommended={recommendedPackId === pack.id}
-            selected={draft.selectedPackIds.includes(pack.id)}
-            subtitle={pack.subtitle}
-            templateCount={pack.templateCount}
-            title={pack.title}
-          />
+              onPress={() => togglePack(pack.id)}
+              recommended={recommendedPackId === pack.id}
+              selected={draft.selectedPackIds.includes(pack.id)}
+              subtitle={pack.subtitle}
+              title={pack.title}
+            />
           </View>
         ))}
       </View>
@@ -1181,7 +1180,9 @@ export function OnboardingScreen() {
                     style={styles.headerBrandLogo}
                   />
                 </View>
-                <AppText variant="headline">BruinGains</AppText>
+                <AppText variant="headline" style={styles.headerBrandTitle}>
+                  BruinGains
+                </AppText>
               </View>
             ) : null}
             {hasStarted ? (
@@ -1210,9 +1211,11 @@ export function OnboardingScreen() {
                                 ? 'Starter templates'
                                 : 'Targets'}
                 </AppText>
-                <AppText variant="body" color={AppColors.textMuted}>
-                  {getStepSubtitle(currentStep)}
-                </AppText>
+                {getStepSubtitle(currentStep) ? (
+                  <AppText variant="body" color={AppColors.textMuted}>
+                    {getStepSubtitle(currentStep)}
+                  </AppText>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -1236,7 +1239,8 @@ export function OnboardingScreen() {
                     ? handleFinish
                     : advanceStep
               }
-              style={styles.footerButton}
+              pressEffect="none"
+              style={[styles.footerButton, !hasStarted ? styles.footerButtonWelcome : null]}
             />
             {hasStarted && currentStep !== 'summary' ? (
               <PressScale haptic="none" onPress={skipCurrentStep} pressEffect="opacity">
@@ -1295,14 +1299,14 @@ const styles = StyleSheet.create({
   headerBrandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 3,
   },
   headerBrandRowWelcome: {
     alignSelf: 'center',
   },
   headerBrandLogoBox: {
-    width: 42,
-    height: 42,
+    width: 50,
+    height: 50,
     borderRadius: Radii.md,
     backgroundColor: AppColors.surfaceLowest,
     alignItems: 'center',
@@ -1310,9 +1314,14 @@ const styles = StyleSheet.create({
     ...Shadows.soft,
   },
   headerBrandLogo: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 11,
+  },
+  headerBrandTitle: {
+    fontFamily: Fonts.displayBold,
+    fontSize: 25,
+    lineHeight: 29,
   },
   progressTrack: {
     height: 4,
@@ -1334,8 +1343,8 @@ const styles = StyleSheet.create({
   },
   scrollContentWelcome: {
     flexGrow: 1,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.md,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.lg,
   },
   stepBody: {
     gap: Spacing.sm,
@@ -1350,6 +1359,8 @@ const styles = StyleSheet.create({
   },
   welcomeStepBody: {
     flex: 1,
+    justifyContent: 'center',
+    gap: Spacing.lg,
   },
   heroPanel: {
     borderRadius: Radii.xl,
@@ -1361,8 +1372,8 @@ const styles = StyleSheet.create({
   heroPanelWelcome: {
     alignSelf: 'center',
     width: '100%',
-    maxWidth: 440,
-    paddingBottom: Spacing.md,
+    maxWidth: 468,
+    paddingBottom: Spacing.lg,
   },
   heroArtworkWrap: {
     borderRadius: Radii.xl,
@@ -1372,7 +1383,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroArtworkWrapWelcome: {
-    minHeight: 428,
+    minHeight: 468,
   },
   heroArtwork: {
     width: '100%',
@@ -1380,7 +1391,7 @@ const styles = StyleSheet.create({
   },
   heroArtworkWelcome: {
     width: '100%',
-    height: 428,
+    height: 468,
   },
   heroArtworkMotion: {
     width: '100%',
@@ -1389,12 +1400,13 @@ const styles = StyleSheet.create({
   heroCopy: {
     gap: 2,
     alignItems: 'center',
-    paddingTop: Spacing.sm,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
   },
   heroTitle: {
     textAlign: 'center',
-    fontSize: 25,
-    lineHeight: 29,
+    fontSize: 26,
+    lineHeight: 30,
     fontFamily: Fonts.displayBold,
   },
   choiceCard: {
@@ -1646,6 +1658,9 @@ const styles = StyleSheet.create({
   },
   footerButton: {
     width: '100%',
+  },
+  footerButtonWelcome: {
+    marginTop: Spacing.lg,
   },
   skipStepButton: {
     minHeight: 30,
