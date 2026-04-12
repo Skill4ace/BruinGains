@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
-import { type ReactNode, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -130,17 +130,20 @@ export function DiningScreenPreview() {
   } = useAppData();
   const diningHallState = useDiningHalls();
   const diningMenuState = useDiningMenuItems();
+  const launchDiningPeriodRef = useRef<PeriodKey>(getLaunchDiningPeriod());
+  const launchDiningPeriod = launchDiningPeriodRef.current;
+  const hasSyncedLaunchDiningPeriodRef = useRef(false);
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>(
-    state.userPreferences.preferredDiningPeriod,
+    launchDiningPeriod,
   );
   const [activeSlide, setActiveSlide] = useState(0);
   const [customMealOpen, setCustomMealOpen] = useState(false);
   const [customMealDraft, setCustomMealDraft] = useState<CustomMealDraft>(
-    createCustomMealDraft(state.userPreferences.preferredDiningPeriod),
+    createCustomMealDraft(launchDiningPeriod),
   );
   const [editingMealLog, setEditingMealLog] = useState<MealLog | null>(null);
   const [activeHallId, setActiveHallId] = useState<string | null>(null);
-  const [activeHallPeriod, setActiveHallPeriod] = useState<PeriodKey>(selectedPeriod);
+  const [activeHallPeriod, setActiveHallPeriod] = useState<PeriodKey>(launchDiningPeriod);
   const [hallSearchQuery, setHallSearchQuery] = useState('');
   const [selectedMenuItem, setSelectedMenuItem] = useState<DiningMenuItem | null>(null);
   const [selectedServings, setSelectedServings] = useState(1);
@@ -284,6 +287,22 @@ export function DiningScreenPreview() {
 
     return getMenuItemTotals(selectedMenuItem, selectedServings);
   }, [selectedMenuItem, selectedServings]);
+
+  useEffect(() => {
+    if (hasSyncedLaunchDiningPeriodRef.current) {
+      return;
+    }
+
+    hasSyncedLaunchDiningPeriodRef.current = true;
+
+    if (state.userPreferences.preferredDiningPeriod !== launchDiningPeriod) {
+      setPreferredDiningPeriod(launchDiningPeriod);
+    }
+  }, [
+    launchDiningPeriod,
+    setPreferredDiningPeriod,
+    state.userPreferences.preferredDiningPeriod,
+  ]);
 
   const handleSlideEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const page = Math.round(event.nativeEvent.contentOffset.x / cardWidth);
@@ -1652,6 +1671,25 @@ function createCustomMealDraft(period: MealLogPeriod, mealLog?: MealLog): Custom
     fats: mealLog ? String(mealLog.fats) : '',
     period: mealLog?.period ?? period,
   };
+}
+
+function getLaunchDiningPeriod(): PeriodKey {
+  const now = new Date();
+  const hour = now.getHours() + now.getMinutes() / 60;
+
+  if (hour >= 6 && hour < 10.5) {
+    return 'breakfast';
+  }
+
+  if (hour >= 10.5 && hour < 15.5) {
+    return 'lunch';
+  }
+
+  if (hour >= 15.5 && hour < 21) {
+    return 'dinner';
+  }
+
+  return 'lateNight';
 }
 
 function getCurrentDiningActivityPeriod(): PeriodKey | null {

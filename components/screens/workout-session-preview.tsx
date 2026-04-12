@@ -601,6 +601,10 @@ export function WorkoutSessionPreview() {
     );
   }
 
+  function shouldReplaceInputOnOpen(target: WorkoutInputTarget) {
+    return getTargetInputValue(target).trim().length > 0;
+  }
+
   function commitInputTarget(target: WorkoutInputTarget | null) {
     if (!target) {
       return;
@@ -626,6 +630,8 @@ export function WorkoutSessionPreview() {
     Keyboard.dismiss();
     setActiveExerciseAction(null);
     setActiveSetTypeTarget(null);
+    const nextTarget =
+      workoutInputTargets.find((target) => target.key === targetKey) ?? null;
 
     if (activeInputTarget && activeInputTarget.key !== targetKey) {
       commitInputTarget(activeInputTarget);
@@ -633,7 +639,7 @@ export function WorkoutSessionPreview() {
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveInputKey(targetKey);
-    setReplaceInputOnNextKey(true);
+    setReplaceInputOnNextKey(nextTarget ? shouldReplaceInputOnOpen(nextTarget) : false);
   }
 
   function updateActiveInputDraft(nextValue: string) {
@@ -711,7 +717,7 @@ export function WorkoutSessionPreview() {
     commitInputTarget(activeInputTarget);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveInputKey(nextTarget.key);
-    setReplaceInputOnNextKey(true);
+    setReplaceInputOnNextKey(shouldReplaceInputOnOpen(nextTarget));
   }
 
   function handleToggleSet(

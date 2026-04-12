@@ -4,17 +4,20 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Alert,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   UIManager,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -125,6 +128,151 @@ const EXERCISE_FILTER_TYPES: ExerciseFilterType[] = [
   'bodyweight',
   'cardio',
 ];
+
+type WorkoutInputField = 'durationMinutes' | 'load' | 'reps';
+
+type WorkoutInputTarget = {
+  exercise: TemplateEditorExercise;
+  fallbackValue: number;
+  field: WorkoutInputField;
+  fieldLabel: string;
+  key: string;
+  rowKey: string;
+  setRow: TemplateEditorSet;
+  step: number;
+};
+
+const WORKOUT_INPUT_BOARD_DEFAULT_HEIGHT = 332;
+const LOAD_STEP = 5;
+const REPS_STEP = 1;
+const DURATION_STEP_MINUTES = 15 / 60;
+
+function getWorkoutInputKey(
+  exerciseId: string,
+  rowKey: string,
+  field: WorkoutInputField,
+) {
+  return `${exerciseId}:${rowKey}:${field}`;
+}
+
+function sanitizeIntegerInput(value: string) {
+  const digitsOnly = value.replace(/\D/g, '');
+
+  if (!digitsOnly) {
+    return '';
+  }
+
+  return String(Number.parseInt(digitsOnly, 10));
+}
+
+function sanitizeLoadInput(value: string) {
+  const sanitized = value.replace(/[^0-9.]/g, '');
+
+  if (!sanitized) {
+    return '';
+  }
+
+  const includesDecimal = sanitized.includes('.');
+  const [integerPartRaw, ...decimalParts] = sanitized.split('.');
+  const integerPart = integerPartRaw ? String(Number.parseInt(integerPartRaw, 10)) : '0';
+  const decimalPart = decimalParts.join('').slice(0, 2);
+
+  if (!includesDecimal) {
+    return integerPart;
+  }
+
+  if (!decimalPart && sanitized.endsWith('.')) {
+    return `${integerPart}.`;
+  }
+
+  return `${integerPart}.${decimalPart}`;
+}
+
+function formatLoadValue(value: number) {
+  const roundedValue = Math.round(value * 100) / 100;
+
+  if (Number.isInteger(roundedValue)) {
+    return String(roundedValue);
+  }
+
+  return roundedValue.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function appendWorkoutInputValue(
+  field: WorkoutInputField,
+  currentValue: string,
+  token: string,
+  replaceExisting: boolean,
+) {
+  if (field === 'durationMinutes') {
+    const currentDigits = replaceExisting ? '' : currentValue.replace(/\D/g, '');
+    return formatDurationInput(`${currentDigits}${token}`);
+  }
+
+  if (field === 'load') {
+    return sanitizeLoadInput(`${replaceExisting ? '' : currentValue}${token}`);
+  }
+
+  return sanitizeIntegerInput(`${replaceExisting ? '' : currentValue}${token}`);
+}
+
+function removeWorkoutInputCharacter(
+  field: WorkoutInputField,
+  currentValue: string,
+  replaceExisting: boolean,
+) {
+  if (replaceExisting) {
+    return '';
+  }
+
+  if (field === 'durationMinutes') {
+    const nextDigits = currentValue.replace(/\D/g, '').slice(0, -1);
+    return formatDurationInput(nextDigits);
+  }
+
+  if (field === 'load') {
+    return sanitizeLoadInput(currentValue.slice(0, -1));
+  }
+
+  return sanitizeIntegerInput(currentValue.slice(0, -1));
+}
+
+function adjustWorkoutInputValue(
+  target: WorkoutInputTarget,
+  currentValue: string,
+  direction: -1 | 1,
+) {
+  if (target.field === 'durationMinutes') {
+    const numericValue = currentValue.trim()
+      ? parseDurationMinutesInput(currentValue, 0) ?? 0
+      : 0;
+
+    return formatDurationMinutes(
+      Math.max(0, numericValue + direction * target.step),
+    );
+  }
+
+  if (target.field === 'load') {
+    const numericValue = currentValue.trim() ? Number.parseFloat(currentValue) : 0;
+    const nextValue = Math.max(0, numericValue + direction * target.step);
+    return formatLoadValue(nextValue);
+  }
+
+  const numericValue = currentValue.trim() ? Number.parseInt(currentValue, 10) : 0;
+  return String(Math.max(0, numericValue + direction * target.step));
+}
+
+function getWorkoutInputSpecialKey(field: WorkoutInputField) {
+  if (field === 'durationMinutes') {
+    return '00';
+  }
+
+  if (field === 'load') {
+    return '.';
+  }
+
+  return null;
+}
 
 function createId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -291,6 +439,8 @@ function buildTemplateExercisesFromState(
 
 export function WorkoutTemplateEditorPreview() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const params = useLocalSearchParams<{ templateId?: string }>();
   const { createWorkoutTemplate, state, updateWorkoutTemplate } = useAppData();
   const editingTemplateId = typeof params.templateId === 'string' ? params.templateId : null;
@@ -308,6 +458,11 @@ export function WorkoutTemplateEditorPreview() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ExerciseComposerDraft>(DEFAULT_COMPOSER_DRAFT);
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+  const [activeInputKey, setActiveInputKey] = useState<string | null>(null);
+  const [replaceInputOnNextKey, setReplaceInputOnNextKey] = useState(false);
+  const [inputBoardHeight, setInputBoardHeight] = useState(
+    WORKOUT_INPUT_BOARD_DEFAULT_HEIGHT,
+  );
   const [activeExerciseAction, setActiveExerciseAction] = useState<{
     exerciseId: string;
     exerciseName: string;
@@ -318,21 +473,9 @@ export function WorkoutTemplateEditorPreview() {
     setNumber: number;
   } | null>(null);
   const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
-
-  useEffect(() => {
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    setTitleDraft(editingTemplate?.name ?? 'Template');
-    setExercises(buildTemplateExercisesFromState(state, editingTemplateId));
-    setDraftValues({});
-    setPickerState(null);
-    setActiveExerciseAction(null);
-    setActiveSetTypeTarget(null);
-  }, [editingTemplate?.name, editingTemplateId, state]);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollOffsetRef = useRef(0);
+  const setRowRefs = useRef<Record<string, View | null>>({});
 
   const exerciseOptions = useMemo(() => {
     return [...state.exerciseLibrary]
@@ -359,6 +502,112 @@ export function WorkoutTemplateEditorPreview() {
         return left.name.localeCompare(right.name);
       });
   }, [exerciseFilterGroup, exerciseFilterType, exerciseOptions, exerciseSearchQuery]);
+
+  const workoutInputTargets = useMemo<WorkoutInputTarget[]>(
+    () =>
+      exercises.flatMap((exercise) =>
+        exercise.sets.flatMap<WorkoutInputTarget>((setRow) => {
+          const rowKey = getSetRowKey(exercise.id, setRow);
+
+          if (exercise.trackingMode === 'duration') {
+            return [
+              {
+                exercise,
+                fallbackValue:
+                  setRow.durationMinutes ?? exercise.targetDurationMinutes ?? 20,
+                field: 'durationMinutes' as const,
+                fieldLabel: 'Duration',
+                key: getWorkoutInputKey(exercise.id, rowKey, 'durationMinutes'),
+                rowKey,
+                setRow,
+                step: DURATION_STEP_MINUTES,
+              },
+            ];
+          }
+
+          return [
+            {
+              exercise,
+              fallbackValue: setRow.load,
+              field: 'load' as const,
+              fieldLabel: 'Load',
+              key: getWorkoutInputKey(exercise.id, rowKey, 'load'),
+              rowKey,
+              setRow,
+              step: LOAD_STEP,
+            },
+            {
+              exercise,
+              fallbackValue: setRow.reps,
+              field: 'reps' as const,
+              fieldLabel: 'Reps',
+              key: getWorkoutInputKey(exercise.id, rowKey, 'reps'),
+              rowKey,
+              setRow,
+              step: REPS_STEP,
+            },
+          ];
+        }),
+      ),
+    [exercises],
+  );
+  const activeInputTarget = useMemo(
+    () => workoutInputTargets.find((target) => target.key === activeInputKey) ?? null,
+    [activeInputKey, workoutInputTargets],
+  );
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    setTitleDraft(editingTemplate?.name ?? 'Template');
+    setExercises(buildTemplateExercisesFromState(state, editingTemplateId));
+    setDraftValues({});
+    setPickerState(null);
+    setActiveInputKey(null);
+    setReplaceInputOnNextKey(false);
+    setActiveExerciseAction(null);
+    setActiveSetTypeTarget(null);
+  }, [editingTemplate?.name, editingTemplateId, state]);
+
+  useEffect(() => {
+    if (activeInputKey && !activeInputTarget) {
+      setActiveInputKey(null);
+      setReplaceInputOnNextKey(false);
+    }
+  }, [activeInputKey, activeInputTarget]);
+
+  useEffect(() => {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      const targetRow = setRowRefs.current[activeInputTarget.rowKey];
+
+      if (!targetRow) {
+        return;
+      }
+
+      targetRow.measureInWindow((_x, y, _width, height) => {
+        const availableBottom =
+          windowHeight - inputBoardHeight - Math.max(insets.bottom, Spacing.sm) - 16;
+        const overflow = y + height - availableBottom;
+
+        if (overflow > 0) {
+          scrollViewRef.current?.scrollTo({
+            animated: true,
+            y: Math.max(0, scrollOffsetRef.current + overflow + 18),
+          });
+        }
+      });
+    }, 40);
+
+    return () => clearTimeout(timeout);
+  }, [activeInputTarget, insets.bottom, inputBoardHeight, windowHeight]);
 
   function getSetRowKey(exerciseId: string, setRow: TemplateEditorSet) {
     return setRow.id ?? `${exerciseId}:${setRow.setNumber}`;
@@ -399,8 +648,52 @@ export function WorkoutTemplateEditorPreview() {
     const draftKey = getDraftKey(exerciseId, rowKey, field);
     setDraftValues((currentValue) => ({
       ...currentValue,
-      [draftKey]: field === 'durationMinutes' ? formatDurationInput(value) : value,
+      [draftKey]:
+        field === 'durationMinutes'
+          ? formatDurationInput(value)
+          : field === 'load'
+            ? sanitizeLoadInput(value)
+            : sanitizeIntegerInput(value),
     }));
+  }
+
+  function applyCommittedValueToExercises(
+    currentExercises: TemplateEditorExercise[],
+    exerciseId: string,
+    setId: string,
+    field: WorkoutInputField,
+    normalizedValue: number,
+  ) {
+    return currentExercises.map((exercise) =>
+      exercise.id === exerciseId
+        ? {
+            ...exercise,
+            sets: exercise.sets.map((set) =>
+              set.id === setId
+                ? {
+                    ...set,
+                    [field]:
+                      field === 'durationMinutes' || field === 'load'
+                        ? normalizedValue
+                        : Math.round(normalizedValue),
+                  }
+                : set,
+            ),
+          }
+        : exercise,
+    );
+  }
+
+  function normalizeCommittedDraftValue(
+    field: WorkoutInputField,
+    rawValue: string | undefined,
+    fallbackValue: number,
+  ) {
+    return rawValue === undefined || rawValue.trim() === ''
+      ? fallbackValue
+      : field === 'durationMinutes'
+        ? parseDurationMinutesInput(rawValue, fallbackValue)
+        : Number.parseFloat(rawValue);
   }
 
   function commitDraftValue(
@@ -411,12 +704,7 @@ export function WorkoutTemplateEditorPreview() {
   ) {
     const draftKey = getDraftKey(exerciseId, setId, field);
     const rawValue = draftValues[draftKey];
-    const normalizedValue =
-      rawValue === undefined || rawValue.trim() === ''
-        ? fallbackValue
-        : field === 'durationMinutes'
-          ? parseDurationMinutesInput(rawValue, fallbackValue)
-          : Number.parseFloat(rawValue);
+    const normalizedValue = normalizeCommittedDraftValue(field, rawValue, fallbackValue);
 
     if (normalizedValue === null || !Number.isFinite(normalizedValue) || normalizedValue < 0) {
       setDraftValues((currentValue) => ({
@@ -430,23 +718,12 @@ export function WorkoutTemplateEditorPreview() {
     }
 
     setExercises((currentValue) =>
-      currentValue.map((exercise) =>
-        exercise.id === exerciseId
-          ? {
-              ...exercise,
-              sets: exercise.sets.map((set) =>
-                set.id === setId
-                  ? {
-                      ...set,
-                      [field]:
-                        field === 'durationMinutes' || field === 'load'
-                          ? normalizedValue
-                          : Math.round(normalizedValue),
-                    }
-                  : set,
-              ),
-            }
-          : exercise,
+      applyCommittedValueToExercises(
+        currentValue,
+        exerciseId,
+        setId,
+        field,
+        normalizedValue,
       ),
     );
     setDraftValues((currentValue) => ({
@@ -458,10 +735,133 @@ export function WorkoutTemplateEditorPreview() {
     }));
   }
 
+  function getTargetInputValue(target: WorkoutInputTarget) {
+    return getInputValue(
+      target.exercise.id,
+      target.rowKey,
+      target.field,
+      target.fallbackValue,
+    );
+  }
+
+  function shouldReplaceInputOnOpen(target: WorkoutInputTarget) {
+    return getTargetInputValue(target).trim().length > 0;
+  }
+
+  function commitInputTarget(target: WorkoutInputTarget | null) {
+    if (!target) {
+      return;
+    }
+
+    commitDraftValue(target.exercise.id, target.setRow.id, target.field, target.fallbackValue);
+  }
+
+  function closeInputBoard(options?: { commit?: boolean }) {
+    if (options?.commit !== false) {
+      commitInputTarget(activeInputTarget);
+    }
+
+    setActiveInputKey(null);
+    setReplaceInputOnNextKey(false);
+  }
+
+  function openInputTarget(targetKey: string) {
+    Keyboard.dismiss();
+    setActiveExerciseAction(null);
+    setActiveSetTypeTarget(null);
+    const nextTarget =
+      workoutInputTargets.find((target) => target.key === targetKey) ?? null;
+
+    if (activeInputTarget && activeInputTarget.key !== targetKey) {
+      commitInputTarget(activeInputTarget);
+    }
+
+    setActiveInputKey(targetKey);
+    setReplaceInputOnNextKey(nextTarget ? shouldReplaceInputOnOpen(nextTarget) : false);
+  }
+
+  function updateActiveInputDraft(nextValue: string) {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    handleDraftChange(
+      activeInputTarget.exercise.id,
+      activeInputTarget.rowKey,
+      activeInputTarget.field,
+      nextValue,
+    );
+    setReplaceInputOnNextKey(false);
+  }
+
+  function handleInputBoardKeyPress(token: string) {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const nextValue = appendWorkoutInputValue(
+      activeInputTarget.field,
+      getTargetInputValue(activeInputTarget),
+      token,
+      replaceInputOnNextKey,
+    );
+
+    updateActiveInputDraft(nextValue);
+  }
+
+  function handleInputBoardBackspace() {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const nextValue = removeWorkoutInputCharacter(
+      activeInputTarget.field,
+      getTargetInputValue(activeInputTarget),
+      replaceInputOnNextKey,
+    );
+
+    updateActiveInputDraft(nextValue);
+  }
+
+  function handleInputBoardStep(direction: -1 | 1) {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const nextValue = adjustWorkoutInputValue(
+      activeInputTarget,
+      getTargetInputValue(activeInputTarget),
+      direction,
+    );
+
+    updateActiveInputDraft(nextValue);
+  }
+
+  function handleInputBoardNext() {
+    if (!activeInputTarget) {
+      return;
+    }
+
+    const currentIndex = workoutInputTargets.findIndex(
+      (target) => target.key === activeInputTarget.key,
+    );
+    const nextTarget = workoutInputTargets[currentIndex + 1] ?? null;
+
+    if (!nextTarget) {
+      closeInputBoard();
+      return;
+    }
+
+    commitInputTarget(activeInputTarget);
+    setActiveInputKey(nextTarget.key);
+    setReplaceInputOnNextKey(shouldReplaceInputOnOpen(nextTarget));
+  }
+
   function handleOpenExercisePicker(
     mode: 'add' | 'replace',
     targetExerciseId: string | null = null,
   ) {
+    closeInputBoard();
     setExerciseSearchQuery('');
     setSelectedExerciseIds([]);
     setExerciseFilterGroup('all');
@@ -512,6 +912,8 @@ export function WorkoutTemplateEditorPreview() {
     setSelectedExerciseIds([]);
     setComposerContext(null);
     setComposerOpen(false);
+    setActiveInputKey(null);
+    setReplaceInputOnNextKey(false);
     setActiveExerciseAction(null);
     setActiveSetTypeTarget(null);
   }
@@ -612,6 +1014,7 @@ export function WorkoutTemplateEditorPreview() {
   }
 
   function handleAddSet(exerciseId: string) {
+    closeInputBoard();
     setExercises((currentValue) =>
       currentValue.map((exercise) => {
         if (exercise.id !== exerciseId) {
@@ -639,6 +1042,7 @@ export function WorkoutTemplateEditorPreview() {
   }
 
   function handleRemoveSet(exerciseId: string, setId: string) {
+    closeInputBoard({ commit: false });
     setExercises((currentValue) =>
       currentValue.map((exercise) => {
         if (exercise.id !== exerciseId) {
@@ -672,7 +1076,41 @@ export function WorkoutTemplateEditorPreview() {
 
   function handleSaveTemplate() {
     const trimmedTitle = titleDraft.trim();
-    const serializedExercises: WorkoutTemplateExerciseDraft[] = exercises
+    let exercisesToSerialize = exercises;
+
+    if (activeInputTarget) {
+      const draftKey = getDraftKey(
+        activeInputTarget.exercise.id,
+        activeInputTarget.rowKey,
+        activeInputTarget.field,
+      );
+      const rawValue = draftValues[draftKey];
+      const normalizedValue = normalizeCommittedDraftValue(
+        activeInputTarget.field,
+        rawValue,
+        activeInputTarget.fallbackValue,
+      );
+
+      if (
+        normalizedValue !== null &&
+        Number.isFinite(normalizedValue) &&
+        normalizedValue >= 0
+      ) {
+        exercisesToSerialize = applyCommittedValueToExercises(
+          exercises,
+          activeInputTarget.exercise.id,
+          activeInputTarget.setRow.id,
+          activeInputTarget.field,
+          normalizedValue,
+        );
+        setExercises(exercisesToSerialize);
+      }
+
+      setActiveInputKey(null);
+      setReplaceInputOnNextKey(false);
+    }
+
+    const serializedExercises: WorkoutTemplateExerciseDraft[] = exercisesToSerialize
       .map((exercise) => ({
         name: exercise.name.trim(),
         repRange: buildRepRangeFromSets(
@@ -716,13 +1154,19 @@ export function WorkoutTemplateEditorPreview() {
     <SafeAreaView edges={['top', 'bottom']} style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <PressScale haptic="none" onPress={() => router.back()}>
+          <PressScale
+            haptic="none"
+            onPress={() => {
+              closeInputBoard();
+              router.back();
+            }}>
             <View style={styles.headerButton}>
               <Ionicons name="chevron-back" size={18} color={AppColors.text} />
             </View>
           </PressScale>
           <View style={styles.headerCopy}>
             <TextInput
+              onFocus={() => closeInputBoard()}
               onChangeText={setTitleDraft}
               placeholder="Template"
               placeholderTextColor={AppColors.textSubtle}
@@ -743,14 +1187,30 @@ export function WorkoutTemplateEditorPreview() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={[
+          styles.scrollContent,
+          activeInputTarget
+            ? {
+                paddingBottom:
+                  inputBoardHeight + Math.max(insets.bottom, Spacing.sm) + Spacing.lg,
+              }
+            : null,
+        ]}
+        onScroll={(event) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}>
         {exercises.map((exercise) => (
           <SurfaceCard
             key={exercise.id}
             style={[
               styles.exerciseCard,
               activeExerciseAction?.exerciseId === exercise.id ||
-              activeSetTypeTarget?.exerciseId === exercise.id
+              activeSetTypeTarget?.exerciseId === exercise.id ||
+              activeInputTarget?.exercise.id === exercise.id
                 ? styles.exerciseCardOverlayActive
                 : null,
             ]}>
@@ -762,6 +1222,7 @@ export function WorkoutTemplateEditorPreview() {
                 <PressScale
                   haptic="light"
                   onPress={() => {
+                    closeInputBoard();
                     setActiveSetTypeTarget(null);
                     setActiveExerciseAction((currentValue) =>
                       currentValue?.exerciseId === exercise.id
@@ -817,10 +1278,16 @@ export function WorkoutTemplateEditorPreview() {
                 return (
                   <View
                     key={rowKey}
+                    ref={(instance) => {
+                      setRowRefs.current[rowKey] = instance;
+                    }}
                     style={[
                       styles.setRowWrap,
-                      activeSetTypeTarget?.exerciseId === exercise.id &&
-                      activeSetTypeTarget.rowKey === rowKey
+                      (
+                        activeSetTypeTarget?.exerciseId === exercise.id &&
+                        activeSetTypeTarget.rowKey === rowKey
+                      ) ||
+                      activeInputTarget?.rowKey === rowKey
                         ? styles.setRowWrapActive
                         : null,
                     ]}>
@@ -830,6 +1297,7 @@ export function WorkoutTemplateEditorPreview() {
                       }}
                       friction={2}
                       onSwipeableWillOpen={() => {
+                        closeInputBoard();
                         setActiveExerciseAction(null);
                         setActiveSetTypeTarget(null);
                         Object.entries(swipeableRefs.current).forEach(([key, instance]) => {
@@ -844,6 +1312,7 @@ export function WorkoutTemplateEditorPreview() {
                         <PressScale
                           haptic="light"
                           onPress={() => {
+                            closeInputBoard({ commit: false });
                             swipeableRefs.current[rowKey]?.close();
                             if (
                               activeSetTypeTarget?.exerciseId === exercise.id &&
@@ -865,6 +1334,7 @@ export function WorkoutTemplateEditorPreview() {
                         <PressScale
                           haptic="none"
                           onPress={() => {
+                            closeInputBoard();
                             setActiveExerciseAction(null);
                             setActiveSetTypeTarget((currentValue) =>
                               currentValue?.exerciseId === exercise.id &&
@@ -898,17 +1368,14 @@ export function WorkoutTemplateEditorPreview() {
                         </View>
                         {exercise.trackingMode === 'duration' ? (
                           <WorkoutSetInput
-                            keyboardType="number-pad"
-                            onBlur={() =>
-                              commitDraftValue(
-                                exercise.id,
-                                setRow.id,
-                                'durationMinutes',
-                                setRow.durationMinutes ?? exercise.targetDurationMinutes ?? 20,
-                              )
+                            active={
+                              activeInputKey ===
+                              getWorkoutInputKey(exercise.id, rowKey, 'durationMinutes')
                             }
-                            onChangeText={(value) =>
-                              handleDraftChange(exercise.id, rowKey, 'durationMinutes', value)
+                            onPress={() =>
+                              openInputTarget(
+                                getWorkoutInputKey(exercise.id, rowKey, 'durationMinutes'),
+                              )
                             }
                             style={styles.durationInput}
                             value={getInputValue(
@@ -921,20 +1388,22 @@ export function WorkoutTemplateEditorPreview() {
                         ) : (
                           <>
                             <WorkoutSetInput
-                              onBlur={() =>
-                                commitDraftValue(exercise.id, setRow.id, 'load', setRow.load)
+                              active={
+                                activeInputKey ===
+                                getWorkoutInputKey(exercise.id, rowKey, 'load')
                               }
-                              onChangeText={(value) =>
-                                handleDraftChange(exercise.id, rowKey, 'load', value)
+                              onPress={() =>
+                                openInputTarget(getWorkoutInputKey(exercise.id, rowKey, 'load'))
                               }
                               value={getInputValue(exercise.id, rowKey, 'load', setRow.load)}
                             />
                             <WorkoutSetInput
-                              onBlur={() =>
-                                commitDraftValue(exercise.id, setRow.id, 'reps', setRow.reps)
+                              active={
+                                activeInputKey ===
+                                getWorkoutInputKey(exercise.id, rowKey, 'reps')
                               }
-                              onChangeText={(value) =>
-                                handleDraftChange(exercise.id, rowKey, 'reps', value)
+                              onPress={() =>
+                                openInputTarget(getWorkoutInputKey(exercise.id, rowKey, 'reps'))
                               }
                               value={getInputValue(exercise.id, rowKey, 'reps', setRow.reps)}
                             />
@@ -952,12 +1421,33 @@ export function WorkoutTemplateEditorPreview() {
         <View style={styles.footerButtons}>
           <ActionButton
             label="Add Exercise"
-            onPress={() => handleOpenExercisePicker('add')}
+            onPress={() => {
+              closeInputBoard();
+              handleOpenExercisePicker('add');
+            }}
             variant="primary"
           />
         </View>
         <View style={styles.listFooterSpacer} />
       </ScrollView>
+
+      {activeInputTarget ? (
+        <WorkoutInputBoard
+          activeTarget={activeInputTarget}
+          isLastTarget={
+            workoutInputTargets[workoutInputTargets.length - 1]?.key ===
+            activeInputTarget.key
+          }
+          onBackspace={handleInputBoardBackspace}
+          onDismiss={closeInputBoard}
+          onKeyPress={handleInputBoardKeyPress}
+          onLayout={(event) => {
+            setInputBoardHeight(event.nativeEvent.layout.height);
+          }}
+          onNext={handleInputBoardNext}
+          onStep={handleInputBoardStep}
+        />
+      ) : null}
 
       <ExercisePickerModal
         canCreateCustomExercise={exerciseSearchQuery.trim().length > 0}
@@ -1076,28 +1566,159 @@ export function WorkoutTemplateEditorPreview() {
 }
 
 function WorkoutSetInput({
-  keyboardType = 'numbers-and-punctuation',
-  onBlur,
-  onChangeText,
+  active = false,
+  onPress,
   style,
   value,
 }: {
-  keyboardType?: 'number-pad' | 'numbers-and-punctuation';
-  onBlur: () => void;
-  onChangeText: (value: string) => void;
+  active?: boolean;
+  onPress: () => void;
   style?: object;
   value: string;
 }) {
   return (
-    <TextInput
-      keyboardType={keyboardType}
-      onBlur={onBlur}
-      onChangeText={onChangeText}
-      placeholder="0:00"
-      placeholderTextColor={AppColors.textSubtle}
-      style={[styles.setInput, style]}
-      value={value}
-    />
+    <PressScale containerStyle={[styles.setInputPressable, style]} haptic="none" onPress={onPress}>
+      <View style={[styles.setInputShell, active ? styles.setInputShellActive : null]}>
+        <AppText
+          variant="bodyStrong"
+          color={active ? AppColors.primary : AppColors.text}
+          numberOfLines={1}
+          style={styles.setInputValue}>
+          {value || '0'}
+        </AppText>
+      </View>
+    </PressScale>
+  );
+}
+
+function WorkoutInputBoard({
+  activeTarget,
+  isLastTarget,
+  onBackspace,
+  onDismiss,
+  onKeyPress,
+  onLayout,
+  onNext,
+  onStep,
+}: {
+  activeTarget: WorkoutInputTarget;
+  isLastTarget: boolean;
+  onBackspace: () => void;
+  onDismiss: () => void;
+  onKeyPress: (token: string) => void;
+  onLayout: (event: { nativeEvent: { layout: { height: number } } }) => void;
+  onNext: () => void;
+  onStep: (direction: -1 | 1) => void;
+}) {
+  const specialKey = getWorkoutInputSpecialKey(activeTarget.field);
+  const keypadRows = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    [specialKey, '0', 'backspace'],
+  ];
+
+  return (
+    <View onLayout={onLayout} style={styles.inputBoardWrap}>
+      <SurfaceCard floating style={styles.inputBoardCard}>
+        <View style={styles.inputBoardBody}>
+          <View style={styles.inputBoardKeypad}>
+            {keypadRows.map((row, rowIndex) => (
+              <View key={`board-row-${rowIndex}`} style={styles.inputBoardKeypadRow}>
+                {row.map((keyValue) => {
+                  const isBackspaceKey = keyValue === 'backspace';
+                  const isDisabledKey = keyValue === null;
+
+                  return (
+                    <Pressable
+                      key={`board-key-${keyValue ?? 'empty'}-${rowIndex}`}
+                      disabled={isDisabledKey}
+                      onPress={() => {
+                        if (isBackspaceKey) {
+                          onBackspace();
+                          return;
+                        }
+
+                        if (keyValue) {
+                          onKeyPress(keyValue);
+                        }
+                      }}
+                      style={({ pressed }) => [
+                        styles.inputBoardKey,
+                        isDisabledKey ? styles.inputBoardKeyDisabled : null,
+                        pressed ? styles.inputBoardButtonPressed : null,
+                      ]}>
+                      {isBackspaceKey ? (
+                        <Ionicons name="backspace-outline" size={20} color={AppColors.text} />
+                      ) : (
+                        <AppText
+                          variant="title"
+                          color={isDisabledKey ? AppColors.textSubtle : AppColors.text}>
+                          {keyValue ?? ''}
+                        </AppText>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.inputBoardRail}>
+            <Pressable
+              hitSlop={8}
+              onPress={onDismiss}
+              style={({ pressed }) => [
+                styles.inputBoardRailButton,
+                pressed ? styles.inputBoardButtonPressed : null,
+              ]}>
+              <Ionicons name="keypad-outline" size={18} color={AppColors.textMuted} />
+              <AppText variant="micro" color={AppColors.textMuted}>
+                Hide
+              </AppText>
+            </Pressable>
+
+            <View style={styles.inputBoardStepperRow}>
+              <Pressable
+                hitSlop={8}
+                onPress={() => onStep(-1)}
+                style={({ pressed }) => [
+                  styles.inputBoardStepperAction,
+                  pressed ? styles.inputBoardButtonPressed : null,
+                ]}>
+                <Ionicons name="remove" size={18} color={AppColors.primary} />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                onPress={() => onStep(1)}
+                style={({ pressed }) => [
+                  styles.inputBoardStepperAction,
+                  pressed ? styles.inputBoardButtonPressed : null,
+                ]}>
+                <Ionicons name="add" size={18} color={AppColors.primary} />
+              </Pressable>
+            </View>
+
+            <Pressable
+              hitSlop={8}
+              onPress={onNext}
+              style={({ pressed }) => [
+                styles.inputBoardNextButton,
+                pressed ? styles.inputBoardNextButtonPressed : null,
+              ]}>
+              <AppText variant="label" color={AppColors.white}>
+                {isLastTarget ? 'Done' : 'Next'}
+              </AppText>
+              <Ionicons
+                name={isLastTarget ? 'checkmark' : 'arrow-forward'}
+                size={16}
+                color={AppColors.white}
+              />
+            </Pressable>
+          </View>
+        </View>
+      </SurfaceCard>
+    </View>
   );
 }
 
@@ -1895,6 +2516,118 @@ const styles = StyleSheet.create({
     width: 88,
     paddingHorizontal: 4,
     justifyContent: 'center',
+  },
+  setInputPressable: {
+    flex: 1,
+  },
+  setInputShell: {
+    minHeight: 32,
+    borderRadius: Radii.md,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLowest,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  setInputShellActive: {
+    backgroundColor: '#F2F7FC',
+    borderColor: 'rgba(39, 116, 174, 0.26)',
+    ...Shadows.soft,
+  },
+  setInputValue: {
+    width: '100%',
+    textAlign: 'center',
+  },
+  inputBoardWrap: {
+    position: 'absolute',
+    left: Layout.pagePadding,
+    right: Layout.pagePadding,
+    bottom: Spacing.sm,
+    zIndex: 140,
+  },
+  inputBoardCard: {
+    gap: Spacing.sm,
+    paddingTop: 10,
+    paddingBottom: Spacing.md,
+    paddingHorizontal: 10,
+    borderRadius: Radii.xl,
+    backgroundColor: AppColors.surfaceLowest,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    elevation: 12,
+  },
+  inputBoardBody: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: Spacing.sm,
+  },
+  inputBoardKeypad: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  inputBoardKeypadRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  inputBoardKey: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: Radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceLow,
+  },
+  inputBoardKeyDisabled: {
+    opacity: 0.38,
+  },
+  inputBoardButtonPressed: {
+    opacity: 0.78,
+  },
+  inputBoardRail: {
+    width: 92,
+    gap: 10,
+  },
+  inputBoardRailButton: {
+    minHeight: 58,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: AppColors.surfaceLow,
+  },
+  inputBoardStepperRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  inputBoardStepperAction: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: Radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F2F5FA',
+  },
+  inputBoardNextButton: {
+    flex: 1,
+    minHeight: 82,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: AppColors.primary,
+    ...Shadows.soft,
+  },
+  inputBoardNextButtonPressed: {
+    opacity: 0.9,
   },
   setInput: {
     flex: 1,
