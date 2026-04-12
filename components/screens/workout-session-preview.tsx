@@ -1463,20 +1463,6 @@ function WorkoutInputBoard({
   return (
     <View onLayout={onLayout} style={styles.inputBoardWrap}>
       <SurfaceCard floating style={styles.inputBoardCard}>
-        <View style={styles.inputBoardHeaderCompact}>
-          <View style={styles.inputBoardHandle} />
-          <Pressable
-            hitSlop={8}
-            onPress={onDismiss}
-            style={({ pressed }) => [
-              styles.inputBoardDismissButton,
-              pressed ? styles.inputBoardButtonPressed : null,
-            ]}
-          >
-            <Ionicons name="chevron-down" size={18} color={AppColors.textMuted} />
-          </Pressable>
-        </View>
-
         <View style={styles.inputBoardBody}>
           <View style={styles.inputBoardKeypad}>
             {keypadRows.map((row, rowIndex) => (
@@ -2512,7 +2498,7 @@ const styles = StyleSheet.create({
   },
   inputBoardCard: {
     gap: Spacing.sm,
-    paddingTop: 8,
+    paddingTop: 10,
     paddingBottom: Spacing.md,
     paddingHorizontal: 10,
     borderRadius: Radii.xl,
@@ -2524,27 +2510,6 @@ const styles = StyleSheet.create({
       height: 8,
     },
     elevation: 12,
-  },
-  inputBoardHandle: {
-    width: 64,
-    height: 5,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  inputBoardHeaderCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 24,
-    paddingHorizontal: 2,
-  },
-  inputBoardDismissButton: {
-    width: 30,
-    height: 30,
-    borderRadius: Radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
   },
   inputBoardBody: {
     flexDirection: 'row',
@@ -2561,7 +2526,7 @@ const styles = StyleSheet.create({
   },
   inputBoardKey: {
     flex: 1,
-    minHeight: 50,
+    minHeight: 58,
     borderRadius: Radii.lg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2578,10 +2543,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   inputBoardRailButton: {
-    minHeight: 48,
+    minHeight: 58,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
@@ -2593,7 +2558,7 @@ const styles = StyleSheet.create({
   },
   inputBoardStepperAction: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 58,
     borderRadius: Radii.lg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2601,7 +2566,7 @@ const styles = StyleSheet.create({
   },
   inputBoardNextButton: {
     flex: 1,
-    minHeight: 70,
+    minHeight: 82,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,
