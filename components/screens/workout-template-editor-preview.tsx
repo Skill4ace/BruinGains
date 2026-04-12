@@ -87,7 +87,7 @@ type TemplateEditorExercise = {
 };
 
 const DEFAULT_COMPOSER_DRAFT: ExerciseComposerDraft = {
-  durationMinutes: '20',
+  durationMinutes: '20:00',
   name: '',
   trackingMode: 'strength',
 };
@@ -373,7 +373,15 @@ export function WorkoutTemplateEditorPreview() {
     fallbackValue: number,
   ) {
     const draftKey = getDraftKey(exerciseId, rowKey, field);
-    return draftValues[draftKey] ?? String(fallbackValue);
+    const draftValue = draftValues[draftKey];
+
+    if (draftValue !== undefined) {
+      return draftValue;
+    }
+
+    return field === 'durationMinutes'
+      ? formatDurationMinutes(fallbackValue)
+      : String(fallbackValue);
   }
 
   function handleDraftChange(
@@ -400,12 +408,17 @@ export function WorkoutTemplateEditorPreview() {
     const normalizedValue =
       rawValue === undefined || rawValue.trim() === ''
         ? fallbackValue
-        : Number.parseFloat(rawValue);
+        : field === 'durationMinutes'
+          ? parseDurationMinutesInput(rawValue, fallbackValue)
+          : Number.parseFloat(rawValue);
 
-    if (!Number.isFinite(normalizedValue) || normalizedValue < 0) {
+    if (normalizedValue === null || !Number.isFinite(normalizedValue) || normalizedValue < 0) {
       setDraftValues((currentValue) => ({
         ...currentValue,
-        [draftKey]: String(fallbackValue),
+        [draftKey]:
+          field === 'durationMinutes'
+            ? formatDurationMinutes(fallbackValue)
+            : String(fallbackValue),
       }));
       return;
     }
@@ -432,7 +445,10 @@ export function WorkoutTemplateEditorPreview() {
     );
     setDraftValues((currentValue) => ({
       ...currentValue,
-      [draftKey]: String(normalizedValue),
+      [draftKey]:
+        field === 'durationMinutes'
+          ? formatDurationMinutes(normalizedValue)
+          : String(normalizedValue),
     }));
   }
 
@@ -1601,6 +1617,49 @@ function formatPreviousSetText(previousLoadLabel: string) {
   }
 
   return trimmedValue;
+}
+
+function formatDurationMinutes(value: number | null | undefined) {
+  const safeValue = Math.max(0, Number.isFinite(value ?? NaN) ? Number(value) : 0);
+  const totalSeconds = Math.round(safeValue * 60);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function parseDurationMinutesInput(value: string, fallbackMinutes: number) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return fallbackMinutes;
+  }
+
+  if (trimmedValue.includes(':')) {
+    const [minutesPart, secondsPart = '0'] = trimmedValue.split(':');
+    const minutes = Number.parseInt(minutesPart, 10);
+    const seconds = Number.parseInt(secondsPart, 10);
+
+    if (
+      Number.isFinite(minutes) &&
+      Number.isFinite(seconds) &&
+      minutes >= 0 &&
+      seconds >= 0 &&
+      seconds < 60
+    ) {
+      return minutes + seconds / 60;
+    }
+
+    return null;
+  }
+
+  const numericValue = Number.parseFloat(trimmedValue);
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return null;
+  }
+
+  return numericValue;
 }
 
 function formatExerciseLibraryMeta(exercise: ExerciseLibraryEntry) {

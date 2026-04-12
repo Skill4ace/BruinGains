@@ -30,6 +30,7 @@ import {
 } from '@/data/local/selectors';
 import {
   getExerciseLibraryImageSource,
+  inferExerciseTrackingMode,
   searchExerciseLibraryEntry,
 } from '@/data/local/exercise-library';
 import { useAppData } from '@/providers/app-data-provider';
@@ -81,7 +82,7 @@ type ExerciseComposerDraft = {
 };
 
 const DEFAULT_COMPOSER_DRAFT: ExerciseComposerDraft = {
-  durationMinutes: '20',
+  durationMinutes: '20:00',
   load: '45',
   name: '',
   repRange: '8-10',
@@ -269,7 +270,15 @@ export function WorkoutSessionPreview() {
     fallbackValue: number,
   ) {
     const draftKey = getDraftKey(sessionExerciseId, rowKey, field);
-    return draftValues[draftKey] ?? String(fallbackValue);
+    const draftValue = draftValues[draftKey];
+
+    if (draftValue !== undefined) {
+      return draftValue;
+    }
+
+    return field === 'durationMinutes'
+      ? formatDurationMinutes(fallbackValue)
+      : String(fallbackValue);
   }
 
   function handleDraftChange(
@@ -296,20 +305,28 @@ export function WorkoutSessionPreview() {
     const normalizedValue =
       rawValue === undefined || rawValue.trim() === ''
         ? fallbackValue
-        : Number.parseFloat(rawValue);
+        : field === 'durationMinutes'
+          ? parseDurationMinutesInput(rawValue, fallbackValue)
+          : Number.parseFloat(rawValue);
 
-    if (Number.isFinite(normalizedValue) && normalizedValue >= 0) {
+    if (normalizedValue !== null && Number.isFinite(normalizedValue) && normalizedValue >= 0) {
       updateWorkoutSetValue(exercise.id, setRow.setNumber, field, normalizedValue);
       setDraftValues((currentValue) => ({
         ...currentValue,
-        [draftKey]: String(normalizedValue),
+        [draftKey]:
+          field === 'durationMinutes'
+            ? formatDurationMinutes(normalizedValue)
+            : String(normalizedValue),
       }));
       return;
     }
 
     setDraftValues((currentValue) => ({
       ...currentValue,
-      [draftKey]: String(fallbackValue),
+      [draftKey]:
+        field === 'durationMinutes'
+          ? formatDurationMinutes(fallbackValue)
+          : String(fallbackValue),
     }));
   }
 
@@ -405,11 +422,14 @@ export function WorkoutSessionPreview() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
     selectedExercises.forEach((exercise) => {
+      const trackingMode = inferExerciseTrackingMode(exercise);
       addWorkoutExercise(activeWorkout.session.id, {
         name: exercise.name,
-        repRange: '8-10',
+        repRange: trackingMode === 'duration' ? '20:00' : '8-10',
+        targetDurationMinutes: trackingMode === 'duration' ? 20 : undefined,
+        targetReps: trackingMode === 'duration' ? undefined : 8,
         targetSets: 3,
-        trackingMode: 'strength',
+        trackingMode,
       });
     });
 
@@ -426,14 +446,16 @@ export function WorkoutSessionPreview() {
     }
 
     if (composerDraft.trackingMode === 'duration') {
-      const targetDurationMinutes = Math.max(
-        1,
-        Math.round(Number.parseFloat(composerDraft.durationMinutes)),
+      const parsedDurationMinutes = parseDurationMinutesInput(
+        composerDraft.durationMinutes,
+        20,
       );
 
-      if (!Number.isFinite(targetDurationMinutes)) {
+      if (parsedDurationMinutes === null) {
         return;
       }
+
+      const targetDurationMinutes = Math.max(1 / 60, parsedDurationMinutes);
 
       handleSelectExerciseDraft({
         name: trimmedName,
@@ -602,7 +624,7 @@ export function WorkoutSessionPreview() {
               </AppText>
               {exercise.trackingMode === 'duration' ? (
                 <AppText variant="micro" dimmed style={styles.setInputHeaderWide}>
-                  MINUTES
+                  MM:SS
                 </AppText>
               ) : (
                 <>
@@ -833,13 +855,15 @@ export function WorkoutSessionPreview() {
             return;
           }
 
+          const trackingMode = inferExerciseTrackingMode(exercise);
           handleSelectExerciseDraft({
-            currentLoad: 45,
+            currentLoad: trackingMode === 'duration' ? 0 : 45,
             name: exercise.name,
-            repRange: '8-10',
-            targetReps: 8,
+            repRange: trackingMode === 'duration' ? '20:00' : '8-10',
+            targetDurationMinutes: trackingMode === 'duration' ? 20 : undefined,
+            targetReps: trackingMode === 'duration' ? undefined : 8,
             targetSets: 3,
-            trackingMode: 'strength',
+            trackingMode,
           });
         }}
         pickerMode={pickerState?.mode ?? 'add'}
@@ -1273,7 +1297,7 @@ function ExerciseComposerModal({
             {draft.trackingMode === 'duration' ? (
               <ExerciseInputField
                 keyboardType="numbers-and-punctuation"
-                label="Minutes per set"
+                label="Duration per set (MM:SS)"
                 onChangeText={(value) => onChange({ ...draft, durationMinutes: value })}
                 value={draft.durationMinutes}
               />
@@ -1285,6 +1309,49 @@ function ExerciseComposerModal({
       </SafeAreaView>
     </Modal>
   );
+}
+
+function formatDurationMinutes(value: number | null | undefined) {
+  const safeValue = Math.max(0, Number.isFinite(value ?? NaN) ? Number(value) : 0);
+  const totalSeconds = Math.round(safeValue * 60);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function parseDurationMinutesInput(value: string, fallbackMinutes: number) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return fallbackMinutes;
+  }
+
+  if (trimmedValue.includes(':')) {
+    const [minutesPart, secondsPart = '0'] = trimmedValue.split(':');
+    const minutes = Number.parseInt(minutesPart, 10);
+    const seconds = Number.parseInt(secondsPart, 10);
+
+    if (
+      Number.isFinite(minutes) &&
+      Number.isFinite(seconds) &&
+      minutes >= 0 &&
+      seconds >= 0 &&
+      seconds < 60
+    ) {
+      return minutes + seconds / 60;
+    }
+
+    return null;
+  }
+
+  const numericValue = Number.parseFloat(trimmedValue);
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return null;
+  }
+
+  return numericValue;
 }
 
 function ExerciseActionModal({

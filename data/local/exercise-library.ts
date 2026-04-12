@@ -1,6 +1,6 @@
 import { EXERCISE_DB_EXERCISES, type ExerciseDbExercise } from '@/data/local/exercisedb.generated';
 import { EXERCISE_DB_IMAGE_ASSETS } from '@/data/local/exercisedb-image-assets.generated';
-import type { ExerciseLibraryEntry } from '@/types/app-data';
+import type { ExerciseLibraryEntry, WorkoutTrackingMode } from '@/types/app-data';
 
 const EXERCISE_DB_ALIASES_BY_NAME: Record<string, string[]> = {
   'barbell bent over row': ['Barbell Row', 'Chest Supported Row'],
@@ -113,6 +113,34 @@ export function searchExerciseLibraryEntry(entry: ExerciseLibraryEntry, query: s
   return searchableParts.some((part) =>
     normalizeSearchValue(part).includes(normalizedQuery),
   );
+}
+
+export function inferExerciseTrackingMode(
+  exercise: Pick<ExerciseLibraryEntry, 'bodyPart' | 'category' | 'equipment' | 'focus' | 'name'>,
+): WorkoutTrackingMode {
+  const bodyPart = normalizeSearchValue(exercise.bodyPart ?? '');
+  const category = normalizeSearchValue(exercise.category ?? '');
+  const equipment = normalizeSearchValue(exercise.equipment ?? '');
+  const focus = normalizeSearchValue(exercise.focus);
+  const name = normalizeSearchValue(exercise.name);
+
+  if (
+    bodyPart === 'cardio' ||
+    category === 'cardio' ||
+    focus.includes('cardio') ||
+    equipment.includes('cardio') ||
+    name.includes('run') ||
+    name.includes('walk') ||
+    name.includes('bike') ||
+    name.includes('rower') ||
+    name.includes('elliptical') ||
+    name.includes('aerobics') ||
+    name.includes('jump rope')
+  ) {
+    return 'duration';
+  }
+
+  return 'strength';
 }
 
 export function buildSeededExerciseLibrary(

@@ -236,6 +236,15 @@ function normalizeExerciseName(value: string) {
   return value.trim().toLowerCase();
 }
 
+function formatDurationMinutesLabel(value: number | null | undefined) {
+  const safeValue = Math.max(0, Number.isFinite(value ?? NaN) ? Number(value) : 0);
+  const totalSeconds = Math.round(safeValue * 60);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function normalizeWorkoutSet(
   workoutSet: WorkoutSet,
   fallbackSetNumber: number,
@@ -319,7 +328,7 @@ function buildExerciseDefaults(
     previousDurationMinutes: latestHistoricalSet.durationMinutes ?? 20,
     previousLoadLabel:
       trackingMode === 'duration'
-        ? `${latestHistoricalSet.durationMinutes ?? 20} min`
+        ? formatDurationMinutesLabel(latestHistoricalSet.durationMinutes ?? 20)
         : `${latestHistoricalSet.load} lb × ${latestHistoricalSet.reps}`,
     targetReps: latestHistoricalSet.reps,
   };
@@ -343,7 +352,7 @@ function createSessionExercise(
     targetSets: draft.targetSets,
     repRange:
       trackingMode === 'duration'
-        ? `${draft.targetDurationMinutes ?? 20} min`
+        ? formatDurationMinutesLabel(draft.targetDurationMinutes ?? 20)
         : draft.repRange ?? '8-10',
     previousLoadLabel: defaults.previousLoadLabel,
     currentLoad: trackingMode === 'duration' ? 0 : draft.currentLoad ?? defaults.currentLoad,
@@ -359,7 +368,7 @@ function createSessionExercise(
 function buildTemplateRepRange(draft: WorkoutTemplateExerciseDraft) {
   if (draft.trackingMode === 'duration') {
     const firstDuration = draft.sets[0]?.durationMinutes ?? draft.targetDurationMinutes ?? 20;
-    return `${Math.max(1, Math.round(firstDuration))} min`;
+    return formatDurationMinutesLabel(Math.max(1 / 60, firstDuration));
   }
 
   const reps = draft.sets
