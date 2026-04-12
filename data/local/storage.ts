@@ -49,3 +49,11 @@ export async function saveLocalAppData(state: LocalAppData) {
     // Keep the app usable even if native persistence is temporarily unavailable.
   }
 }
+
+export async function clearLocalAppData() {
+  try {
+    await AsyncStorage.removeItem(LOCAL_APP_STATE_KEY);
+  } catch {
+    // Keep the app usable even if native persistence is temporarily unavailable.
+  }
+}

@@ -7,8 +7,17 @@ import {
   type ReactNode,
 } from 'react';
 
-import { loadOnboardingState, saveOnboardingState } from '@/data/local/onboarding-storage';
-import { loadLocalAppData, saveLocalAppData } from '@/data/local/storage';
+import {
+  clearOnboardingState,
+  loadOnboardingState,
+  saveOnboardingState,
+} from '@/data/local/onboarding-storage';
+import { createDefaultLocalAppData } from '@/data/local/default-state';
+import {
+  clearLocalAppData,
+  loadLocalAppData,
+  saveLocalAppData,
+} from '@/data/local/storage';
 import { calculateGoalTargets } from '@/lib/goal-calculator';
 import {
   getStarterTemplatePack,
@@ -63,6 +72,7 @@ type AppDataContextValue = {
   addCustomMealLog: (input: CreateCustomMealLogInput) => void;
   addDiningMealLog: (input: CreateDiningMealLogInput) => void;
   cancelWorkoutSession: (sessionId: string) => void;
+  clearAllLocalData: () => void;
   clearTodayMealLogs: () => void;
   createWorkoutTemplate: (
     input: { exercises: WorkoutTemplateExerciseDraft[]; name: string },
@@ -1084,6 +1094,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function clearAllLocalData() {
+    const nextState = createDefaultLocalAppData();
+
+    void Promise.all([clearLocalAppData(), clearOnboardingState()]);
+
+    startTransition(() => {
+      setState(nextState);
+      setIsOnboardingComplete(false);
+    });
+  }
+
   function updateMealLog(input: UpdateMealLogInput) {
     setState((currentState) => {
       if (!currentState) {
@@ -1931,6 +1952,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         addCustomMealLog,
         addDiningMealLog,
         cancelWorkoutSession,
+        clearAllLocalData,
         clearTodayMealLogs,
         createWorkoutTemplate,
         deleteWorkoutTemplate,

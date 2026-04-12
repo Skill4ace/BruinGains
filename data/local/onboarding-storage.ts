@@ -56,3 +56,11 @@ export async function saveOnboardingState(state: PersistedOnboardingState) {
     // Keep first-run navigation usable even if persistence is temporarily unavailable.
   }
 }
+
+export async function clearOnboardingState() {
+  try {
+    await AsyncStorage.removeItem(ONBOARDING_STATE_KEY);
+  } catch {
+    // Keep first-run navigation usable even if persistence is temporarily unavailable.
+  }
+}

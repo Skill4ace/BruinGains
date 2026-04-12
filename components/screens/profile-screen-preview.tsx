@@ -106,6 +106,13 @@ type CalendarDayCell = {
   tone: DayActivityTone;
 };
 
+type ComplianceDocumentKey = 'privacy' | 'terms';
+
+type ComplianceDocumentSection = {
+  items: string[];
+  title: string;
+};
+
 type GoalPlanDraft = {
   activityLevel: ProfileActivityLevel;
   age: string;
@@ -120,6 +127,65 @@ type GoalPlanDraft = {
   weightPounds: string;
   workoutsPerWeek: number;
 };
+
+const PRIVACY_POLICY_SECTIONS: ComplianceDocumentSection[] = [
+  {
+    title: 'Local-first storage',
+    items: [
+      'BruinGains stores your profile, meals, workouts, templates, goals, and preferences locally on this device using AsyncStorage.',
+      'Your personal data is not uploaded to BruinGains servers because this version of the app does not use user accounts.',
+    ],
+  },
+  {
+    title: 'Public UCLA data',
+    items: [
+      'BruinGains uses Supabase only as a read-only source for public UCLA dining menus, dining hall metadata, gym locations, and gym capacity snapshots.',
+      'No personal workout or nutrition data is transmitted to Supabase.',
+    ],
+  },
+  {
+    title: 'Tracking and advertising',
+    items: [
+      'BruinGains does not include analytics, advertising, or cross-app tracking in this version.',
+      'BruinGains does not sell personal information.',
+    ],
+  },
+  {
+    title: 'Deleting your data',
+    items: [
+      'You can delete all BruinGains data stored on this device at any time from Settings & compliance in the Profile screen.',
+    ],
+  },
+];
+
+const TERMS_OF_SERVICE_SECTIONS: ComplianceDocumentSection[] = [
+  {
+    title: 'Unofficial product',
+    items: [
+      'BruinGains is an unofficial app and is not affiliated with, endorsed by, or sponsored by UCLA.',
+    ],
+  },
+  {
+    title: 'Source data',
+    items: [
+      'Dining menus and gym capacity information are sourced from public UCLA systems and may change without notice.',
+      'BruinGains may occasionally display stale, incomplete, or inaccurate public campus data.',
+    ],
+  },
+  {
+    title: 'No warranty',
+    items: [
+      'BruinGains is provided as-is without warranties of availability, accuracy, or fitness for a particular purpose.',
+      'You are responsible for verifying dining, facility, and workout information when accuracy matters.',
+    ],
+  },
+  {
+    title: 'Local data responsibility',
+    items: [
+      'Because BruinGains stores personal data locally on-device, deleting the app or clearing local data permanently removes that information unless you have recorded it elsewhere.',
+    ],
+  },
+];
 
 function startOfLocalDay(date: Date) {
   const next = new Date(date);
@@ -586,12 +652,14 @@ function buildProfileHistory(state: LocalAppData, referenceDate = new Date()) {
 
 export function ProfileScreenPreview() {
   const router = useRouter();
-  const { reopenOnboarding, state, updateGoalPlan } = useAppData();
+  const { clearAllLocalData, reopenOnboarding, state, updateGoalPlan } = useAppData();
   const referenceDate = useMemo(() => new Date(), []);
   const todayDayId = getDateKey(referenceDate);
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [expandedSectionKeys, setExpandedSectionKeys] = useState<string[]>([]);
+  const [activeComplianceDocument, setActiveComplianceDocument] =
+    useState<ComplianceDocumentKey | null>(null);
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [goalSettingsOpen, setGoalSettingsOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState<GoalPlanDraft>(() => createGoalPlanDraft(state));
@@ -661,6 +729,18 @@ export function ProfileScreenPreview() {
   const canGoToNewerWeek = clampedWeekIndex > 0;
   const canGoToPreviousMonth = calendarMonthStart.getTime() > earliestMonthStart.getTime();
   const canGoToNextMonth = calendarMonthStart.getTime() < currentMonthStart.getTime();
+  const activeComplianceSections =
+    activeComplianceDocument === 'privacy'
+      ? PRIVACY_POLICY_SECTIONS
+      : activeComplianceDocument === 'terms'
+        ? TERMS_OF_SERVICE_SECTIONS
+        : [];
+  const activeComplianceTitle =
+    activeComplianceDocument === 'privacy'
+      ? 'Privacy policy'
+      : activeComplianceDocument === 'terms'
+        ? 'Terms of service'
+        : '';
 
   const handleOpenGoalSettings = () => {
     setGoalDraft(createGoalPlanDraft(state));
@@ -720,6 +800,23 @@ export function ProfileScreenPreview() {
     updateGoalPlan(nextGoalPlan);
     setActiveGoalPicker(null);
     setGoalSettingsOpen(false);
+  };
+
+  const handleClearAllLocalData = () => {
+    Alert.alert(
+      'Clear all local data?',
+      'This permanently deletes your profile, meals, workouts, templates, goals, and onboarding progress stored on this device. BruinGains does not keep your personal data on its servers.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear device data',
+          style: 'destructive',
+          onPress: () => {
+            clearAllLocalData();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -1063,16 +1160,38 @@ export function ProfileScreenPreview() {
           ) : null}
         </SurfaceCard>
 
-        <ActionButton
-          compact
-          label="Reopen onboarding"
-          onPress={() => {
-            reopenOnboarding();
-            router.replace('/onboarding');
-          }}
-          style={styles.testingButton}
-          variant="ghost"
-        />
+        <SurfaceCard floating style={styles.settingsCard}>
+          <View style={styles.settingsHeader}>
+            <AppText variant="title">Settings</AppText>
+          </View>
+
+          <View style={styles.settingsList}>
+            <SettingsRow
+              icon="shield-checkmark-outline"
+              onPress={() => setActiveComplianceDocument('privacy')}
+              title="Privacy policy"
+            />
+            <SettingsRow
+              icon="document-text-outline"
+              onPress={() => setActiveComplianceDocument('terms')}
+              title="Terms of service"
+            />
+            <SettingsRow
+              danger
+              icon="trash-outline"
+              onPress={handleClearAllLocalData}
+              title="Clear all data from device"
+            />
+            <SettingsRow
+              icon="refresh-outline"
+              onPress={() => {
+                reopenOnboarding();
+                router.replace('/onboarding');
+              }}
+              title="Redo onboarding"
+            />
+          </View>
+        </SurfaceCard>
       </View>
 
       <Modal
@@ -1197,6 +1316,13 @@ export function ProfileScreenPreview() {
         onRecalculate={handleRecalculateGoals}
         onSave={handleSaveGoals}
       />
+
+      <ComplianceDocumentModal
+        isOpen={activeComplianceDocument !== null}
+        onClose={() => setActiveComplianceDocument(null)}
+        sections={activeComplianceSections}
+        title={activeComplianceTitle}
+      />
     </AppScreen>
   );
 }
@@ -1264,6 +1390,100 @@ function ActivityCountPill({
         {value}
       </AppText>
     </View>
+  );
+}
+
+function SettingsRow({
+  danger = false,
+  icon,
+  onPress,
+  title,
+}: {
+  danger?: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  title: string;
+}) {
+  return (
+    <PressScale haptic="light" onPress={onPress} pressEffect="opacity">
+      <View style={[styles.settingsRow, danger ? styles.settingsRowDanger : null]}>
+        <View style={styles.settingsRowLeading}>
+          <View
+            style={[
+              styles.settingsIconWrap,
+              danger ? styles.settingsIconWrapDanger : styles.settingsIconWrapNeutral,
+            ]}>
+            <Ionicons
+              name={icon}
+              size={16}
+              color={danger ? AppColors.danger : AppColors.primary}
+            />
+          </View>
+          <View style={styles.settingsRowCopy}>
+            <AppText variant="bodyStrong" color={danger ? AppColors.danger : undefined}>
+              {title}
+            </AppText>
+          </View>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color={danger ? AppColors.danger : AppColors.textSubtle}
+        />
+      </View>
+    </PressScale>
+  );
+}
+
+function ComplianceDocumentModal({
+  isOpen,
+  onClose,
+  sections,
+  title,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  sections: ComplianceDocumentSection[];
+  title: string;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <View style={styles.modalScrim}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.documentModalRoot}>
+          <SurfaceCard floating style={styles.documentModalCard}>
+            <View style={styles.goalModalHeader}>
+              <AppText variant="title">{title}</AppText>
+              <PressScale haptic="light" onPress={onClose}>
+                <View style={styles.calendarButton}>
+                  <Ionicons name="close" size={18} color={AppColors.text} />
+                </View>
+              </PressScale>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.documentModalScrollContent}>
+              {sections.map((section) => (
+                <View key={section.title} style={styles.documentSection}>
+                  <AppText variant="label" dimmed>
+                    {section.title}
+                  </AppText>
+                  <View style={styles.documentSectionList}>
+                    {section.items.map((item) => (
+                      <AppText key={item} variant="body" style={styles.documentBodyText}>
+                        {`- ${item}`}
+                      </AppText>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </SurfaceCard>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -1954,14 +2174,55 @@ const styles = StyleSheet.create({
   logsCard: {
     gap: Spacing.md,
   },
-  testingButton: {
-    alignSelf: 'stretch',
-  },
   logsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
+  },
+  settingsCard: {
+    gap: Spacing.md,
+  },
+  settingsHeader: {
+    paddingBottom: Spacing.xs,
+  },
+  settingsList: {
+    gap: Spacing.sm,
+  },
+  settingsRow: {
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  settingsRowDanger: {
+    backgroundColor: 'rgba(231, 100, 92, 0.08)',
+  },
+  settingsRowLeading: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  settingsIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsIconWrapNeutral: {
+    backgroundColor: 'rgba(39, 116, 174, 0.10)',
+  },
+  settingsIconWrapDanger: {
+    backgroundColor: 'rgba(231, 100, 92, 0.12)',
+  },
+  settingsRowCopy: {
+    flex: 1,
   },
   modalCard: {
     width: '100%',
@@ -1995,6 +2256,29 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  documentModalRoot: {
+    width: '100%',
+    maxWidth: 420,
+  },
+  documentModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    gap: Spacing.md,
+    paddingBottom: Spacing.md,
+  },
+  documentModalScrollContent: {
+    gap: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  documentSection: {
+    gap: Spacing.sm,
+  },
+  documentSectionList: {
+    gap: Spacing.sm,
+  },
+  documentBodyText: {
+    color: AppColors.text,
   },
   inlinePickerCard: {
     borderRadius: Radii.md,

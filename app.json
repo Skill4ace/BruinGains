@@ -8,6 +8,7 @@
     "scheme": "bruingains",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.skill4ace.bruingains",
       "supportsTablet": true
     },
     "android": {
