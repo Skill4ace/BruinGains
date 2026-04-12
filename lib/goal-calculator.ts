@@ -4,7 +4,6 @@ import type {
   ProfileNutritionGoal,
   ProfileSex,
   UpdateGoalPlanInput,
-  WorkoutSplitPreset,
 } from '@/types/app-data';
 
 type GoalCalculatorInput = Pick<
@@ -13,24 +12,57 @@ type GoalCalculatorInput = Pick<
 >;
 
 export const ACTIVITY_LEVEL_OPTIONS: {
+  description: string;
   label: string;
   value: ProfileActivityLevel;
 }[] = [
-  { label: 'Sedentary', value: 'sedentary' },
-  { label: 'Light', value: 'light' },
-  { label: 'Moderate', value: 'moderate' },
-  { label: 'High', value: 'high' },
-  { label: 'Very high', value: 'very_high' },
+  {
+    description: 'Mostly sitting, with limited walking or training.',
+    label: 'Inactive',
+    value: 'inactive',
+  },
+  {
+    description: 'Some walking or training, but not daily hard exercise.',
+    label: 'Low',
+    value: 'low_active',
+  },
+  {
+    description: 'Regular movement and purposeful activity most days.',
+    label: 'Active',
+    value: 'active',
+  },
+  {
+    description: 'Very active daily routine or consistently high training load.',
+    label: 'Very active',
+    value: 'very_active',
+  },
 ];
 
 export const NUTRITION_GOAL_OPTIONS: {
+  description: string;
   label: string;
   value: ProfileNutritionGoal;
 }[] = [
-  { label: 'Cut', value: 'cut' },
-  { label: 'Maintain', value: 'maintain' },
-  { label: 'Lean bulk', value: 'lean_bulk' },
-  { label: 'Bulk', value: 'bulk' },
+  {
+    description: 'Moderate calorie deficit.',
+    label: 'Cut',
+    value: 'cut',
+  },
+  {
+    description: 'Maintain current weight.',
+    label: 'Maintain',
+    value: 'maintain',
+  },
+  {
+    description: 'Small calorie surplus.',
+    label: 'Lean bulk',
+    value: 'lean_bulk',
+  },
+  {
+    description: 'Larger calorie surplus.',
+    label: 'Bulk',
+    value: 'bulk',
+  },
 ];
 
 export const SEX_OPTIONS: {
@@ -41,79 +73,92 @@ export const SEX_OPTIONS: {
   { label: 'Female', value: 'female' },
 ];
 
-export const WORKOUT_SPLIT_OPTIONS: {
-  label: string;
-  value: WorkoutSplitPreset;
-  workoutsPerWeek: number | null;
-}[] = [
-  { label: 'Custom', value: 'custom', workoutsPerWeek: null },
-  { label: '3-Day Full Body', value: 'full_body_3', workoutsPerWeek: 3 },
-  { label: '4-Day Upper/Lower', value: 'upper_lower_4', workoutsPerWeek: 4 },
-  { label: '5-Day PPL', value: 'push_pull_legs_5', workoutsPerWeek: 5 },
-  { label: '6-Day PPL', value: 'push_pull_legs_6', workoutsPerWeek: 6 },
-  { label: '5-Day Body Part', value: 'body_part_5', workoutsPerWeek: 5 },
-];
+export const WORKOUTS_PER_WEEK_OPTIONS = [2, 3, 4, 5, 6, 7] as const;
 
 const ACTIVITY_MULTIPLIERS: Record<ProfileActivityLevel, number> = {
-  sedentary: 1.2,
-  light: 1.375,
-  moderate: 1.55,
-  high: 1.725,
-  very_high: 1.9,
+  inactive: 1.2,
+  low_active: 1.375,
+  active: 1.55,
+  very_active: 1.725,
 };
 
 const CALORIE_ADJUSTMENTS: Record<ProfileNutritionGoal, number> = {
-  cut: -450,
+  cut: -500,
   maintain: 0,
   lean_bulk: 250,
   bulk: 400,
 };
 
-const PROTEIN_MULTIPLIERS: Record<ProfileNutritionGoal, number> = {
-  cut: 1,
-  maintain: 0.95,
-  lean_bulk: 0.9,
-  bulk: 0.85,
+const PROTEIN_GRAMS_PER_POUND: Record<ProfileNutritionGoal, number> = {
+  cut: 0.9,
+  maintain: 0.85,
+  lean_bulk: 0.8,
+  bulk: 0.75,
 };
 
-const FAT_MULTIPLIERS: Record<ProfileNutritionGoal, number> = {
-  cut: 0.3,
-  maintain: 0.35,
-  lean_bulk: 0.35,
-  bulk: 0.4,
+const FAT_TARGET_PERCENT: Record<ProfileNutritionGoal, number> = {
+  cut: 0.25,
+  maintain: 0.275,
+  lean_bulk: 0.25,
+  bulk: 0.25,
 };
 
 function roundToNearestFive(value: number) {
   return Math.max(0, Math.round(value / 5) * 5);
 }
 
-export function getWorkoutsPerWeekForSplit(split: WorkoutSplitPreset) {
-  return WORKOUT_SPLIT_OPTIONS.find((option) => option.value === split)?.workoutsPerWeek ?? null;
+function getMifflinStJeorBmr({
+  age,
+  heightCm,
+  sex,
+  weightKg,
+}: {
+  age: number;
+  heightCm: number;
+  sex: ProfileSex;
+  weightKg: number;
+}) {
+  const sexOffset = sex === 'male' ? 5 : -161;
+  return 10 * weightKg + 6.25 * heightCm - 5 * age + sexOffset;
 }
 
 export function calculateGoalTargets(input: GoalCalculatorInput): GoalSettings {
+  const age = Math.max(19, input.age);
   const weightPounds = Math.max(80, input.weightPounds);
-  const heightInches = Math.max(48, input.heightInches);
-  const age = Math.max(13, input.age);
+  const heightCm = Math.max(48, input.heightInches) * 2.54;
   const weightKg = weightPounds * 0.45359237;
-  const heightCm = heightInches * 2.54;
-  const sexOffset = input.sex === 'male' ? 5 : -161;
-  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + sexOffset;
-  const tdee = bmr * ACTIVITY_MULTIPLIERS[input.activityLevel];
-  const calories = roundToNearestFive(tdee + CALORIE_ADJUSTMENTS[input.nutritionGoal]);
-  const protein = Math.max(100, roundToNearestFive(weightPounds * PROTEIN_MULTIPLIERS[input.nutritionGoal]));
-  let fats = Math.max(40, roundToNearestFive(weightPounds * FAT_MULTIPLIERS[input.nutritionGoal]));
-  let carbs = Math.floor((calories - protein * 4 - fats * 9) / 4);
+  const bmr = getMifflinStJeorBmr({
+    age,
+    heightCm,
+    sex: input.sex,
+    weightKg,
+  });
+  const maintenanceCalories = bmr * ACTIVITY_MULTIPLIERS[input.activityLevel];
+  const calories = roundToNearestFive(
+    maintenanceCalories + CALORIE_ADJUSTMENTS[input.nutritionGoal],
+  );
+  let protein = roundToNearestFive(
+    Math.max(110, weightPounds * PROTEIN_GRAMS_PER_POUND[input.nutritionGoal]),
+  );
+  let fats = roundToNearestFive(
+    Math.max(45, (calories * FAT_TARGET_PERCENT[input.nutritionGoal]) / 9),
+  );
+  let carbs = roundToNearestFive((calories - protein * 4 - fats * 9) / 4);
 
-  if (carbs < 80) {
-    fats = Math.max(35, roundToNearestFive((calories - protein * 4 - 80 * 4) / 9));
-    carbs = Math.max(80, Math.floor((calories - protein * 4 - fats * 9) / 4));
+  if (carbs < 100) {
+    fats = roundToNearestFive(Math.max(40, fats - 10));
+    carbs = roundToNearestFive((calories - protein * 4 - fats * 9) / 4);
+  }
+
+  if (carbs < 100) {
+    protein = roundToNearestFive(Math.max(100, protein - 10));
+    carbs = roundToNearestFive((calories - protein * 4 - fats * 9) / 4);
   }
 
   return {
     calories,
     protein,
-    carbs: Math.max(80, roundToNearestFive(carbs)),
+    carbs: Math.max(100, carbs),
     fats,
     workoutsPerWeek: 4,
   };

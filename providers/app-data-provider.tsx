@@ -912,7 +912,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           nutritionGoal: input.nutritionGoal,
           sex: input.sex,
           weightPounds: input.weightPounds,
-          workoutSplitPreset: input.workoutSplitPreset,
         },
         goals: {
           ...currentState.goals,

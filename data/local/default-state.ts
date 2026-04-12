@@ -1,6 +1,6 @@
 import { diningPreview, gymPreview } from '@/constants/preview-data';
 import { buildSeededExerciseLibrary, mergeExerciseLibrary } from '@/data/local/exercise-library';
-import { calculateGoalTargets, getWorkoutsPerWeekForSplit } from '@/lib/goal-calculator';
+import { calculateGoalTargets } from '@/lib/goal-calculator';
 import type {
   Achievement,
   GoalSettings,
@@ -8,6 +8,7 @@ import type {
   MealLog,
   MealLogPeriod,
   MealPeriod,
+  ProfileActivityLevel,
   WorkoutSession,
   WorkoutSessionExercise,
   WorkoutSet,
@@ -103,6 +104,28 @@ function formatMonthDay(date: Date) {
     month: 'short',
     day: 'numeric',
   }).format(date);
+}
+
+function normalizeActivityLevel(
+  value: LocalAppData['profile']['activityLevel'] | string | undefined,
+): ProfileActivityLevel {
+  if (value === 'inactive' || value === 'low_active' || value === 'active' || value === 'very_active') {
+    return value;
+  }
+
+  if (value === 'sedentary') {
+    return 'inactive';
+  }
+
+  if (value === 'light') {
+    return 'low_active';
+  }
+
+  if (value === 'moderate') {
+    return 'active';
+  }
+
+  return 'very_active';
 }
 
 function getCurrentPeriod(now: Date): MealPeriod {
@@ -390,12 +413,11 @@ function buildAchievements(now: Date): Achievement[] {
 export function createDefaultLocalAppData(now = new Date()): LocalAppData {
   const defaultProfile = {
     age: 20,
-    activityLevel: 'light' as const,
+    activityLevel: 'low_active' as const,
     heightInches: 69,
     nutritionGoal: 'maintain' as const,
     sex: 'male' as const,
     weightPounds: 165,
-    workoutSplitPreset: 'upper_lower_4' as const,
   };
   const calculatedGoals = calculateGoalTargets(defaultProfile);
   const goals: GoalSettings = {
@@ -403,9 +425,7 @@ export function createDefaultLocalAppData(now = new Date()): LocalAppData {
     protein: diningPreview.proteinGoal ?? calculatedGoals.protein,
     carbs: diningPreview.carbGoal ?? calculatedGoals.carbs,
     fats: diningPreview.fatGoal ?? calculatedGoals.fats,
-    workoutsPerWeek:
-      getWorkoutsPerWeekForSplit(defaultProfile.workoutSplitPreset) ??
-      calculatedGoals.workoutsPerWeek,
+    workoutsPerWeek: 4,
   };
 
   const { workoutTemplates, templateExercises, templateExerciseSets } = buildTemplateState(now);
@@ -430,7 +450,6 @@ export function createDefaultLocalAppData(now = new Date()): LocalAppData {
       nutritionGoal: defaultProfile.nutritionGoal,
       sex: defaultProfile.sex,
       weightPounds: defaultProfile.weightPounds,
-      workoutSplitPreset: defaultProfile.workoutSplitPreset,
     },
     goals,
     mealLogs,
@@ -505,12 +524,19 @@ export function mergeLocalAppData(
     ),
   ];
 
+  const normalizedProfile = candidate.profile
+    ? {
+        ...candidate.profile,
+        activityLevel: normalizeActivityLevel(candidate.profile.activityLevel),
+      }
+    : undefined;
+
   return {
     ...seed,
     ...candidate,
     profile: {
       ...seed.profile,
-      ...candidate.profile,
+      ...normalizedProfile,
     },
     goals: {
       ...seed.goals,

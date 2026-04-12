@@ -17,12 +17,12 @@ import {
   ACTIVITY_LEVEL_OPTIONS,
   NUTRITION_GOAL_OPTIONS,
   SEX_OPTIONS,
-  WORKOUT_SPLIT_OPTIONS,
+  WORKOUTS_PER_WEEK_OPTIONS,
   calculateGoalTargets,
-  getWorkoutsPerWeekForSplit,
 } from '@/lib/goal-calculator';
 import { formatDurationMinutes } from '@/lib/workout-duration';
 import { useAppData } from '@/providers/app-data-provider';
+import { ActionButton } from '@/components/ui/action-button';
 import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
@@ -38,7 +38,6 @@ import type {
   WorkoutSessionExercise,
   WorkoutSet,
   WorkoutTrackingMode,
-  WorkoutSplitPreset,
 } from '@/types/app-data';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -112,12 +111,12 @@ type GoalPlanDraft = {
   calories: string;
   carbs: string;
   fats: string;
-  heightInches: string;
+  heightFeet: number;
+  heightInches: number;
   nutritionGoal: ProfileNutritionGoal;
   protein: string;
   sex: ProfileSex;
   weightPounds: string;
-  workoutSplitPreset: WorkoutSplitPreset;
   workoutsPerWeek: number;
 };
 
@@ -308,18 +307,21 @@ function buildMonthCalendar(
 }
 
 function createGoalPlanDraft(state: LocalAppData): GoalPlanDraft {
+  const heightFeet = Math.floor(state.profile.heightInches / 12);
+  const heightInches = state.profile.heightInches % 12;
+
   return {
     activityLevel: state.profile.activityLevel,
     age: String(state.profile.age),
     calories: String(state.goals.calories),
     carbs: String(state.goals.carbs),
     fats: String(state.goals.fats),
-    heightInches: String(state.profile.heightInches),
+    heightFeet,
+    heightInches,
     nutritionGoal: state.profile.nutritionGoal,
     protein: String(state.goals.protein),
     sex: state.profile.sex,
     weightPounds: String(state.profile.weightPounds),
-    workoutSplitPreset: state.profile.workoutSplitPreset,
     workoutsPerWeek: state.goals.workoutsPerWeek,
   };
 }
@@ -346,16 +348,15 @@ function parsePositiveNumber(value: string, minimum: number) {
 
 function buildGoalPlanInput(draft: GoalPlanDraft): UpdateGoalPlanInput | null {
   const age = parsePositiveInteger(draft.age, 13);
-  const heightInches = parsePositiveInteger(draft.heightInches, 48);
   const weightPounds = parsePositiveNumber(draft.weightPounds, 80);
   const calories = parsePositiveInteger(draft.calories, 1200);
   const protein = parsePositiveInteger(draft.protein, 60);
   const carbs = parsePositiveInteger(draft.carbs, 50);
   const fats = parsePositiveInteger(draft.fats, 20);
+  const heightInches = Math.max(48, draft.heightFeet * 12 + draft.heightInches);
 
   if (
     age === null ||
-    heightInches === null ||
     weightPounds === null ||
     calories === null ||
     protein === null ||
@@ -376,7 +377,6 @@ function buildGoalPlanInput(draft: GoalPlanDraft): UpdateGoalPlanInput | null {
     protein,
     sex: draft.sex,
     weightPounds,
-    workoutSplitPreset: draft.workoutSplitPreset,
     workoutsPerWeek: Math.max(1, Math.min(7, draft.workoutsPerWeek)),
   };
 }
@@ -593,6 +593,9 @@ export function ProfileScreenPreview() {
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [goalSettingsOpen, setGoalSettingsOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState<GoalPlanDraft>(() => createGoalPlanDraft(state));
+  const [activeGoalPicker, setActiveGoalPicker] = useState<
+    null | 'sex' | 'activityLevel' | 'nutritionGoal' | 'heightFeet' | 'heightInches' | 'workoutsPerWeek'
+  >(null);
   const [calendarMonthStart, setCalendarMonthStart] = useState(startOfMonth(referenceDate));
   const { activityByDay, earliestActivityDate, weekHistories } = useMemo(
     () => buildProfileHistory(state, referenceDate),
@@ -659,6 +662,7 @@ export function ProfileScreenPreview() {
 
   const handleOpenGoalSettings = () => {
     setGoalDraft(createGoalPlanDraft(state));
+    setActiveGoalPicker(null);
     setGoalSettingsOpen(true);
   };
 
@@ -672,22 +676,12 @@ export function ProfileScreenPreview() {
     }));
   };
 
-  const handleSplitSelect = (split: WorkoutSplitPreset) => {
-    const workoutsPerWeek = getWorkoutsPerWeekForSplit(split);
-
-    setGoalDraft((currentValue) => ({
-      ...currentValue,
-      workoutSplitPreset: split,
-      workoutsPerWeek: workoutsPerWeek ?? currentValue.workoutsPerWeek,
-    }));
-  };
-
   const handleRecalculateGoals = () => {
     const age = parsePositiveInteger(goalDraft.age, 13);
-    const heightInches = parsePositiveInteger(goalDraft.heightInches, 48);
+    const heightInches = Math.max(48, goalDraft.heightFeet * 12 + goalDraft.heightInches);
     const weightPounds = parsePositiveNumber(goalDraft.weightPounds, 80);
 
-    if (age === null || heightInches === null || weightPounds === null) {
+    if (age === null || weightPounds === null) {
       Alert.alert('Enter your info first', 'Height, weight, and age are required to recalculate.');
       return;
     }
@@ -722,6 +716,7 @@ export function ProfileScreenPreview() {
     }
 
     updateGoalPlan(nextGoalPlan);
+    setActiveGoalPicker(null);
     setGoalSettingsOpen(false);
   };
 
@@ -1176,11 +1171,18 @@ export function ProfileScreenPreview() {
       <GoalSettingsModal
         draft={goalDraft}
         isOpen={goalSettingsOpen}
+        activePicker={activeGoalPicker}
         onChange={handleGoalDraftChange}
-        onClose={() => setGoalSettingsOpen(false)}
+        onClose={() => {
+          setActiveGoalPicker(null);
+          setGoalSettingsOpen(false);
+        }}
+        onClosePicker={() => setActiveGoalPicker(null)}
+        onTogglePicker={(picker) =>
+          setActiveGoalPicker((currentValue) => (currentValue === picker ? null : picker))
+        }
         onRecalculate={handleRecalculateGoals}
         onSave={handleSaveGoals}
-        onSelectSplit={handleSplitSelect}
       />
     </AppScreen>
   );
@@ -1253,22 +1255,41 @@ function ActivityCountPill({
 }
 
 function GoalSettingsModal({
+  activePicker,
   draft,
   isOpen,
   onChange,
   onClose,
+  onClosePicker,
+  onTogglePicker,
   onRecalculate,
   onSave,
-  onSelectSplit,
 }: {
+  activePicker:
+    | null
+    | 'sex'
+    | 'activityLevel'
+    | 'nutritionGoal'
+    | 'heightFeet'
+    | 'heightInches'
+    | 'workoutsPerWeek';
   draft: GoalPlanDraft;
   isOpen: boolean;
   onChange: <K extends keyof GoalPlanDraft>(key: K, value: GoalPlanDraft[K]) => void;
   onClose: () => void;
+  onClosePicker: () => void;
+  onTogglePicker: (
+    picker: 'sex' | 'activityLevel' | 'nutritionGoal' | 'heightFeet' | 'heightInches' | 'workoutsPerWeek',
+  ) => void;
   onRecalculate: () => void;
   onSave: () => void;
-  onSelectSplit: (split: WorkoutSplitPreset) => void;
 }) {
+  const sexLabel = SEX_OPTIONS.find((option) => option.value === draft.sex)?.label ?? 'Select';
+  const activityLabel =
+    ACTIVITY_LEVEL_OPTIONS.find((option) => option.value === draft.activityLevel)?.label ?? 'Select';
+  const goalLabel =
+    NUTRITION_GOAL_OPTIONS.find((option) => option.value === draft.nutritionGoal)?.label ?? 'Select';
+
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <View style={styles.modalScrim}>
@@ -1277,12 +1298,7 @@ function GoalSettingsModal({
           style={styles.goalModalContainer}>
           <SurfaceCard floating style={styles.goalModalCard}>
             <View style={styles.goalModalHeader}>
-              <View style={styles.goalModalHeaderCopy}>
-                <AppText variant="title">Goals</AppText>
-                <AppText variant="body" dimmed>
-                  Recalculate or override your targets anytime.
-                </AppText>
-              </View>
+              <AppText variant="title">Goals</AppText>
               <PressScale haptic="light" onPress={onClose}>
                 <View style={styles.calendarButton}>
                   <Ionicons name="close" size={18} color={AppColors.text} />
@@ -1298,31 +1314,14 @@ function GoalSettingsModal({
                   Profile inputs
                 </AppText>
 
-                <View style={styles.goalChoiceRow}>
-                  {SEX_OPTIONS.map((option) => (
-                    <SelectorChip
-                      key={option.value}
-                      label={option.label}
-                      onPress={() => onChange('sex', option.value)}
-                      selected={draft.sex === option.value}
-                    />
-                  ))}
-                </View>
-
                 <View style={styles.goalInputGrid}>
-                  <GoalFieldInput
+                  <GoalTextField
                     keyboardType="number-pad"
                     label="Age"
                     onChangeText={(value) => onChange('age', value)}
                     value={draft.age}
                   />
-                  <GoalFieldInput
-                    keyboardType="number-pad"
-                    label="Height (in)"
-                    onChangeText={(value) => onChange('heightInches', value)}
-                    value={draft.heightInches}
-                  />
-                  <GoalFieldInput
+                  <GoalTextField
                     keyboardType="decimal-pad"
                     label="Weight (lb)"
                     onChangeText={(value) => onChange('weightPounds', value)}
@@ -1330,60 +1329,128 @@ function GoalSettingsModal({
                   />
                 </View>
 
-                <View style={styles.goalChoiceWrap}>
-                  {ACTIVITY_LEVEL_OPTIONS.map((option) => (
-                    <SelectorChip
-                      key={option.value}
-                      label={option.label}
-                      onPress={() => onChange('activityLevel', option.value)}
-                      selected={draft.activityLevel === option.value}
-                    />
-                  ))}
+                <View style={styles.goalTripleRow}>
+                  <GoalSelectionField
+                    label="Height"
+                    onPress={() => onTogglePicker('heightFeet')}
+                    value={`${draft.heightFeet} ft`}
+                    compact
+                  />
+                  <GoalSelectionField
+                    label="Inches"
+                    onPress={() => onTogglePicker('heightInches')}
+                    value={`${draft.heightInches} in`}
+                    compact
+                  />
+                  <GoalSelectionField
+                    label="Sex"
+                    onPress={() => onTogglePicker('sex')}
+                    value={sexLabel}
+                    compact
+                  />
                 </View>
 
-                <View style={styles.goalChoiceWrap}>
-                  {NUTRITION_GOAL_OPTIONS.map((option) => (
-                    <SelectorChip
-                      key={option.value}
-                      label={option.label}
-                      onPress={() => onChange('nutritionGoal', option.value)}
-                      selected={draft.nutritionGoal === option.value}
-                    />
-                  ))}
-                </View>
-              </View>
+                {activePicker === 'heightFeet' ? (
+                  <GoalInlinePicker
+                    options={Array.from({ length: 5 }, (_, index) => index + 4).map((value) => ({
+                      description: null,
+                      label: `${value} ft`,
+                      onPress: () => {
+                        onChange('heightFeet', value);
+                        onClosePicker();
+                      },
+                      selected: draft.heightFeet === value,
+                    }))}
+                  />
+                ) : null}
 
-              <View style={styles.goalModalSection}>
-                <View style={styles.goalSectionHeaderRow}>
-                  <AppText variant="label" dimmed>
-                    Workout plan
-                  </AppText>
-                  <AppText variant="micro" dimmed>
-                    Pick a split or set days manually.
-                  </AppText>
-                </View>
+                {activePicker === 'heightInches' ? (
+                  <GoalInlinePicker
+                    options={Array.from({ length: 12 }, (_, index) => index).map((value) => ({
+                      description: null,
+                      label: `${value} in`,
+                      onPress: () => {
+                        onChange('heightInches', value);
+                        onClosePicker();
+                      },
+                      selected: draft.heightInches === value,
+                    }))}
+                  />
+                ) : null}
 
-                <View style={styles.goalChoiceWrap}>
-                  {WORKOUT_SPLIT_OPTIONS.map((option) => (
-                    <SelectorChip
-                      key={option.value}
-                      label={option.label}
-                      onPress={() => onSelectSplit(option.value)}
-                      selected={draft.workoutSplitPreset === option.value}
-                    />
-                  ))}
-                </View>
+                {activePicker === 'sex' ? (
+                  <GoalInlinePicker
+                    options={SEX_OPTIONS.map((option) => ({
+                      description: null,
+                      label: option.label,
+                      onPress: () => {
+                        onChange('sex', option.value);
+                        onClosePicker();
+                      },
+                      selected: draft.sex === option.value,
+                    }))}
+                  />
+                ) : null}
 
-                <View style={styles.goalChoiceRow}>
-                  {[2, 3, 4, 5, 6, 7].map((days) => (
-                    <SelectorChip
-                      key={days}
-                      label={`${days} / wk`}
-                      onPress={() => onChange('workoutsPerWeek', days)}
-                      selected={draft.workoutsPerWeek === days}
-                    />
-                  ))}
-                </View>
+                <GoalSelectionField
+                  label="Activity level"
+                  onPress={() => onTogglePicker('activityLevel')}
+                  value={activityLabel}
+                />
+
+                {activePicker === 'activityLevel' ? (
+                  <GoalInlinePicker
+                    options={ACTIVITY_LEVEL_OPTIONS.map((option) => ({
+                      description: option.description,
+                      label: option.label,
+                      onPress: () => {
+                        onChange('activityLevel', option.value);
+                        onClosePicker();
+                      },
+                      selected: draft.activityLevel === option.value,
+                    }))}
+                  />
+                ) : null}
+
+                <GoalSelectionField
+                  label="Workouts per week"
+                  onPress={() => onTogglePicker('workoutsPerWeek')}
+                  value={`${draft.workoutsPerWeek} / wk`}
+                />
+
+                {activePicker === 'workoutsPerWeek' ? (
+                  <GoalInlinePicker
+                    options={WORKOUTS_PER_WEEK_OPTIONS.map((value) => ({
+                      description: null,
+                      label: `${value} / wk`,
+                      onPress: () => {
+                        onChange('workoutsPerWeek', value);
+                        onClosePicker();
+                      },
+                      selected: draft.workoutsPerWeek === value,
+                    }))}
+                  />
+                ) : null}
+
+                <GoalSelectionField
+                  label="Goal"
+                  onPress={() => onTogglePicker('nutritionGoal')}
+                  value={goalLabel}
+                />
+
+                {activePicker === 'nutritionGoal' ? (
+                  <GoalInlinePicker
+                    options={NUTRITION_GOAL_OPTIONS.map((option) => ({
+                      description: option.description,
+                      label: option.label,
+                      onPress: () => {
+                        onChange('nutritionGoal', option.value);
+                        onClosePicker();
+                      },
+                      selected: draft.nutritionGoal === option.value,
+                    }))}
+                  />
+                ) : null}
               </View>
 
               <View style={styles.goalModalSection}>
@@ -1391,36 +1458,35 @@ function GoalSettingsModal({
                   <AppText variant="label" dimmed>
                     Targets
                   </AppText>
-                  <PressScale haptic="light" onPress={onRecalculate} pressEffect="opacity">
-                    <View style={styles.recalculateButton}>
-                      <Ionicons name="refresh" size={14} color={AppColors.primary} />
-                      <AppText variant="micro" color={AppColors.primary}>
-                        Recalculate
-                      </AppText>
-                    </View>
-                  </PressScale>
+                  <ActionButton
+                    compact
+                    label="Recalculate"
+                    onPress={onRecalculate}
+                    style={styles.recalculateButtonWrap}
+                    variant="primary"
+                  />
                 </View>
 
                 <View style={styles.goalInputGrid}>
-                  <GoalFieldInput
+                  <GoalTextField
                     keyboardType="number-pad"
                     label="Calories"
                     onChangeText={(value) => onChange('calories', value)}
                     value={draft.calories}
                   />
-                  <GoalFieldInput
+                  <GoalTextField
                     keyboardType="number-pad"
                     label="Protein"
                     onChangeText={(value) => onChange('protein', value)}
                     value={draft.protein}
                   />
-                  <GoalFieldInput
+                  <GoalTextField
                     keyboardType="number-pad"
                     label="Carbs"
                     onChangeText={(value) => onChange('carbs', value)}
                     value={draft.carbs}
                   />
-                  <GoalFieldInput
+                  <GoalTextField
                     keyboardType="number-pad"
                     label="Fats"
                     onChangeText={(value) => onChange('fats', value)}
@@ -1430,13 +1496,7 @@ function GoalSettingsModal({
               </View>
             </ScrollView>
 
-            <PressScale haptic="light" onPress={onSave}>
-              <View style={styles.goalSaveButton}>
-                <AppText variant="label" color={AppColors.white}>
-                  Save goals
-                </AppText>
-              </View>
-            </PressScale>
+            <ActionButton label="Save goals" onPress={onSave} style={styles.goalSaveButton} />
           </SurfaceCard>
         </KeyboardAvoidingView>
       </View>
@@ -1444,27 +1504,77 @@ function GoalSettingsModal({
   );
 }
 
-function SelectorChip({
+function GoalInlinePicker({
+  options,
+}: {
+  options: {
+    description: string | null;
+    label: string;
+    onPress: () => void;
+    selected: boolean;
+  }[];
+}) {
+  return (
+    <View style={styles.inlinePickerCard}>
+      <View style={styles.pickerOptionList}>
+        {options.map((option, index) => (
+          <PressScale
+            key={`${option.label}-${index}`}
+            haptic="light"
+            onPress={option.onPress}
+            pressEffect="opacity">
+            <View
+              style={[
+                styles.pickerOptionRow,
+                option.selected ? styles.pickerOptionRowSelected : null,
+                index > 0 ? styles.pickerOptionRowSeparated : null,
+              ]}>
+              <View style={styles.pickerOptionCopy}>
+                <AppText variant="bodyStrong">{option.label}</AppText>
+                {option.description ? (
+                  <AppText variant="micro" dimmed>
+                    {option.description}
+                  </AppText>
+                ) : null}
+              </View>
+              {option.selected ? (
+                <Ionicons name="checkmark" size={18} color={AppColors.primary} />
+              ) : null}
+            </View>
+          </PressScale>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function GoalSelectionField({
+  compact = false,
   label,
   onPress,
-  selected,
+  value,
 }: {
+  compact?: boolean;
   label: string;
   onPress: () => void;
-  selected: boolean;
+  value: string;
 }) {
   return (
     <PressScale haptic="light" onPress={onPress} pressEffect="opacity">
-      <View style={[styles.selectorChip, selected ? styles.selectorChipSelected : null]}>
-        <AppText variant="micro" color={selected ? AppColors.primary : AppColors.textMuted}>
+      <View style={[styles.goalSelectionField, compact ? styles.goalSelectionFieldCompact : null]}>
+        <AppText variant="micro" dimmed>
           {label}
         </AppText>
+        <View style={styles.goalSelectionValueRow}>
+          <AppText variant="bodyStrong">{value}</AppText>
+          <Ionicons name="chevron-down" size={16} color={AppColors.textSubtle} />
+        </View>
       </View>
     </PressScale>
   );
 }
 
-function GoalFieldInput({
+function GoalTextField({
   keyboardType,
   label,
   onChangeText,
@@ -1701,8 +1811,10 @@ const styles = StyleSheet.create({
   goalInputCard: {
     flex: 1,
     minWidth: '46%',
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceVariant,
+    borderRadius: Radii.md,
+    backgroundColor: AppColors.surfaceLowest,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     gap: Spacing.xs,
@@ -1712,20 +1824,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.md,
   },
+  goalTripleRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
   goalHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  goalChoiceRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  goalChoiceWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: Spacing.sm,
   },
   goalMetric: {
@@ -1753,6 +1859,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     gap: Spacing.md,
+    paddingBottom: Spacing.md,
   },
   goalModalContainer: {
     width: '100%',
@@ -1760,33 +1867,48 @@ const styles = StyleSheet.create({
   },
   goalModalHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
   goalModalHeaderCopy: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.xs,
   },
   goalModalScrollContent: {
-    gap: Spacing.md,
-    paddingBottom: Spacing.xs,
+    gap: Spacing.lg,
+    paddingBottom: Spacing.sm,
   },
   goalModalSection: {
     gap: Spacing.sm,
   },
   goalSaveButton: {
-    minHeight: 46,
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: Spacing.xs,
   },
   goalSectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
+  },
+  goalSelectionField: {
+    flex: 1,
+    borderRadius: Radii.md,
+    backgroundColor: AppColors.surfaceLowest,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    gap: Spacing.xs,
+  },
+  goalSelectionFieldCompact: {
+    minWidth: 0,
+  },
+  goalSelectionValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
   },
   goalsCard: {
     gap: Spacing.lg,
@@ -1858,6 +1980,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  inlinePickerCard: {
+    borderRadius: Radii.md,
+    backgroundColor: AppColors.surfaceVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  pickerModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    gap: Spacing.md,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  pickerModalRoot: {
+    width: '100%',
+    maxWidth: 360,
+  },
+  pickerOptionCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  pickerOptionList: {
+    gap: Spacing.sm,
+  },
+  pickerOptionRow: {
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  pickerOptionRowSeparated: {
+    borderTopWidth: 1,
+    borderTopColor: AppColors.outlineVariant,
+    paddingTop: Spacing.md,
+  },
+  pickerOptionRowSelected: {
+    borderRadius: Radii.md,
+    backgroundColor: AppColors.surfaceLowest,
+    paddingHorizontal: Spacing.sm,
+  },
   sectionSummaryCopy: {
     gap: 2,
   },
@@ -1917,17 +2084,6 @@ const styles = StyleSheet.create({
   stack: {
     gap: Spacing.md,
   },
-  selectorChip: {
-    minHeight: 30,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceVariant,
-  },
-  selectorChipSelected: {
-    backgroundColor: 'rgba(39, 116, 174, 0.12)',
-  },
   summaryTile: {
     flex: 1,
     borderRadius: Radii.lg,
@@ -1964,13 +2120,7 @@ const styles = StyleSheet.create({
   workoutDetailCard: {
     gap: Spacing.sm,
   },
-  recalculateButton: {
-    minHeight: 28,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    backgroundColor: 'rgba(39, 116, 174, 0.12)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  recalculateButtonWrap: {
+    minWidth: 132,
   },
 });

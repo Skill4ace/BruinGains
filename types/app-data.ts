@@ -6,19 +6,11 @@ export type PublicDiningHallHours = Record<MealPeriod, string | null>;
 
 export type ProfileSex = 'female' | 'male';
 export type ProfileActivityLevel =
-  | 'sedentary'
-  | 'light'
-  | 'moderate'
-  | 'high'
-  | 'very_high';
+  | 'inactive'
+  | 'low_active'
+  | 'active'
+  | 'very_active';
 export type ProfileNutritionGoal = 'bulk' | 'cut' | 'lean_bulk' | 'maintain';
-export type WorkoutSplitPreset =
-  | 'custom'
-  | 'full_body_3'
-  | 'upper_lower_4'
-  | 'push_pull_legs_5'
-  | 'push_pull_legs_6'
-  | 'body_part_5';
 
 export type PublicDiningHall = {
   id: string;
@@ -57,7 +49,6 @@ export type LocalProfile = {
   nutritionGoal: ProfileNutritionGoal;
   sex: ProfileSex;
   weightPounds: number;
-  workoutSplitPreset: WorkoutSplitPreset;
 };
 
 export type GoalSettings = {
@@ -79,7 +70,6 @@ export type UpdateGoalPlanInput = {
   protein: number;
   sex: ProfileSex;
   weightPounds: number;
-  workoutSplitPreset: WorkoutSplitPreset;
   workoutsPerWeek: number;
 };
 
