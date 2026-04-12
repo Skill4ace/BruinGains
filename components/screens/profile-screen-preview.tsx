@@ -839,53 +839,6 @@ export function ProfileScreenPreview() {
         </SurfaceCard>
       </View>
 
-      <View style={styles.stack}>
-        <AppText variant="title">Achievements</AppText>
-        <View style={styles.achievementGrid}>
-          {state.achievements.map((achievement) => (
-            <SurfaceCard key={achievement.id} style={styles.achievementCard}>
-              <View style={styles.achievementTopLine}>
-                <View
-                  style={[
-                    styles.achievementIcon,
-                    achievement.tone === 'nutrition'
-                      ? styles.achievementIconNutrition
-                      : styles.achievementIconWorkout,
-                  ]}>
-                  <Ionicons
-                    name={achievement.icon as keyof typeof Ionicons.glyphMap}
-                    size={16}
-                    color={AppColors.white}
-                  />
-                </View>
-                <View
-                  style={[
-                    styles.achievementBadge,
-                    achievement.tone === 'nutrition'
-                      ? styles.achievementBadgeNutrition
-                      : styles.achievementBadgeWorkout,
-                  ]}>
-                  <AppText
-                    variant="micro"
-                    color={achievement.tone === 'nutrition' ? '#8A6500' : AppColors.primary}>
-                    {achievement.tone === 'nutrition' ? 'Nutrition' : 'Workout'}
-                  </AppText>
-                </View>
-              </View>
-              <View style={styles.achievementCopy}>
-                <AppText variant="bodyStrong">{achievement.title}</AppText>
-                <AppText variant="body" dimmed>
-                  {achievement.detail}
-                </AppText>
-                <AppText variant="micro" dimmed>
-                  Earned {achievement.date}
-                </AppText>
-              </View>
-            </SurfaceCard>
-          ))}
-        </View>
-      </View>
-
       <Modal
         transparent
         animationType="fade"
@@ -1096,51 +1049,6 @@ function GoalMetric({
 }
 
 const styles = StyleSheet.create({
-  achievementBadge: {
-    minHeight: 24,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  achievementBadgeNutrition: {
-    backgroundColor: 'rgba(254, 204, 0, 0.22)',
-  },
-  achievementBadgeWorkout: {
-    backgroundColor: 'rgba(39, 116, 174, 0.12)',
-  },
-  achievementCard: {
-    width: '48%',
-    gap: Spacing.md,
-    minHeight: 188,
-  },
-  achievementCopy: {
-    gap: Spacing.xs,
-  },
-  achievementGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
-  },
-  achievementIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  achievementIconNutrition: {
-    backgroundColor: AppColors.secondary,
-  },
-  achievementIconWorkout: {
-    backgroundColor: AppColors.primary,
-  },
-  achievementTopLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
   activityToneBoth: {
     backgroundColor: AppColors.primary,
     borderColor: AppColors.secondary,
