@@ -2092,8 +2092,13 @@ async function syncDiningMenus(
           status: 'success',
         })
       } catch (error) {
+        console.error('Hall menu sync failed', {
+          hallId: hall.id,
+          error,
+          sourceUrl,
+        })
         hallResults.push({
-          error: error instanceof Error ? error.message : String(error),
+          error: 'Hall menu sync failed',
           hallId: hall.id,
           hallName: hall.name,
           itemCount: 0,

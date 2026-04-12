@@ -8,3 +8,9 @@ port = 54321
 enabled = true
 policy = "per_worker"
 deno_version = 2
+
+[functions.dining-ingest]
+verify_jwt = true
+
+[functions.campus-activity-sync]
+verify_jwt = true
