@@ -268,7 +268,7 @@ function getPreferredExpandedDayId(
     return fallbackDayId;
   }
 
-  return visibleDays.find((day) => day.hasLogs)?.id ?? visibleDays[0]?.id ?? null;
+  return null;
 }
 
 function buildMonthCalendar(
@@ -590,7 +590,7 @@ export function ProfileScreenPreview() {
   const referenceDate = useMemo(() => new Date(), []);
   const todayDayId = getDateKey(referenceDate);
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
-  const [expandedDayId, setExpandedDayId] = useState<string | null>(todayDayId);
+  const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [expandedSectionKeys, setExpandedSectionKeys] = useState<string[]>([]);
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [goalSettingsOpen, setGoalSettingsOpen] = useState(false);
