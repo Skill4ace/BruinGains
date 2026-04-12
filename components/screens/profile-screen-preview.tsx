@@ -1,9 +1,26 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useMemo, useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { formatMealLogMeta } from '@/data/local/selectors';
+import {
+  ACTIVITY_LEVEL_OPTIONS,
+  NUTRITION_GOAL_OPTIONS,
+  SEX_OPTIONS,
+  WORKOUT_SPLIT_OPTIONS,
+  calculateGoalTargets,
+  getWorkoutsPerWeekForSplit,
+} from '@/lib/goal-calculator';
 import { formatDurationMinutes } from '@/lib/workout-duration';
 import { useAppData } from '@/providers/app-data-provider';
 import { AppScreen } from '@/components/ui/app-screen';
@@ -14,9 +31,14 @@ import { AppColors, Radii, Spacing } from '@/constants/theme';
 import type {
   LocalAppData,
   MealLog,
+  ProfileActivityLevel,
+  ProfileNutritionGoal,
+  ProfileSex,
+  UpdateGoalPlanInput,
   WorkoutSessionExercise,
   WorkoutSet,
   WorkoutTrackingMode,
+  WorkoutSplitPreset,
 } from '@/types/app-data';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -82,6 +104,21 @@ type CalendarDayCell = {
   isFuture: boolean;
   isSelected: boolean;
   tone: DayActivityTone;
+};
+
+type GoalPlanDraft = {
+  activityLevel: ProfileActivityLevel;
+  age: string;
+  calories: string;
+  carbs: string;
+  fats: string;
+  heightInches: string;
+  nutritionGoal: ProfileNutritionGoal;
+  protein: string;
+  sex: ProfileSex;
+  weightPounds: string;
+  workoutSplitPreset: WorkoutSplitPreset;
+  workoutsPerWeek: number;
 };
 
 function startOfLocalDay(date: Date) {
@@ -268,6 +305,80 @@ function buildMonthCalendar(
   }
 
   return weeks;
+}
+
+function createGoalPlanDraft(state: LocalAppData): GoalPlanDraft {
+  return {
+    activityLevel: state.profile.activityLevel,
+    age: String(state.profile.age),
+    calories: String(state.goals.calories),
+    carbs: String(state.goals.carbs),
+    fats: String(state.goals.fats),
+    heightInches: String(state.profile.heightInches),
+    nutritionGoal: state.profile.nutritionGoal,
+    protein: String(state.goals.protein),
+    sex: state.profile.sex,
+    weightPounds: String(state.profile.weightPounds),
+    workoutSplitPreset: state.profile.workoutSplitPreset,
+    workoutsPerWeek: state.goals.workoutsPerWeek,
+  };
+}
+
+function parsePositiveInteger(value: string, minimum: number) {
+  const parsed = Number.parseInt(value.trim(), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.max(minimum, Math.round(parsed));
+}
+
+function parsePositiveNumber(value: string, minimum: number) {
+  const parsed = Number.parseFloat(value.trim());
+
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.max(minimum, parsed);
+}
+
+function buildGoalPlanInput(draft: GoalPlanDraft): UpdateGoalPlanInput | null {
+  const age = parsePositiveInteger(draft.age, 13);
+  const heightInches = parsePositiveInteger(draft.heightInches, 48);
+  const weightPounds = parsePositiveNumber(draft.weightPounds, 80);
+  const calories = parsePositiveInteger(draft.calories, 1200);
+  const protein = parsePositiveInteger(draft.protein, 60);
+  const carbs = parsePositiveInteger(draft.carbs, 50);
+  const fats = parsePositiveInteger(draft.fats, 20);
+
+  if (
+    age === null ||
+    heightInches === null ||
+    weightPounds === null ||
+    calories === null ||
+    protein === null ||
+    carbs === null ||
+    fats === null
+  ) {
+    return null;
+  }
+
+  return {
+    activityLevel: draft.activityLevel,
+    age,
+    calories,
+    carbs,
+    fats,
+    heightInches,
+    nutritionGoal: draft.nutritionGoal,
+    protein,
+    sex: draft.sex,
+    weightPounds,
+    workoutSplitPreset: draft.workoutSplitPreset,
+    workoutsPerWeek: Math.max(1, Math.min(7, draft.workoutsPerWeek)),
+  };
 }
 
 function formatWorkoutSetLabel(set: WorkoutSet) {
@@ -473,13 +584,15 @@ function buildProfileHistory(state: LocalAppData, referenceDate = new Date()) {
 }
 
 export function ProfileScreenPreview() {
-  const { state } = useAppData();
+  const { state, updateGoalPlan } = useAppData();
   const referenceDate = useMemo(() => new Date(), []);
   const todayDayId = getDateKey(referenceDate);
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
   const [expandedDayId, setExpandedDayId] = useState<string | null>(todayDayId);
   const [expandedSectionKeys, setExpandedSectionKeys] = useState<string[]>([]);
   const [consistencyOpen, setConsistencyOpen] = useState(false);
+  const [goalSettingsOpen, setGoalSettingsOpen] = useState(false);
+  const [goalDraft, setGoalDraft] = useState<GoalPlanDraft>(() => createGoalPlanDraft(state));
   const [calendarMonthStart, setCalendarMonthStart] = useState(startOfMonth(referenceDate));
   const { activityByDay, earliestActivityDate, weekHistories } = useMemo(
     () => buildProfileHistory(state, referenceDate),
@@ -544,6 +657,74 @@ export function ProfileScreenPreview() {
   const canGoToPreviousMonth = calendarMonthStart.getTime() > earliestMonthStart.getTime();
   const canGoToNextMonth = calendarMonthStart.getTime() < currentMonthStart.getTime();
 
+  const handleOpenGoalSettings = () => {
+    setGoalDraft(createGoalPlanDraft(state));
+    setGoalSettingsOpen(true);
+  };
+
+  const handleGoalDraftChange = <K extends keyof GoalPlanDraft>(
+    key: K,
+    value: GoalPlanDraft[K],
+  ) => {
+    setGoalDraft((currentValue) => ({
+      ...currentValue,
+      [key]: value,
+    }));
+  };
+
+  const handleSplitSelect = (split: WorkoutSplitPreset) => {
+    const workoutsPerWeek = getWorkoutsPerWeekForSplit(split);
+
+    setGoalDraft((currentValue) => ({
+      ...currentValue,
+      workoutSplitPreset: split,
+      workoutsPerWeek: workoutsPerWeek ?? currentValue.workoutsPerWeek,
+    }));
+  };
+
+  const handleRecalculateGoals = () => {
+    const age = parsePositiveInteger(goalDraft.age, 13);
+    const heightInches = parsePositiveInteger(goalDraft.heightInches, 48);
+    const weightPounds = parsePositiveNumber(goalDraft.weightPounds, 80);
+
+    if (age === null || heightInches === null || weightPounds === null) {
+      Alert.alert('Enter your info first', 'Height, weight, and age are required to recalculate.');
+      return;
+    }
+
+    const calculatedGoals = calculateGoalTargets({
+      activityLevel: goalDraft.activityLevel,
+      age,
+      heightInches,
+      nutritionGoal: goalDraft.nutritionGoal,
+      sex: goalDraft.sex,
+      weightPounds,
+    });
+
+    setGoalDraft((currentValue) => ({
+      ...currentValue,
+      calories: String(calculatedGoals.calories),
+      carbs: String(calculatedGoals.carbs),
+      fats: String(calculatedGoals.fats),
+      protein: String(calculatedGoals.protein),
+    }));
+  };
+
+  const handleSaveGoals = () => {
+    const nextGoalPlan = buildGoalPlanInput(goalDraft);
+
+    if (!nextGoalPlan) {
+      Alert.alert(
+        'Check your values',
+        'Enter valid calories, macros, height, weight, and age before saving.',
+      );
+      return;
+    }
+
+    updateGoalPlan(nextGoalPlan);
+    setGoalSettingsOpen(false);
+  };
+
   return (
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -551,7 +732,7 @@ export function ProfileScreenPreview() {
       </View>
 
       <View style={styles.stack}>
-        <PressScale>
+        <PressScale haptic="light" onPress={handleOpenGoalSettings}>
           <SurfaceCard tone="low" style={styles.goalsCard}>
             <View style={styles.goalHeaderRow}>
               <AppText variant="micro" dimmed>
@@ -691,15 +872,15 @@ export function ProfileScreenPreview() {
 
                           <View style={styles.dayRowRight}>
                             {day.mealCount > 0 ? (
-                              <CompactPill
-                                color={AppColors.secondary}
+                              <ActivityCountPill
+                                color="#9A6700"
                                 icon="restaurant-outline"
                                 tone="nutrition"
                                 value={String(day.mealCount)}
                               />
                             ) : null}
                             {day.workoutCount > 0 ? (
-                              <CompactPill
+                              <ActivityCountPill
                                 color={AppColors.primary}
                                 icon="barbell-outline"
                                 tone="workout"
@@ -717,117 +898,164 @@ export function ProfileScreenPreview() {
 
                       {isExpanded ? (
                         <View style={styles.dayExpanded}>
-                          <PressScale
-                            haptic="light"
-                            disabled={day.mealCount === 0}
-                            onPress={() => toggleSection(day.id, 'meals')}
-                            pressEffect="opacity">
-                            <View
-                              style={[
-                                styles.sectionSummaryRow,
-                                day.mealCount === 0 ? styles.sectionSummaryDisabled : null,
-                              ]}>
-                              <View style={styles.sectionSummaryCopy}>
-                                <AppText variant="bodyStrong">Meals</AppText>
-                                <AppText variant="micro" dimmed>
-                                  {day.mealCount > 0
-                                    ? `${day.mealCount} logged • ${day.calories.toLocaleString()} kcal`
-                                    : 'No meals logged'}
-                                </AppText>
-                              </View>
-                              <Ionicons
-                                name={mealsOpen ? 'chevron-up' : 'chevron-down'}
-                                size={16}
-                                color={AppColors.textSubtle}
-                              />
-                            </View>
-                          </PressScale>
-
-                          {mealsOpen ? (
-                            <View style={styles.detailList}>
-                              {day.meals.map((meal) => (
-                                <View key={meal.id} style={styles.detailCard}>
-                                  <View style={styles.detailCardHeader}>
-                                    <View style={styles.detailCardCopy}>
-                                      <AppText variant="bodyStrong">{meal.title}</AppText>
-                                      <AppText variant="micro" dimmed>
-                                        {`${formatMealLogMeta(meal)} • ${formatTimeLabel(meal.loggedAt)}`}
-                                      </AppText>
-                                    </View>
-                                    <AppText variant="label" color={AppColors.textMuted}>
-                                      {meal.calories} kcal
+                          <View style={styles.sectionBlock}>
+                            <PressScale
+                              haptic="light"
+                              disabled={day.mealCount === 0}
+                              onPress={() => toggleSection(day.id, 'meals')}
+                              pressEffect="opacity">
+                              <View
+                                style={[
+                                  styles.sectionSummaryRow,
+                                  day.mealCount === 0 ? styles.sectionSummaryDisabled : null,
+                                ]}>
+                                <View style={styles.sectionSummaryLeading}>
+                                  <View
+                                    style={[
+                                      styles.sectionIconWrap,
+                                      styles.sectionIconWrapNutrition,
+                                    ]}>
+                                    <Ionicons
+                                      name="restaurant-outline"
+                                      size={13}
+                                      color="#9A6700"
+                                    />
+                                  </View>
+                                  <View style={styles.sectionSummaryCopy}>
+                                    <AppText variant="bodyStrong">Meals</AppText>
+                                    <AppText variant="micro" dimmed>
+                                      {day.mealCount > 0
+                                        ? `${day.mealCount} logged • ${day.calories.toLocaleString()} kcal`
+                                        : 'No meals logged'}
                                     </AppText>
                                   </View>
-                                  <AppText variant="micro" dimmed>
-                                    {`${meal.protein}P • ${meal.carbs}C • ${meal.fats}F`}
-                                  </AppText>
                                 </View>
-                              ))}
-                            </View>
-                          ) : null}
-
-                          <PressScale
-                            haptic="light"
-                            disabled={day.workoutCount === 0}
-                            onPress={() => toggleSection(day.id, 'workouts')}
-                            pressEffect="opacity">
-                            <View
-                              style={[
-                                styles.sectionSummaryRow,
-                                day.workoutCount === 0 ? styles.sectionSummaryDisabled : null,
-                              ]}>
-                              <View style={styles.sectionSummaryCopy}>
-                                <AppText variant="bodyStrong">Workout</AppText>
-                                <AppText variant="micro" dimmed>
-                                  {day.workoutCount > 0
-                                    ? `${day.workoutCount} logged`
-                                    : 'No workout logged'}
-                                </AppText>
+                                <Ionicons
+                                  name={mealsOpen ? 'chevron-up' : 'chevron-down'}
+                                  size={16}
+                                  color={AppColors.textSubtle}
+                                />
                               </View>
-                              <Ionicons
-                                name={workoutsOpen ? 'chevron-up' : 'chevron-down'}
-                                size={16}
-                                color={AppColors.textSubtle}
-                              />
-                            </View>
-                          </PressScale>
+                            </PressScale>
 
-                          {workoutsOpen ? (
-                            <View style={styles.detailList}>
-                              {day.workouts.map((workout) => (
-                                <View key={workout.id} style={styles.workoutDetailCard}>
-                                  <View style={styles.detailCardHeader}>
-                                    <View style={styles.detailCardCopy}>
-                                      <AppText variant="bodyStrong">{workout.title}</AppText>
-                                      <AppText variant="micro" dimmed>
-                                        {`${workout.timeLabel} • ${workout.durationLabel} • ${workout.exerciseCount} ex`}
+                            {mealsOpen ? (
+                              <View style={styles.sectionDetailPanel}>
+                                {day.meals.map((meal, mealIndex) => (
+                                  <View
+                                    key={meal.id}
+                                    style={[
+                                      styles.detailCard,
+                                      mealIndex > 0 ? styles.detailCardSeparated : null,
+                                    ]}>
+                                    <View style={styles.detailCardHeader}>
+                                      <View style={styles.detailCardCopy}>
+                                        <AppText variant="bodyStrong">{meal.title}</AppText>
+                                        <AppText variant="micro" dimmed>
+                                          {`${formatMealLogMeta(meal)} • ${formatTimeLabel(meal.loggedAt)}`}
+                                        </AppText>
+                                      </View>
+                                      <AppText variant="label" color={AppColors.textMuted}>
+                                        {meal.calories} kcal
                                       </AppText>
                                     </View>
+                                    <AppText variant="micro" dimmed>
+                                      {`${meal.protein}P • ${meal.carbs}C • ${meal.fats}F`}
+                                    </AppText>
                                   </View>
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
 
-                                  <View style={styles.exerciseList}>
-                                    {workout.exercises.map((exercise) => (
-                                      <View key={exercise.id} style={styles.exerciseBlock}>
-                                        <AppText variant="label">{exercise.name}</AppText>
-                                        <View style={styles.setList}>
-                                          {exercise.sets.map((set) => (
-                                            <View key={set.id} style={styles.setRow}>
-                                              <AppText variant="micro" dimmed>
-                                                {set.setLabel}
-                                              </AppText>
-                                              <AppText variant="micro" dimmed>
-                                                {set.displayValue}
-                                              </AppText>
-                                            </View>
-                                          ))}
-                                        </View>
-                                      </View>
-                                    ))}
+                          <View style={[styles.sectionBlock, styles.sectionBlockSeparated]}>
+                            <PressScale
+                              haptic="light"
+                              disabled={day.workoutCount === 0}
+                              onPress={() => toggleSection(day.id, 'workouts')}
+                              pressEffect="opacity">
+                              <View
+                                style={[
+                                  styles.sectionSummaryRow,
+                                  day.workoutCount === 0 ? styles.sectionSummaryDisabled : null,
+                                ]}>
+                                <View style={styles.sectionSummaryLeading}>
+                                  <View
+                                    style={[
+                                      styles.sectionIconWrap,
+                                      styles.sectionIconWrapWorkout,
+                                    ]}>
+                                    <Ionicons
+                                      name="barbell-outline"
+                                      size={13}
+                                      color={AppColors.primary}
+                                    />
+                                  </View>
+                                  <View style={styles.sectionSummaryCopy}>
+                                    <AppText variant="bodyStrong">Workout</AppText>
+                                    <AppText variant="micro" dimmed>
+                                      {day.workoutCount > 0
+                                        ? `${day.workoutCount} logged`
+                                        : 'No workout logged'}
+                                    </AppText>
                                   </View>
                                 </View>
-                              ))}
-                            </View>
-                          ) : null}
+                                <Ionicons
+                                  name={workoutsOpen ? 'chevron-up' : 'chevron-down'}
+                                  size={16}
+                                  color={AppColors.textSubtle}
+                                />
+                              </View>
+                            </PressScale>
+
+                            {workoutsOpen ? (
+                              <View style={styles.sectionDetailPanel}>
+                                {day.workouts.map((workout, workoutIndex) => (
+                                  <View
+                                    key={workout.id}
+                                    style={[
+                                      styles.workoutDetailCard,
+                                      workoutIndex > 0 ? styles.detailCardSeparated : null,
+                                    ]}>
+                                    <View style={styles.detailCardHeader}>
+                                      <View style={styles.detailCardCopy}>
+                                        <AppText variant="bodyStrong">{workout.title}</AppText>
+                                        <AppText variant="micro" dimmed>
+                                          {`${workout.timeLabel} • ${workout.durationLabel} • ${workout.exerciseCount} ex`}
+                                        </AppText>
+                                      </View>
+                                    </View>
+
+                                    <View style={styles.exerciseList}>
+                                      {workout.exercises.map((exercise, exerciseIndex) => (
+                                        <View
+                                          key={exercise.id}
+                                          style={[
+                                            styles.exerciseBlock,
+                                            exerciseIndex > 0
+                                              ? styles.exerciseBlockSeparated
+                                              : null,
+                                          ]}>
+                                          <AppText variant="label">{exercise.name}</AppText>
+                                          <View style={styles.setList}>
+                                            {exercise.sets.map((set) => (
+                                              <View key={set.id} style={styles.setRow}>
+                                                <AppText variant="micro" dimmed>
+                                                  {set.setLabel}
+                                                </AppText>
+                                                <AppText variant="micro" dimmed>
+                                                  {set.displayValue}
+                                                </AppText>
+                                              </View>
+                                            ))}
+                                          </View>
+                                        </View>
+                                      ))}
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
                         </View>
                       ) : null}
                     </View>
@@ -944,6 +1172,16 @@ export function ProfileScreenPreview() {
           </SurfaceCard>
         </View>
       </Modal>
+
+      <GoalSettingsModal
+        draft={goalDraft}
+        isOpen={goalSettingsOpen}
+        onChange={handleGoalDraftChange}
+        onClose={() => setGoalSettingsOpen(false)}
+        onRecalculate={handleRecalculateGoals}
+        onSave={handleSaveGoals}
+        onSelectSplit={handleSplitSelect}
+      />
     </AppScreen>
   );
 }
@@ -978,7 +1216,18 @@ function LegendPill({
   );
 }
 
-function CompactPill({
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.summaryTile}>
+      <AppText variant="micro" dimmed>
+        {label}
+      </AppText>
+      <AppText variant="headline">{value}</AppText>
+    </View>
+  );
+}
+
+function ActivityCountPill({
   color,
   icon,
   tone,
@@ -986,18 +1235,14 @@ function CompactPill({
 }: {
   color: string;
   icon: keyof typeof Ionicons.glyphMap;
-  tone: 'neutral' | 'nutrition' | 'workout';
+  tone: 'nutrition' | 'workout';
   value: string;
 }) {
   return (
     <View
       style={[
-        styles.compactPill,
-        tone === 'nutrition'
-          ? styles.compactPillNutrition
-          : tone === 'workout'
-            ? styles.compactPillWorkout
-            : styles.compactPillNeutral,
+        styles.activityCountPill,
+        tone === 'nutrition' ? styles.activityCountPillNutrition : styles.activityCountPillWorkout,
       ]}>
       <Ionicons name={icon} size={12} color={color} />
       <AppText variant="micro" color={color}>
@@ -1007,13 +1252,240 @@ function CompactPill({
   );
 }
 
-function SummaryTile({ label, value }: { label: string; value: string }) {
+function GoalSettingsModal({
+  draft,
+  isOpen,
+  onChange,
+  onClose,
+  onRecalculate,
+  onSave,
+  onSelectSplit,
+}: {
+  draft: GoalPlanDraft;
+  isOpen: boolean;
+  onChange: <K extends keyof GoalPlanDraft>(key: K, value: GoalPlanDraft[K]) => void;
+  onClose: () => void;
+  onRecalculate: () => void;
+  onSave: () => void;
+  onSelectSplit: (split: WorkoutSplitPreset) => void;
+}) {
   return (
-    <View style={styles.summaryTile}>
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <View style={styles.modalScrim}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.goalModalContainer}>
+          <SurfaceCard floating style={styles.goalModalCard}>
+            <View style={styles.goalModalHeader}>
+              <View style={styles.goalModalHeaderCopy}>
+                <AppText variant="title">Goals</AppText>
+                <AppText variant="body" dimmed>
+                  Recalculate or override your targets anytime.
+                </AppText>
+              </View>
+              <PressScale haptic="light" onPress={onClose}>
+                <View style={styles.calendarButton}>
+                  <Ionicons name="close" size={18} color={AppColors.text} />
+                </View>
+              </PressScale>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.goalModalScrollContent}>
+              <View style={styles.goalModalSection}>
+                <AppText variant="label" dimmed>
+                  Profile inputs
+                </AppText>
+
+                <View style={styles.goalChoiceRow}>
+                  {SEX_OPTIONS.map((option) => (
+                    <SelectorChip
+                      key={option.value}
+                      label={option.label}
+                      onPress={() => onChange('sex', option.value)}
+                      selected={draft.sex === option.value}
+                    />
+                  ))}
+                </View>
+
+                <View style={styles.goalInputGrid}>
+                  <GoalFieldInput
+                    keyboardType="number-pad"
+                    label="Age"
+                    onChangeText={(value) => onChange('age', value)}
+                    value={draft.age}
+                  />
+                  <GoalFieldInput
+                    keyboardType="number-pad"
+                    label="Height (in)"
+                    onChangeText={(value) => onChange('heightInches', value)}
+                    value={draft.heightInches}
+                  />
+                  <GoalFieldInput
+                    keyboardType="decimal-pad"
+                    label="Weight (lb)"
+                    onChangeText={(value) => onChange('weightPounds', value)}
+                    value={draft.weightPounds}
+                  />
+                </View>
+
+                <View style={styles.goalChoiceWrap}>
+                  {ACTIVITY_LEVEL_OPTIONS.map((option) => (
+                    <SelectorChip
+                      key={option.value}
+                      label={option.label}
+                      onPress={() => onChange('activityLevel', option.value)}
+                      selected={draft.activityLevel === option.value}
+                    />
+                  ))}
+                </View>
+
+                <View style={styles.goalChoiceWrap}>
+                  {NUTRITION_GOAL_OPTIONS.map((option) => (
+                    <SelectorChip
+                      key={option.value}
+                      label={option.label}
+                      onPress={() => onChange('nutritionGoal', option.value)}
+                      selected={draft.nutritionGoal === option.value}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.goalModalSection}>
+                <View style={styles.goalSectionHeaderRow}>
+                  <AppText variant="label" dimmed>
+                    Workout plan
+                  </AppText>
+                  <AppText variant="micro" dimmed>
+                    Pick a split or set days manually.
+                  </AppText>
+                </View>
+
+                <View style={styles.goalChoiceWrap}>
+                  {WORKOUT_SPLIT_OPTIONS.map((option) => (
+                    <SelectorChip
+                      key={option.value}
+                      label={option.label}
+                      onPress={() => onSelectSplit(option.value)}
+                      selected={draft.workoutSplitPreset === option.value}
+                    />
+                  ))}
+                </View>
+
+                <View style={styles.goalChoiceRow}>
+                  {[2, 3, 4, 5, 6, 7].map((days) => (
+                    <SelectorChip
+                      key={days}
+                      label={`${days} / wk`}
+                      onPress={() => onChange('workoutsPerWeek', days)}
+                      selected={draft.workoutsPerWeek === days}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.goalModalSection}>
+                <View style={styles.goalSectionHeaderRow}>
+                  <AppText variant="label" dimmed>
+                    Targets
+                  </AppText>
+                  <PressScale haptic="light" onPress={onRecalculate} pressEffect="opacity">
+                    <View style={styles.recalculateButton}>
+                      <Ionicons name="refresh" size={14} color={AppColors.primary} />
+                      <AppText variant="micro" color={AppColors.primary}>
+                        Recalculate
+                      </AppText>
+                    </View>
+                  </PressScale>
+                </View>
+
+                <View style={styles.goalInputGrid}>
+                  <GoalFieldInput
+                    keyboardType="number-pad"
+                    label="Calories"
+                    onChangeText={(value) => onChange('calories', value)}
+                    value={draft.calories}
+                  />
+                  <GoalFieldInput
+                    keyboardType="number-pad"
+                    label="Protein"
+                    onChangeText={(value) => onChange('protein', value)}
+                    value={draft.protein}
+                  />
+                  <GoalFieldInput
+                    keyboardType="number-pad"
+                    label="Carbs"
+                    onChangeText={(value) => onChange('carbs', value)}
+                    value={draft.carbs}
+                  />
+                  <GoalFieldInput
+                    keyboardType="number-pad"
+                    label="Fats"
+                    onChangeText={(value) => onChange('fats', value)}
+                    value={draft.fats}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <PressScale haptic="light" onPress={onSave}>
+              <View style={styles.goalSaveButton}>
+                <AppText variant="label" color={AppColors.white}>
+                  Save goals
+                </AppText>
+              </View>
+            </PressScale>
+          </SurfaceCard>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
+
+function SelectorChip({
+  label,
+  onPress,
+  selected,
+}: {
+  label: string;
+  onPress: () => void;
+  selected: boolean;
+}) {
+  return (
+    <PressScale haptic="light" onPress={onPress} pressEffect="opacity">
+      <View style={[styles.selectorChip, selected ? styles.selectorChipSelected : null]}>
+        <AppText variant="micro" color={selected ? AppColors.primary : AppColors.textMuted}>
+          {label}
+        </AppText>
+      </View>
+    </PressScale>
+  );
+}
+
+function GoalFieldInput({
+  keyboardType,
+  label,
+  onChangeText,
+  value,
+}: {
+  keyboardType: 'decimal-pad' | 'number-pad';
+  label: string;
+  onChangeText: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <View style={styles.goalInputCard}>
       <AppText variant="micro" dimmed>
         {label}
       </AppText>
-      <AppText variant="headline">{value}</AppText>
+      <TextInput
+        keyboardType={keyboardType}
+        onChangeText={onChangeText}
+        style={styles.goalInput}
+        value={value}
+      />
     </View>
   );
 }
@@ -1049,6 +1521,20 @@ function GoalMetric({
 }
 
 const styles = StyleSheet.create({
+  activityCountPill: {
+    minHeight: 24,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  activityCountPillNutrition: {
+    backgroundColor: 'rgba(244, 180, 0, 0.18)',
+  },
+  activityCountPillWorkout: {
+    backgroundColor: 'rgba(39, 116, 174, 0.12)',
+  },
   activityToneBoth: {
     backgroundColor: AppColors.primary,
     borderColor: AppColors.secondary,
@@ -1127,32 +1613,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.xs,
   },
-  compactPill: {
-    minHeight: 24,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  compactPillNeutral: {
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  compactPillNutrition: {
-    backgroundColor: 'rgba(254, 204, 0, 0.18)',
-  },
-  compactPillWorkout: {
-    backgroundColor: 'rgba(39, 116, 174, 0.12)',
-  },
   content: {
     paddingTop: Spacing.sm,
   },
   dayBlock: {
-    gap: Spacing.sm,
+    gap: 6,
   },
   dayExpanded: {
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
+    gap: Spacing.md,
+    marginTop: -2,
+    paddingLeft: Spacing.md,
+    paddingRight: Spacing.xs,
+    paddingBottom: Spacing.xs,
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(29, 31, 36, 0.08)',
   },
   dayList: {
     gap: Spacing.sm,
@@ -1183,9 +1657,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   detailCard: {
-    borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
-    paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     gap: Spacing.xs,
   },
@@ -1199,23 +1670,62 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
+  detailCardSeparated: {
+    borderTopWidth: 1,
+    borderTopColor: AppColors.outlineVariant,
+    paddingTop: Spacing.md,
+  },
   detailList: {
     gap: Spacing.sm,
   },
   exerciseBlock: {
     gap: Spacing.xs,
+    paddingTop: Spacing.sm,
+  },
+  exerciseBlockSeparated: {
+    borderTopWidth: 1,
+    borderTopColor: AppColors.outlineVariant,
   },
   exerciseList: {
-    gap: Spacing.md,
+    gap: 0,
   },
   goalDivider: {
     height: 1,
     backgroundColor: AppColors.outlineVariant,
   },
+  goalInput: {
+    color: AppColors.text,
+    fontSize: 16,
+    paddingVertical: 0,
+  },
+  goalInputCard: {
+    flex: 1,
+    minWidth: '46%',
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    gap: Spacing.xs,
+  },
+  goalInputGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+  },
   goalHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  goalChoiceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  goalChoiceWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.sm,
   },
   goalMetric: {
@@ -1238,6 +1748,45 @@ const styles = StyleSheet.create({
   },
   goalSections: {
     gap: Spacing.lg,
+  },
+  goalModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    gap: Spacing.md,
+  },
+  goalModalContainer: {
+    width: '100%',
+    maxWidth: 420,
+  },
+  goalModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  goalModalHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  goalModalScrollContent: {
+    gap: Spacing.md,
+    paddingBottom: Spacing.xs,
+  },
+  goalModalSection: {
+    gap: Spacing.sm,
+  },
+  goalSaveButton: {
+    minHeight: 46,
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
   },
   goalsCard: {
     gap: Spacing.lg,
@@ -1315,15 +1864,46 @@ const styles = StyleSheet.create({
   sectionSummaryDisabled: {
     opacity: 0.5,
   },
+  sectionSummaryLeading: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   sectionSummaryRow: {
-    borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
+  },
+  sectionBlock: {
+    gap: Spacing.sm,
+  },
+  sectionBlockSeparated: {
+    borderTopWidth: 1,
+    borderTopColor: AppColors.outlineVariant,
+    paddingTop: Spacing.sm,
+  },
+  sectionDetailPanel: {
+    borderRadius: Radii.md,
+    backgroundColor: AppColors.surfaceVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  sectionIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionIconWrapNutrition: {
+    backgroundColor: 'rgba(244, 180, 0, 0.14)',
+  },
+  sectionIconWrapWorkout: {
+    backgroundColor: 'rgba(39, 116, 174, 0.10)',
   },
   setList: {
     gap: 4,
@@ -1336,6 +1916,17 @@ const styles = StyleSheet.create({
   },
   stack: {
     gap: Spacing.md,
+  },
+  selectorChip: {
+    minHeight: 30,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceVariant,
+  },
+  selectorChipSelected: {
+    backgroundColor: 'rgba(39, 116, 174, 0.12)',
   },
   summaryTile: {
     flex: 1,
@@ -1371,10 +1962,15 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   workoutDetailCard: {
-    borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
     gap: Spacing.sm,
+  },
+  recalculateButton: {
+    minHeight: 28,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.sm,
+    backgroundColor: 'rgba(39, 116, 174, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
 });

@@ -1,5 +1,6 @@
 import { diningPreview, gymPreview } from '@/constants/preview-data';
 import { buildSeededExerciseLibrary, mergeExerciseLibrary } from '@/data/local/exercise-library';
+import { calculateGoalTargets, getWorkoutsPerWeekForSplit } from '@/lib/goal-calculator';
 import type {
   Achievement,
   GoalSettings,
@@ -387,12 +388,24 @@ function buildAchievements(now: Date): Achievement[] {
 }
 
 export function createDefaultLocalAppData(now = new Date()): LocalAppData {
+  const defaultProfile = {
+    age: 20,
+    activityLevel: 'light' as const,
+    heightInches: 69,
+    nutritionGoal: 'maintain' as const,
+    sex: 'male' as const,
+    weightPounds: 165,
+    workoutSplitPreset: 'upper_lower_4' as const,
+  };
+  const calculatedGoals = calculateGoalTargets(defaultProfile);
   const goals: GoalSettings = {
-    calories: diningPreview.calorieGoal,
-    protein: diningPreview.proteinGoal,
-    carbs: diningPreview.carbGoal,
-    fats: diningPreview.fatGoal,
-    workoutsPerWeek: 4,
+    calories: diningPreview.calorieGoal ?? calculatedGoals.calories,
+    protein: diningPreview.proteinGoal ?? calculatedGoals.protein,
+    carbs: diningPreview.carbGoal ?? calculatedGoals.carbs,
+    fats: diningPreview.fatGoal ?? calculatedGoals.fats,
+    workoutsPerWeek:
+      getWorkoutsPerWeekForSplit(defaultProfile.workoutSplitPreset) ??
+      calculatedGoals.workoutsPerWeek,
   };
 
   const { workoutTemplates, templateExercises, templateExerciseSets } = buildTemplateState(now);
@@ -408,9 +421,16 @@ export function createDefaultLocalAppData(now = new Date()): LocalAppData {
   return {
     profile: {
       id: 'local-profile',
+      age: defaultProfile.age,
+      activityLevel: defaultProfile.activityLevel,
       displayName: 'Bruin',
       campusRole: 'UCLA student',
+      heightInches: defaultProfile.heightInches,
       primaryGoal: 'Stay consistent with dining and lifting',
+      nutritionGoal: defaultProfile.nutritionGoal,
+      sex: defaultProfile.sex,
+      weightPounds: defaultProfile.weightPounds,
+      workoutSplitPreset: defaultProfile.workoutSplitPreset,
     },
     goals,
     mealLogs,

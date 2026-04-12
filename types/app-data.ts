@@ -4,6 +4,22 @@ export type MealLogPeriod = MealPeriod | 'snack';
 
 export type PublicDiningHallHours = Record<MealPeriod, string | null>;
 
+export type ProfileSex = 'female' | 'male';
+export type ProfileActivityLevel =
+  | 'sedentary'
+  | 'light'
+  | 'moderate'
+  | 'high'
+  | 'very_high';
+export type ProfileNutritionGoal = 'bulk' | 'cut' | 'lean_bulk' | 'maintain';
+export type WorkoutSplitPreset =
+  | 'custom'
+  | 'full_body_3'
+  | 'upper_lower_4'
+  | 'push_pull_legs_5'
+  | 'push_pull_legs_6'
+  | 'body_part_5';
+
 export type PublicDiningHall = {
   id: string;
   name: string;
@@ -18,7 +34,7 @@ export type GymCapacitySnapshot = {
   isClosed: boolean;
   load: number;
   percent: number;
-  zones: ReadonlyArray<GymCapacityZone>;
+  zones: readonly GymCapacityZone[];
   zoneName: string | null;
   capturedAt: string;
 };
@@ -32,9 +48,16 @@ export type GymCapacityZone = {
 
 export type LocalProfile = {
   id: string;
+  age: number;
+  activityLevel: ProfileActivityLevel;
   displayName: string;
   campusRole: string;
+  heightInches: number;
   primaryGoal: string;
+  nutritionGoal: ProfileNutritionGoal;
+  sex: ProfileSex;
+  weightPounds: number;
+  workoutSplitPreset: WorkoutSplitPreset;
 };
 
 export type GoalSettings = {
@@ -42,6 +65,21 @@ export type GoalSettings = {
   protein: number;
   carbs: number;
   fats: number;
+  workoutsPerWeek: number;
+};
+
+export type UpdateGoalPlanInput = {
+  age: number;
+  activityLevel: ProfileActivityLevel;
+  calories: number;
+  carbs: number;
+  fats: number;
+  heightInches: number;
+  nutritionGoal: ProfileNutritionGoal;
+  protein: number;
+  sex: ProfileSex;
+  weightPounds: number;
+  workoutSplitPreset: WorkoutSplitPreset;
   workoutsPerWeek: number;
 };
 

@@ -16,6 +16,7 @@ import type {
   MealLog,
   MealLogPeriod,
   MealPeriod,
+  UpdateGoalPlanInput,
   UpdateMealLogInput,
   WorkoutExerciseDraft,
   WorkoutSession,
@@ -69,6 +70,7 @@ type AppDataContextValue = {
     setType: WorkoutSet['setType'],
   ) => void;
   updateMealLog: (input: UpdateMealLogInput) => void;
+  updateGoalPlan: (input: UpdateGoalPlanInput) => void;
   updateWorkoutSetValue: (
     sessionExerciseId: string,
     setNumber: number,
@@ -894,6 +896,36 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function updateGoalPlan(input: UpdateGoalPlanInput) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        profile: {
+          ...currentState.profile,
+          age: input.age,
+          activityLevel: input.activityLevel,
+          heightInches: input.heightInches,
+          nutritionGoal: input.nutritionGoal,
+          sex: input.sex,
+          weightPounds: input.weightPounds,
+          workoutSplitPreset: input.workoutSplitPreset,
+        },
+        goals: {
+          ...currentState.goals,
+          calories: input.calories,
+          carbs: input.carbs,
+          fats: input.fats,
+          protein: input.protein,
+          workoutsPerWeek: input.workoutsPerWeek,
+        },
+      };
+    });
+  }
+
   function deleteMealLog(mealLogId: string) {
     setState((currentState) => {
       if (!currentState) {
@@ -1559,6 +1591,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         startWorkoutFromTemplate,
         toggleWorkoutSetCompletion,
         updateMealLog,
+        updateGoalPlan,
         updateWorkoutSessionTitle,
         updateWorkoutTemplate,
         updateWorkoutSetType,
