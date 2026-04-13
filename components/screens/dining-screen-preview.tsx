@@ -1646,7 +1646,9 @@ function HallRow({
 }) {
   const hours = hall.hours[selectedPeriod];
   const showActivity =
-    hall.fitPercent !== null && currentDiningActivityPeriod === selectedPeriod;
+    hall.fitPercent !== null &&
+    currentDiningActivityPeriod === selectedPeriod &&
+    isDiningHallOpenForHours(hours);
 
   return (
     <PressScale haptic="light" onPress={onPress}>
@@ -1733,6 +1735,62 @@ function getCurrentDiningActivityPeriod(): PeriodKey | null {
   }
 
   return null;
+}
+
+function parseTimeLabelToMinutes(timeLabel: string) {
+  const normalized = timeLabel.trim().toUpperCase();
+  const match = normalized.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const hourValue = Number.parseInt(match[1], 10);
+  const minuteValue = Number.parseInt(match[2] ?? '0', 10);
+
+  if (
+    Number.isNaN(hourValue) ||
+    Number.isNaN(minuteValue) ||
+    hourValue < 1 ||
+    hourValue > 12 ||
+    minuteValue < 0 ||
+    minuteValue > 59
+  ) {
+    return null;
+  }
+
+  const normalizedHour = hourValue % 12;
+  const dayOffset = match[3] === 'PM' ? 12 * 60 : 0;
+
+  return normalizedHour * 60 + minuteValue + dayOffset;
+}
+
+function isDiningHallOpenForHours(hours: string | null) {
+  if (!hours) {
+    return false;
+  }
+
+  const rangeMatch = hours.match(/(.+?)\s*-\s*(.+)/);
+
+  if (!rangeMatch) {
+    return false;
+  }
+
+  const startMinutes = parseTimeLabelToMinutes(rangeMatch[1]);
+  const endMinutes = parseTimeLabelToMinutes(rangeMatch[2]);
+
+  if (startMinutes === null || endMinutes === null) {
+    return false;
+  }
+
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  if (endMinutes <= startMinutes) {
+    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+  }
+
+  return currentMinutes >= startMinutes && currentMinutes < endMinutes;
 }
 
 function parseMealNumber(value: string) {
