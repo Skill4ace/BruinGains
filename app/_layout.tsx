@@ -13,13 +13,13 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { AppDataProvider } from '@/providers/app-data-provider';
 import { NavigationTheme } from '@/constants/theme';
-import { ensureAnonymousSupabaseSession, hasSupabasePublicEnv } from '@/lib/supabase/client';
+import { preloadCampusDataOnLaunch } from '@/hooks/use-campus-data';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -32,24 +32,38 @@ export default function RootLayout() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
   });
+  const [isLaunchReady, setIsLaunchReady] = useState(false);
 
   useEffect(() => {
-    if (loaded) {
-      void SplashScreen.hideAsync();
+    let isMounted = true;
+
+    async function prepareLaunch() {
+      if (!loaded) {
+        return;
+      }
+
+      try {
+        await preloadCampusDataOnLaunch();
+      } catch {
+        // If live campus data is unavailable at launch, fall back to cached or bundled data.
+      } finally {
+        if (!isMounted) {
+          return;
+        }
+
+        setIsLaunchReady(true);
+        void SplashScreen.hideAsync();
+      }
     }
+
+    void prepareLaunch();
+
+    return () => {
+      isMounted = false;
+    };
   }, [loaded]);
 
-  useEffect(() => {
-    if (!hasSupabasePublicEnv) {
-      return;
-    }
-
-    void ensureAnonymousSupabaseSession().catch(() => {
-      // Campus data hooks already fall back to cached and bundled data.
-    });
-  }, []);
-
-  if (!loaded) {
+  if (!loaded || !isLaunchReady) {
     return null;
   }
 

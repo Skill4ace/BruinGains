@@ -162,9 +162,13 @@ async function loadCachedResource<T>(key: string) {
 }
 
 async function saveCachedResource<T>(key: string, data: T) {
+  return saveCachedResourceAt(key, data, new Date().toISOString());
+}
+
+async function saveCachedResourceAt<T>(key: string, data: T, updatedAt: string) {
   const payload: CacheEnvelope<T> = {
     data,
-    updatedAt: new Date().toISOString(),
+    updatedAt,
   };
 
   await AsyncStorage.setItem(key, JSON.stringify(payload));
@@ -244,6 +248,30 @@ async function fetchLatestDiningMenuItemsFromSupabase() {
   return bundle && bundle.diningMenuItems.length > 0 ? bundle.diningMenuItems : null;
 }
 
+async function saveCampusDataBundle(bundle: CampusDataBundle) {
+  const updatedAt = new Date().toISOString();
+
+  await Promise.all([
+    saveCachedResourceAt(DINING_CACHE_KEY, bundle.diningHalls, updatedAt),
+    saveCachedResourceAt(DINING_MENU_ITEMS_CACHE_KEY, bundle.diningMenuItems, updatedAt),
+    saveCachedResourceAt(GYM_CAPACITY_CACHE_KEY, bundle.gymCapacities, updatedAt),
+  ]);
+}
+
+export async function preloadCampusDataOnLaunch() {
+  if (!hasSupabasePublicEnv || !supabasePublicClient) {
+    return;
+  }
+
+  const bundle = await fetchCampusDataBundleFromFunction();
+
+  if (!bundle) {
+    return;
+  }
+
+  await saveCampusDataBundle(bundle);
+}
+
 function useCachedCampusResource<T>(
   cacheKey: string,
   fallbackData: T,
@@ -293,6 +321,19 @@ function useCachedCampusResource<T>(
             updatedAt: null,
           });
         }
+        return;
+      }
+
+      if (cached && !isStale(cached.updatedAt)) {
+        setState({
+          data: cached.data,
+          error: null,
+          isLoading: false,
+          isRefreshing: false,
+          isStale: false,
+          source: 'cache',
+          updatedAt: cached.updatedAt,
+        });
         return;
       }
 
