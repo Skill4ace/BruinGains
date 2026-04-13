@@ -506,25 +506,34 @@ function buildTemplateExerciseDraftsFromState(
   return state.templateExercises
     .filter((exercise) => exercise.templateId === templateId)
     .sort((left, right) => left.order - right.order)
-    .map((exercise) => ({
-      name: exercise.name,
-      repRange: exercise.repRange,
-      sets: state.templateExerciseSets
-        .filter((set) => set.templateExerciseId === exercise.id)
-        .sort((left, right) => left.setNumber - right.setNumber)
-        .map((set) => ({
-          durationMinutes:
-            exercise.trackingMode === 'duration'
-              ? set.durationMinutes ?? exercise.targetDurationMinutes ?? null
-              : null,
-          load: set.load,
-          reps: set.reps,
-          setNumber: set.setNumber,
-          setType: set.setType ?? 'normal',
-        })),
-      targetDurationMinutes: exercise.targetDurationMinutes ?? null,
-      trackingMode: exercise.trackingMode,
-    }));
+    .map((exercise) => {
+      const exerciseLibraryEntry =
+        state.exerciseLibrary.find(
+          (entry) => normalizeExerciseName(entry.name) === normalizeExerciseName(exercise.name),
+        ) ?? null;
+
+      return {
+        bodyPart: exerciseLibraryEntry?.bodyPart ?? null,
+        category: exerciseLibraryEntry?.category ?? null,
+        name: exercise.name,
+        repRange: exercise.repRange,
+        sets: state.templateExerciseSets
+          .filter((set) => set.templateExerciseId === exercise.id)
+          .sort((left, right) => left.setNumber - right.setNumber)
+          .map((set) => ({
+            durationMinutes:
+              exercise.trackingMode === 'duration'
+                ? set.durationMinutes ?? exercise.targetDurationMinutes ?? null
+                : null,
+            load: set.load,
+            reps: set.reps,
+            setNumber: set.setNumber,
+            setType: set.setType ?? 'normal',
+          })),
+        targetDurationMinutes: exercise.targetDurationMinutes ?? null,
+        trackingMode: exercise.trackingMode,
+      };
+    });
 }
 
 function buildDuplicateTemplateName(
@@ -550,6 +559,8 @@ function toWorkoutExerciseDraft(
   const firstSet = draft.sets[0];
 
   return {
+    bodyPart: draft.bodyPart ?? null,
+    category: draft.category ?? null,
     currentLoad:
       draft.trackingMode === 'duration' ? 0 : firstSet?.load ?? 45,
     name: draft.name,
@@ -839,9 +850,26 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const newTemplateExerciseSets = normalizedExercises.flatMap((exercise, index) =>
         buildTemplateSetRecords(newTemplateExercises[index].id, exercise),
       );
+      const existingExerciseNames = new Set(
+        currentState.exerciseLibrary.map((exercise) => normalizeExerciseName(exercise.name)),
+      );
+      const nextExerciseLibraryEntries = normalizedExercises.flatMap((exercise) => {
+        const normalizedName = normalizeExerciseName(exercise.name);
+
+        if (existingExerciseNames.has(normalizedName)) {
+          return [];
+        }
+
+        existingExerciseNames.add(normalizedName);
+        return [createCustomExerciseLibraryEntry(toWorkoutExerciseDraft(exercise))];
+      });
 
       return {
         ...currentState,
+        exerciseLibrary:
+          nextExerciseLibraryEntries.length > 0
+            ? [...currentState.exerciseLibrary, ...nextExerciseLibraryEntries]
+            : currentState.exerciseLibrary,
         workoutTemplates: [...currentState.workoutTemplates, newTemplate],
         templateExercises: [...currentState.templateExercises, ...newTemplateExercises],
         templateExerciseSets: [
@@ -1041,9 +1069,26 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           .filter((exercise) => exercise.templateId === input.templateId)
           .map((exercise) => exercise.id),
       );
+      const existingExerciseNames = new Set(
+        currentState.exerciseLibrary.map((exercise) => normalizeExerciseName(exercise.name)),
+      );
+      const nextExerciseLibraryEntries = normalizedExercises.flatMap((exercise) => {
+        const normalizedName = normalizeExerciseName(exercise.name);
+
+        if (existingExerciseNames.has(normalizedName)) {
+          return [];
+        }
+
+        existingExerciseNames.add(normalizedName);
+        return [createCustomExerciseLibraryEntry(toWorkoutExerciseDraft(exercise))];
+      });
 
       return {
         ...currentState,
+        exerciseLibrary:
+          nextExerciseLibraryEntries.length > 0
+            ? [...currentState.exerciseLibrary, ...nextExerciseLibraryEntries]
+            : currentState.exerciseLibrary,
         workoutTemplates: currentState.workoutTemplates.map((template) =>
           template.id === input.templateId
             ? {

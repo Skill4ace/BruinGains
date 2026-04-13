@@ -1,11 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Alert,
-  FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
   Platform,
@@ -22,7 +19,18 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  getExerciseLibraryImageSource,
+  createExerciseComposerDraft,
+  ExerciseComposerModal,
+  ExercisePickerModal,
+  getExerciseSearchScore,
+  matchesExerciseFilterGroup,
+  matchesExerciseFilterType,
+  type ExerciseComposerDraft,
+  type ExerciseFilterGroup,
+  type ExerciseFilterType,
+} from '@/components/workout/exercise-picker-sheet';
+import {
+  inferExerciseTrackingMode,
   searchExerciseLibraryEntry,
 } from '@/data/local/exercise-library';
 import {
@@ -37,7 +45,6 @@ import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Layout, Radii, Shadows, Spacing } from '@/constants/theme';
 import type {
-  ExerciseLibraryEntry,
   LocalAppData,
   WorkoutExerciseDraft,
   WorkoutSetType,
@@ -50,31 +57,6 @@ type PickerState = {
   targetExerciseId: string | null;
 };
 
-type ExerciseFilterGroup =
-  | 'all'
-  | 'arms'
-  | 'back'
-  | 'cardio'
-  | 'chest'
-  | 'core'
-  | 'legs'
-  | 'other'
-  | 'shoulders';
-
-type ExerciseFilterType =
-  | 'all'
-  | 'barbell'
-  | 'bodyweight'
-  | 'cardio'
-  | 'dumbbell'
-  | 'machine';
-
-type ExerciseComposerDraft = {
-  durationMinutes: string;
-  name: string;
-  trackingMode: WorkoutTrackingMode;
-};
-
 type TemplateEditorSet = {
   durationMinutes: number | null;
   id: string;
@@ -85,6 +67,8 @@ type TemplateEditorSet = {
 };
 
 type TemplateEditorExercise = {
+  bodyPart: string | null;
+  category: string | null;
   id: string;
   name: string;
   order: number;
@@ -95,38 +79,11 @@ type TemplateEditorExercise = {
   trackingMode: WorkoutTrackingMode;
 };
 
-const DEFAULT_COMPOSER_DRAFT: ExerciseComposerDraft = {
-  durationMinutes: '20:00',
-  name: '',
-  trackingMode: 'strength',
-};
-
 const SET_TYPE_OPTIONS: { label: string; shortLabel: string; tone: string; value: WorkoutSetType }[] = [
   { label: 'Regular', shortLabel: '', tone: AppColors.textMuted, value: 'normal' },
   { label: 'Warm-up', shortLabel: 'W', tone: '#D58C2F', value: 'warmup' },
   { label: 'Drop', shortLabel: 'D', tone: '#7B3AED', value: 'drop' },
   { label: 'Failure', shortLabel: 'F', tone: AppColors.danger, value: 'failure' },
-];
-
-const EXERCISE_FILTER_GROUPS: ExerciseFilterGroup[] = [
-  'all',
-  'core',
-  'arms',
-  'back',
-  'chest',
-  'legs',
-  'shoulders',
-  'other',
-  'cardio',
-];
-
-const EXERCISE_FILTER_TYPES: ExerciseFilterType[] = [
-  'all',
-  'barbell',
-  'dumbbell',
-  'machine',
-  'bodyweight',
-  'cardio',
 ];
 
 type WorkoutInputField = 'durationMinutes' | 'load' | 'reps';
@@ -379,6 +336,8 @@ function createTemplateExerciseFromDraft(
   );
 
   return {
+    bodyPart: draft.bodyPart ?? null,
+    category: draft.category ?? null,
     id: overrides?.id ?? createId('template-exercise'),
     name: draft.name.trim(),
     order,
@@ -403,6 +362,10 @@ function buildTemplateExercisesFromState(
     .filter((exercise) => exercise.templateId === templateId)
     .sort((left, right) => left.order - right.order)
     .map((exercise) => {
+      const exerciseLibraryEntry =
+        state.exerciseLibrary.find(
+          (entry) => normalizeExerciseName(entry.name) === normalizeExerciseName(exercise.name),
+        ) ?? null;
       const sets = state.templateExerciseSets
         .filter((set) => set.templateExerciseId === exercise.id)
         .sort((left, right) => left.setNumber - right.setNumber)
@@ -418,6 +381,8 @@ function buildTemplateExercisesFromState(
       const defaults = buildExerciseDefaults(state, exercise.name, exercise.trackingMode);
 
       return {
+        bodyPart: exerciseLibraryEntry?.bodyPart ?? null,
+        category: exerciseLibraryEntry?.category ?? null,
         id: exercise.id,
         name: exercise.name,
         order: exercise.order,
@@ -456,7 +421,9 @@ export function WorkoutTemplateEditorPreview() {
   const [exerciseFilterGroup, setExerciseFilterGroup] = useState<ExerciseFilterGroup>('all');
   const [exerciseFilterType, setExerciseFilterType] = useState<ExerciseFilterType>('all');
   const [composerOpen, setComposerOpen] = useState(false);
-  const [composerDraft, setComposerDraft] = useState<ExerciseComposerDraft>(DEFAULT_COMPOSER_DRAFT);
+  const [composerDraft, setComposerDraft] = useState<ExerciseComposerDraft>(
+    createExerciseComposerDraft(),
+  );
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [activeInputKey, setActiveInputKey] = useState<string | null>(null);
   const [replaceInputOnNextKey, setReplaceInputOnNextKey] = useState(false);
@@ -939,15 +906,21 @@ export function WorkoutTemplateEditorPreview() {
       const nextExercises = [...currentValue];
 
       selectedExercises.forEach((exercise) => {
+        const trackingMode = inferExerciseTrackingMode(exercise);
+
         nextExercises.push(
           createTemplateExerciseFromDraft(
             state,
             {
+              bodyPart: exercise.bodyPart ?? null,
+              category: exercise.category ?? null,
+              currentLoad: trackingMode === 'duration' ? 0 : 45,
               name: exercise.name,
-              repRange: '8-10',
-              targetReps: 8,
+              repRange: trackingMode === 'duration' ? '20:00' : '8-10',
+              targetDurationMinutes: trackingMode === 'duration' ? 20 : undefined,
+              targetReps: trackingMode === 'duration' ? undefined : 8,
               targetSets: 3,
-              trackingMode: 'strength',
+              trackingMode,
             },
             nextExercises.length,
           ),
@@ -967,7 +940,7 @@ export function WorkoutTemplateEditorPreview() {
     }
 
     setComposerDraft({
-      ...DEFAULT_COMPOSER_DRAFT,
+      ...createExerciseComposerDraft(),
       name: exerciseSearchQuery.trim(),
     });
     setComposerContext(pickerState);
@@ -982,29 +955,9 @@ export function WorkoutTemplateEditorPreview() {
       return;
     }
 
-    if (composerDraft.trackingMode === 'duration') {
-      const parsedDurationMinutes = parseDurationMinutesInput(
-        composerDraft.durationMinutes,
-        20,
-      );
-
-      if (parsedDurationMinutes === null) {
-        return;
-      }
-
-      const targetDurationMinutes = Math.max(1 / 60, parsedDurationMinutes);
-
-      handleSelectExerciseDraft({
-        name: trimmedName,
-        repRange: formatDurationMinutes(targetDurationMinutes),
-        targetDurationMinutes,
-        targetSets: 1,
-        trackingMode: 'duration',
-      });
-      return;
-    }
-
     handleSelectExerciseDraft({
+      bodyPart: composerDraft.bodyPart || null,
+      category: composerDraft.category || null,
       name: trimmedName,
       repRange: '8-10',
       targetReps: 8,
@@ -1112,6 +1065,8 @@ export function WorkoutTemplateEditorPreview() {
 
     const serializedExercises: WorkoutTemplateExerciseDraft[] = exercisesToSerialize
       .map((exercise) => ({
+        bodyPart: exercise.bodyPart,
+        category: exercise.category,
         name: exercise.name.trim(),
         repRange: buildRepRangeFromSets(
           exercise.sets,
@@ -1450,7 +1405,6 @@ export function WorkoutTemplateEditorPreview() {
       ) : null}
 
       <ExercisePickerModal
-        canCreateCustomExercise={exerciseSearchQuery.trim().length > 0}
         filterGroup={exerciseFilterGroup}
         filterType={exerciseFilterType}
         exerciseOptions={filteredExerciseOptions}
@@ -1464,13 +1418,17 @@ export function WorkoutTemplateEditorPreview() {
             return;
           }
 
+          const trackingMode = inferExerciseTrackingMode(exercise);
           handleSelectExerciseDraft({
-            currentLoad: 45,
+            bodyPart: exercise.bodyPart ?? null,
+            category: exercise.category ?? null,
+            currentLoad: trackingMode === 'duration' ? 0 : 45,
             name: exercise.name,
-            repRange: '8-10',
-            targetReps: 8,
+            repRange: trackingMode === 'duration' ? '20:00' : '8-10',
+            targetDurationMinutes: trackingMode === 'duration' ? 20 : undefined,
+            targetReps: trackingMode === 'duration' ? undefined : 8,
             targetSets: 3,
-            trackingMode: 'strength',
+            trackingMode,
           });
         }}
         pickerMode={pickerState?.mode ?? 'add'}
@@ -1494,6 +1452,8 @@ export function WorkoutTemplateEditorPreview() {
           }
         }}
         onSave={handleSaveCustomExercise}
+        saveLabel="Save Exercise"
+        title="Create New Exercise"
       />
       <ExerciseActionModal
         isOpen={Boolean(activeExerciseAction)}
@@ -1722,331 +1682,6 @@ function WorkoutInputBoard({
   );
 }
 
-function ExercisePickerModal({
-  canCreateCustomExercise,
-  filterGroup,
-  filterType,
-  exerciseOptions,
-  isOpen,
-  onCommitSelection,
-  onClose,
-  onCreateCustom,
-  onSelect,
-  pickerMode,
-  searchQuery,
-  selectedExerciseIds,
-  setFilterGroup,
-  setFilterType,
-  setSearchQuery,
-  title,
-}: {
-  canCreateCustomExercise: boolean;
-  filterGroup: ExerciseFilterGroup;
-  filterType: ExerciseFilterType;
-  exerciseOptions: ExerciseLibraryEntry[];
-  isOpen: boolean;
-  onCommitSelection: () => void;
-  onClose: () => void;
-  onCreateCustom: () => void;
-  onSelect: (exercise: ExerciseLibraryEntry) => void;
-  pickerMode: 'add' | 'replace';
-  searchQuery: string;
-  selectedExerciseIds: string[];
-  setFilterGroup: (value: ExerciseFilterGroup) => void;
-  setFilterType: (value: ExerciseFilterType) => void;
-  setSearchQuery: (value: string) => void;
-  title: string;
-}) {
-  const [activeFilterMenu, setActiveFilterMenu] = useState<'group' | 'type' | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setActiveFilterMenu(null);
-    }
-  }, [isOpen]);
-
-  return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
-      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
-        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
-          <View />
-        </PressScale>
-        <KeyboardAvoidingView behavior={undefined} style={styles.modalContainer}>
-          <SurfaceCard style={styles.modalCardLarge}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeading}>
-                <PressScale haptic="none" onPress={onClose}>
-                  <View style={styles.headerButton}>
-                    <Ionicons name="close" size={18} color={AppColors.text} />
-                  </View>
-                </PressScale>
-                <AppText variant="title">{title}</AppText>
-              </View>
-              {pickerMode === 'add' ? (
-                <PressScale
-                  haptic="light"
-                  onPress={onCommitSelection}
-                  pressEffect="opacity"
-                  disabled={selectedExerciseIds.length === 0}>
-                  <View style={styles.headerAddButton}>
-                    <AppText
-                      variant="label"
-                      color={
-                        selectedExerciseIds.length > 0
-                          ? AppColors.primary
-                          : AppColors.textSubtle
-                      }>
-                      {selectedExerciseIds.length > 0
-                        ? `add (${selectedExerciseIds.length})`
-                        : 'add'}
-                    </AppText>
-                  </View>
-                </PressScale>
-              ) : (
-                <View style={styles.headerAddButtonPlaceholder} />
-              )}
-            </View>
-            <View style={styles.searchField}>
-              <Ionicons name="search" size={18} color={AppColors.textSubtle} />
-              <TextInput
-                autoCapitalize="none"
-                onChangeText={setSearchQuery}
-                placeholder="search exercise"
-                placeholderTextColor={AppColors.textSubtle}
-                style={styles.searchInput}
-                value={searchQuery}
-              />
-            </View>
-            <View style={styles.filterControlRow}>
-              <PressScale
-                containerStyle={styles.filterSelectorSlot}
-                haptic="none"
-                onPress={() =>
-                  setActiveFilterMenu((currentValue) =>
-                    currentValue === 'group' ? null : 'group',
-                  )
-                }>
-                <View style={styles.filterSelector}>
-                  <AppText variant="micro" color={AppColors.textMuted}>
-                    {formatPrimaryFilterLabel(filterGroup)}
-                  </AppText>
-                  <Ionicons
-                    name={activeFilterMenu === 'group' ? 'chevron-up' : 'chevron-down'}
-                    size={16}
-                    color={AppColors.textMuted}
-                  />
-                </View>
-              </PressScale>
-              <PressScale
-                containerStyle={styles.filterSelectorSlot}
-                haptic="none"
-                onPress={() =>
-                  setActiveFilterMenu((currentValue) =>
-                    currentValue === 'type' ? null : 'type',
-                  )
-                }>
-                <View style={styles.filterSelector}>
-                  <AppText variant="micro" color={AppColors.textMuted}>
-                    {formatSecondaryFilterLabel(filterType)}
-                  </AppText>
-                  <Ionicons
-                    name={activeFilterMenu === 'type' ? 'chevron-up' : 'chevron-down'}
-                    size={16}
-                    color={AppColors.textMuted}
-                  />
-                </View>
-              </PressScale>
-              {canCreateCustomExercise ? (
-                <PressScale containerStyle={styles.customActionSlot} haptic="light" onPress={onCreateCustom}>
-                  <View style={styles.createCustomCompactButton}>
-                    <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
-                    <AppText variant="micro" color={AppColors.primary}>
-                      add custom exercise
-                    </AppText>
-                  </View>
-                </PressScale>
-              ) : null}
-            </View>
-            {activeFilterMenu ? (
-              <View style={styles.filterDropdownPanel}>
-                <View style={styles.filterDropdownWrap}>
-                  {(activeFilterMenu === 'group'
-                    ? EXERCISE_FILTER_GROUPS
-                    : EXERCISE_FILTER_TYPES
-                  ).map((value) => (
-                    <FilterChip
-                      key={value}
-                      active={
-                        activeFilterMenu === 'group'
-                          ? filterGroup === value
-                          : filterType === value
-                      }
-                      label={formatFilterLabel(value)}
-                      onPress={() => {
-                        if (activeFilterMenu === 'group') {
-                          setFilterGroup(value as ExerciseFilterGroup);
-                        } else {
-                          setFilterType(value as ExerciseFilterType);
-                        }
-                        setActiveFilterMenu(null);
-                      }}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
-            <FlatList
-              data={exerciseOptions}
-              extraData={selectedExerciseIds}
-              initialNumToRender={16}
-              keyboardShouldPersistTaps="handled"
-              keyExtractor={(exercise) => exercise.id}
-              maxToRenderPerBatch={24}
-              removeClippedSubviews={Platform.OS === 'android'}
-              renderItem={({ item: exercise }) => {
-                const selected =
-                  pickerMode === 'add' && selectedExerciseIds.includes(exercise.id);
-
-                return (
-                  <PressScale
-                    containerStyle={styles.optionPressable}
-                    haptic="light"
-                    pressEffect="opacity"
-                    onPress={() => onSelect(exercise)}>
-                    <View
-                      style={[
-                        styles.optionMain,
-                        selected ? styles.optionMainSelected : null,
-                      ]}>
-                      {getExerciseLibraryImageSource(exercise) ? (
-                        <Image
-                          source={getExerciseLibraryImageSource(exercise)}
-                          style={styles.optionImage}
-                          autoplay={false}
-                          contentFit="contain"
-                        />
-                      ) : (
-                        <View style={styles.optionImageFallback}>
-                          <Ionicons name="barbell-outline" size={18} color={AppColors.primary} />
-                        </View>
-                      )}
-                      <View style={styles.optionCopy}>
-                        <AppText variant="bodyStrong" numberOfLines={1}>
-                          {exercise.name}
-                        </AppText>
-                        <AppText variant="micro" dimmed numberOfLines={2}>
-                          {formatExerciseLibraryMeta(exercise)}
-                        </AppText>
-                      </View>
-                      {pickerMode === 'add' ? (
-                        <View
-                          style={[
-                            styles.optionCheck,
-                            selected ? styles.optionCheckSelected : null,
-                          ]}>
-                          <Ionicons
-                            name="checkmark"
-                            size={16}
-                            color={selected ? AppColors.white : AppColors.textSubtle}
-                          />
-                        </View>
-                      ) : null}
-                    </View>
-                  </PressScale>
-                );
-              }}
-              showsVerticalScrollIndicator={false}
-              style={styles.optionScroll}
-              contentContainerStyle={styles.optionList}
-              windowSize={8}
-              ListEmptyComponent={
-                <SurfaceCard style={styles.emptyExerciseCard}>
-                  <AppText variant="bodyStrong">No exercises match yet</AppText>
-                  <AppText variant="micro" dimmed>
-                    try another search or add a custom exercise.
-                  </AppText>
-                </SurfaceCard>
-              }
-            />
-          </SurfaceCard>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
-function ExerciseComposerModal({
-  draft,
-  isOpen,
-  onChange,
-  onClose,
-  onSave,
-}: {
-  draft: ExerciseComposerDraft;
-  isOpen: boolean;
-  onChange: (draft: ExerciseComposerDraft) => void;
-  onClose: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
-      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
-        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
-          <View />
-        </PressScale>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalContainer}>
-          <SurfaceCard style={styles.modalCard}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <AppText variant="title">Custom exercise</AppText>
-              <PressScale haptic="none" onPress={onClose}>
-                <View style={styles.headerButton}>
-                  <Ionicons name="close" size={18} color={AppColors.text} />
-                </View>
-              </PressScale>
-            </View>
-
-            <ExerciseInputField
-              label="Exercise name"
-              onChangeText={(value) => onChange({ ...draft, name: value })}
-              value={draft.name}
-            />
-
-            <View style={styles.modeRow}>
-              <TrackingModeChip
-                label="Strength"
-                onPress={() => onChange({ ...draft, trackingMode: 'strength' })}
-                selected={draft.trackingMode === 'strength'}
-              />
-              <TrackingModeChip
-                label="Duration"
-                onPress={() => onChange({ ...draft, trackingMode: 'duration' })}
-                selected={draft.trackingMode === 'duration'}
-              />
-            </View>
-
-            {draft.trackingMode === 'duration' ? (
-              <ExerciseInputField
-                keyboardType="number-pad"
-                label="Duration per set"
-                onChangeText={(value) =>
-                  onChange({ ...draft, durationMinutes: formatDurationInput(value) })
-                }
-                value={draft.durationMinutes}
-              />
-            ) : null}
-
-            <ActionButton label="Save exercise" onPress={onSave} />
-          </SurfaceCard>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
 function ExerciseActionModal({
   isOpen,
   onClose,
@@ -2122,73 +1757,6 @@ function SetTypeModal({
   );
 }
 
-function ExerciseInputField({
-  keyboardType = 'default',
-  label,
-  onChangeText,
-  value,
-}: {
-  keyboardType?: 'default' | 'number-pad' | 'numbers-and-punctuation';
-  label: string;
-  onChangeText: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <View style={styles.inputField}>
-      <AppText variant="micro" dimmed>
-        {label}
-      </AppText>
-      <TextInput
-        keyboardType={keyboardType}
-        onChangeText={onChangeText}
-        placeholderTextColor={AppColors.textSubtle}
-        style={styles.input}
-        value={value}
-      />
-    </View>
-  );
-}
-
-function TrackingModeChip({
-  label,
-  onPress,
-  selected,
-}: {
-  label: string;
-  onPress: () => void;
-  selected: boolean;
-}) {
-  return (
-    <PressScale haptic="none" onPress={onPress}>
-      <View style={[styles.modeChip, selected ? styles.modeChipSelected : null]}>
-        <AppText variant="label" color={selected ? AppColors.white : AppColors.textMuted}>
-          {label}
-        </AppText>
-      </View>
-    </PressScale>
-  );
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <PressScale haptic="none" onPress={onPress}>
-      <View style={[styles.filterChip, active ? styles.filterChipActive : null]}>
-        <AppText variant="micro" color={active ? AppColors.white : AppColors.textMuted}>
-          {label}
-        </AppText>
-      </View>
-    </PressScale>
-  );
-}
-
 function getSetTypeBadgeLabel(setRow: TemplateEditorSet) {
   if (setRow.setType === 'warmup') {
     return 'W';
@@ -2249,126 +1817,6 @@ function formatPreviousSetText(previousLoadLabel: string) {
   }
 
   return trimmedValue;
-}
-
-function formatExerciseLibraryMeta(exercise: ExerciseLibraryEntry) {
-  const parts = [
-    exercise.bodyPart,
-    exercise.target,
-    exercise.equipment,
-    exercise.secondaryMuscles[0],
-  ].filter(Boolean);
-
-  return parts.length > 0 ? parts.join(' • ').toLowerCase() : exercise.focus.toLowerCase();
-}
-
-function getExerciseSearchScore(exercise: ExerciseLibraryEntry, query: string) {
-  const normalizedQuery = query.trim().toLowerCase();
-  const normalizedName = exercise.name.toLowerCase();
-  const normalizedBodyPart = exercise.bodyPart?.toLowerCase() ?? '';
-  const normalizedTarget = exercise.target?.toLowerCase() ?? '';
-  const normalizedCategory = exercise.category?.toLowerCase() ?? '';
-  const normalizedEquipment = exercise.equipment?.toLowerCase() ?? '';
-  const normalizedAliases = exercise.aliases.map((alias) => alias.toLowerCase());
-  const normalizedSecondaryMuscles = exercise.secondaryMuscles.map((muscle) =>
-    muscle.toLowerCase(),
-  );
-
-  let score = 0;
-
-  if (normalizedName === normalizedQuery) score += 12;
-  if (normalizedAliases.includes(normalizedQuery)) score += 10;
-  if (normalizedTarget === normalizedQuery) score += 9;
-  if (normalizedBodyPart === normalizedQuery) score += 9;
-  if (normalizedCategory === normalizedQuery) score += 8;
-  if (normalizedEquipment === normalizedQuery) score += 6;
-  if (normalizedName.startsWith(normalizedQuery)) score += 5;
-  if (normalizedAliases.some((alias) => alias.startsWith(normalizedQuery))) score += 4;
-  if (normalizedSecondaryMuscles.includes(normalizedQuery)) score += 3;
-  if (normalizedName.includes(normalizedQuery)) score += 2;
-
-  return score;
-}
-
-function formatFilterLabel(value: string) {
-  if (value === 'all') {
-    return 'all';
-  }
-
-  if (value === 'bodyweight') {
-    return 'bodyweight';
-  }
-
-  return value;
-}
-
-function formatPrimaryFilterLabel(value: ExerciseFilterGroup) {
-  return value === 'all' ? 'any body part' : formatFilterLabel(value);
-}
-
-function formatSecondaryFilterLabel(value: ExerciseFilterType) {
-  return value === 'all' ? 'any category' : formatFilterLabel(value);
-}
-
-function getExerciseFilterGroup(exercise: ExerciseLibraryEntry): ExerciseFilterGroup {
-  const bodyPart = exercise.bodyPart?.toLowerCase() ?? '';
-
-  if (bodyPart === 'waist') return 'core';
-  if (bodyPart === 'upper arms' || bodyPart === 'lower arms') return 'arms';
-  if (bodyPart === 'back') return 'back';
-  if (bodyPart === 'chest') return 'chest';
-  if (bodyPart === 'upper legs' || bodyPart === 'lower legs') return 'legs';
-  if (bodyPart === 'shoulders') return 'shoulders';
-  if (bodyPart === 'cardio') return 'cardio';
-
-  return 'other';
-}
-
-function getExerciseFilterType(exercise: ExerciseLibraryEntry): ExerciseFilterType {
-  const equipment = exercise.equipment?.toLowerCase() ?? '';
-  const category = exercise.category?.toLowerCase() ?? '';
-  const bodyPart = exercise.bodyPart?.toLowerCase() ?? '';
-
-  if (bodyPart === 'cardio' || category === 'cardio') {
-    return 'cardio';
-  }
-
-  if (equipment.includes('barbell')) {
-    return 'barbell';
-  }
-
-  if (equipment.includes('dumbbell')) {
-    return 'dumbbell';
-  }
-
-  if (equipment.includes('body weight')) {
-    return 'bodyweight';
-  }
-
-  if (
-    equipment.includes('machine') ||
-    equipment.includes('assisted') ||
-    equipment.includes('sled') ||
-    equipment.includes('smith')
-  ) {
-    return 'machine';
-  }
-
-  return 'all';
-}
-
-function matchesExerciseFilterGroup(
-  exercise: ExerciseLibraryEntry,
-  filterGroup: ExerciseFilterGroup,
-) {
-  return filterGroup === 'all' || getExerciseFilterGroup(exercise) === filterGroup;
-}
-
-function matchesExerciseFilterType(
-  exercise: ExerciseLibraryEntry,
-  filterType: ExerciseFilterType,
-) {
-  return filterType === 'all' || getExerciseFilterType(exercise) === filterType;
 }
 
 const styles = StyleSheet.create({

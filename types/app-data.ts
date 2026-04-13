@@ -128,6 +128,8 @@ export type WorkoutExerciseDraft = {
 };
 
 export type WorkoutTemplateExerciseDraft = {
+  bodyPart?: string | null;
+  category?: string | null;
   name: string;
   repRange: string;
   sets: WorkoutTemplateSetDraft[];
