@@ -263,29 +263,49 @@ function WheelPicker({
   const frameHeight = itemHeight * WHEEL_VISIBLE_ROWS;
   const verticalPadding = (frameHeight - itemHeight) / 2;
   const scrollRef = useRef<ScrollView | null>(null);
+  const centeredValueRef = useRef(selectedValue);
   const lastCommittedValueRef = useRef(selectedValue);
+  const [centeredValue, setCenteredValue] = useState(selectedValue);
   const selectedIndex = Math.max(
     0,
     items.findIndex((item) => item.value === selectedValue),
   );
 
+  function getIndexForOffset(offsetY: number) {
+    return Math.max(0, Math.min(items.length - 1, Math.round(offsetY / itemHeight)));
+  }
+
+  function syncCenteredValue(offsetY: number) {
+    const nextIndex = getIndexForOffset(offsetY);
+    const nextValue = items[nextIndex]?.value;
+
+    if (nextValue !== undefined && nextValue !== centeredValueRef.current) {
+      centeredValueRef.current = nextValue;
+      setCenteredValue(nextValue);
+    }
+
+    return nextIndex;
+  }
+
   useEffect(() => {
     lastCommittedValueRef.current = selectedValue;
+    centeredValueRef.current = selectedValue;
+    setCenteredValue(selectedValue);
   }, [selectedValue]);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
+    const frameId = requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({
         y: selectedIndex * itemHeight,
         animated: false,
       });
-    }, 0);
+    });
 
-    return () => clearTimeout(timeoutId);
+    return () => cancelAnimationFrame(frameId);
   }, [itemHeight, selectedIndex]);
 
-  function snapToIndex(index: number, animated: boolean) {
-    const clampedIndex = Math.max(0, Math.min(items.length - 1, index));
+  function commitOffset(offsetY: number, animated: boolean) {
+    const clampedIndex = syncCenteredValue(offsetY);
     const targetValue = items[clampedIndex]?.value;
 
     if (targetValue !== undefined && targetValue !== lastCommittedValueRef.current) {
@@ -301,29 +321,32 @@ function WheelPicker({
   }
 
   return (
-    <View style={[styles.wheelFrame, style]}>
+    <View style={[styles.wheelFrame, { height: frameHeight }, style]}>
       <ScrollView
         bounces={false}
         decelerationRate="fast"
+        nestedScrollEnabled
         onMomentumScrollEnd={(event) => {
-          snapToIndex(
-            Math.round(event.nativeEvent.contentOffset.y / itemHeight),
-            true,
-          );
+          commitOffset(event.nativeEvent.contentOffset.y, true);
+        }}
+        onScroll={(event) => {
+          syncCenteredValue(event.nativeEvent.contentOffset.y);
         }}
         onScrollEndDrag={(event) => {
-          snapToIndex(
-            Math.round(event.nativeEvent.contentOffset.y / itemHeight),
-            true,
-          );
+          const velocityY = Math.abs(event.nativeEvent.velocity?.y ?? 0);
+
+          if (velocityY < 0.05) {
+            commitOffset(event.nativeEvent.contentOffset.y, true);
+          }
         }}
         ref={scrollRef}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         snapToInterval={itemHeight}
         snapToOffsets={items.map((_, index) => index * itemHeight)}
         contentContainerStyle={[styles.wheelContent, { paddingVertical: verticalPadding }]}>
         {items.map((item) => {
-          const selected = item.value === selectedValue;
+          const selected = item.value === centeredValue;
 
           return (
             <View key={`${item.label}-${item.value}`} style={[styles.wheelRow, { height: itemHeight }]}>
@@ -1479,7 +1502,6 @@ const styles = StyleSheet.create({
   },
   wheelFrame: {
     width: '100%',
-    height: WHEEL_FRAME_HEIGHT,
     borderRadius: Radii.xl,
     backgroundColor: AppColors.surfaceLowest,
     overflow: 'hidden',
