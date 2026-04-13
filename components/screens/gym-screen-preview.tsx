@@ -47,6 +47,8 @@ type TemplatePreviewData = {
   templateName: string;
 };
 
+const LOS_ANGELES_TIME_ZONE = 'America/Los_Angeles';
+
 function normalizeExerciseLookupKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -65,6 +67,76 @@ function formatTemplateExerciseMeta(exercise: {
       : `${exercise.targetSets} sets • ${exercise.repRange}`;
 
   return `${focusLabel} • ${setLabel}`;
+}
+
+function getLosAngelesCurrentMinutes() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    timeZone: LOS_ANGELES_TIME_ZONE,
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return Number.parseInt(values.hour, 10) * 60 + Number.parseInt(values.minute, 10);
+}
+
+function parseGymClockMinutes(value: string) {
+  const match = value.trim().match(/(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2], 10);
+  const marker = match[3].toLowerCase();
+  let normalizedHour = hour % 12;
+
+  if (marker === 'p') {
+    normalizedHour += 12;
+  }
+
+  return normalizedHour * 60 + minute;
+}
+
+function parseGymHoursRange(hours: string) {
+  const [startValue, endValue] = hours.trim().split(/\s*-\s*/);
+
+  if (!startValue || !endValue) {
+    return null;
+  }
+
+  const startMinutes = parseGymClockMinutes(startValue);
+  const endMinutes = parseGymClockMinutes(endValue);
+
+  if (startMinutes === null || endMinutes === null) {
+    return null;
+  }
+
+  return {
+    crossesMidnight: startMinutes >= endMinutes,
+    endMinutes,
+    startMinutes,
+  };
+}
+
+function isGymOpenForDisplayedHours(hours: string, currentMinutes: number) {
+  const normalizedHours = hours.trim().toLowerCase();
+
+  if (!normalizedHours || normalizedHours === 'closed') {
+    return false;
+  }
+
+  const range = parseGymHoursRange(hours);
+
+  if (!range) {
+    return null;
+  }
+
+  return range.crossesMidnight
+    ? currentMinutes >= range.startMinutes || currentMinutes < range.endMinutes
+    : currentMinutes >= range.startMinutes && currentMinutes < range.endMinutes;
 }
 
 function GymCapacityCard({
@@ -376,6 +448,9 @@ export function GymScreenPreview() {
     null,
   );
   const [activeTemplatePreviewId, setActiveTemplatePreviewId] = useState<string | null>(null);
+  const [currentLosAngelesMinutes, setCurrentLosAngelesMinutes] = useState(() =>
+    getLosAngelesCurrentMinutes(),
+  );
   const [renameDraft, setRenameDraft] = useState('');
   const [renamingTemplate, setRenamingTemplate] = useState<TemplateActionTarget | null>(null);
 
@@ -385,22 +460,49 @@ export function GymScreenPreview() {
     }
   }, []);
 
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setCurrentLosAngelesMinutes(getLosAngelesCurrentMinutes());
+    }, 60_000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+
   const sortedCapacityData = useMemo(() => {
     const order = ['wooden', 'bfit'];
 
-    return [...capacityState.data].sort((left, right) => {
-      const leftIndex = order.indexOf(left.id);
-      const rightIndex = order.indexOf(right.id);
-      const normalizedLeftIndex = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
-      const normalizedRightIndex = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+    return capacityState.data
+      .map((location) => {
+        const openForDisplayedHours = isGymOpenForDisplayedHours(
+          location.hours,
+          currentLosAngelesMinutes,
+        );
+        const shouldForceClosed = openForDisplayedHours === false;
+
+        return shouldForceClosed
+          ? {
+              ...location,
+              isClosed: true,
+              load: 0,
+              percent: 0,
+            }
+          : location;
+      })
+      .sort((left, right) => {
+        const leftIndex = order.indexOf(left.id);
+        const rightIndex = order.indexOf(right.id);
+        const normalizedLeftIndex = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+        const normalizedRightIndex = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
 
       if (normalizedLeftIndex !== normalizedRightIndex) {
         return normalizedLeftIndex - normalizedRightIndex;
       }
 
-      return left.name.localeCompare(right.name);
-    });
-  }, [capacityState.data]);
+        return left.name.localeCompare(right.name);
+      });
+  }, [capacityState.data, currentLosAngelesMinutes]);
 
   const exerciseLibraryLookup = useMemo(() => {
     const nextLookup = new Map<string, ExerciseLibraryEntry>();

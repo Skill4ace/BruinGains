@@ -442,10 +442,12 @@ function getEffectiveGymHours(
   const previousRange = previousHours ? parseTimeRange(previousHours) : null
 
   if (previousRange?.crossesMidnight && currentMinutes < 4 * 60) {
+    const isOpenFromPreviousDay =
+      previousRange.endMinutes > 0 && currentMinutes < previousRange.endMinutes
+
     return {
-      hours: todaysHours ?? previousHours,
-      isOpenNow:
-        previousRange.endMinutes > 0 && currentMinutes < previousRange.endMinutes,
+      hours: isOpenFromPreviousDay ? (previousHours ?? todaysHours ?? 'Closed') : (todaysHours ?? previousHours ?? 'Closed'),
+      isOpenNow: isOpenFromPreviousDay,
     }
   }
 

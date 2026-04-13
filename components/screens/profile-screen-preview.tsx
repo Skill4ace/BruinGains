@@ -1,12 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -126,6 +128,28 @@ type GoalPlanDraft = {
   sex: ProfileSex;
   weightPounds: string;
   workoutsPerWeek: number;
+};
+
+type GoalPickerKey =
+  | 'sex'
+  | 'activityLevel'
+  | 'nutritionGoal'
+  | 'heightFeet'
+  | 'heightInches'
+  | 'workoutsPerWeek';
+
+type GoalPickerOption = {
+  description?: string | null;
+  label: string;
+  onPress: () => void;
+  selected: boolean;
+};
+
+type GoalPickerAnchor = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
 };
 
 const PRIVACY_POLICY_SECTIONS: ComplianceDocumentSection[] = [
@@ -1200,103 +1224,109 @@ export function ProfileScreenPreview() {
         visible={consistencyOpen}
         onRequestClose={() => setConsistencyOpen(false)}>
         <View style={styles.modalScrim}>
-          <SurfaceCard floating style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <PressScale
-                haptic="light"
-                disabled={!canGoToPreviousMonth}
-                onPress={() => setCalendarMonthStart((currentValue) => addMonths(currentValue, -1))}>
-                <View
-                  style={[
-                    styles.weekPagerButton,
-                    !canGoToPreviousMonth ? styles.weekPagerButtonDisabled : null,
-                  ]}>
-                  <Ionicons name="chevron-back" size={16} color={AppColors.text} />
-                </View>
-              </PressScale>
-
-              <View style={styles.modalHeaderCopy}>
-                <AppText variant="title">Consistency</AppText>
-                <AppText variant="micro" dimmed>
-                  {formatMonthYear(calendarMonthStart)}
-                </AppText>
-              </View>
-
-              <View style={styles.modalHeaderActions}>
+          <Pressable
+            onPress={() => setConsistencyOpen(false)}
+            style={styles.modalBackdrop}
+          />
+          <Pressable onPress={() => {}} style={styles.modalCardPressable}>
+            <SurfaceCard floating style={styles.modalCard}>
+              <View style={styles.modalHeader}>
                 <PressScale
                   haptic="light"
-                  disabled={!canGoToNextMonth}
-                  onPress={() => setCalendarMonthStart((currentValue) => addMonths(currentValue, 1))}>
+                  disabled={!canGoToPreviousMonth}
+                  onPress={() => setCalendarMonthStart((currentValue) => addMonths(currentValue, -1))}>
                   <View
                     style={[
                       styles.weekPagerButton,
-                      !canGoToNextMonth ? styles.weekPagerButtonDisabled : null,
+                      !canGoToPreviousMonth ? styles.weekPagerButtonDisabled : null,
                     ]}>
-                    <Ionicons name="chevron-forward" size={16} color={AppColors.text} />
+                    <Ionicons name="chevron-back" size={16} color={AppColors.text} />
                   </View>
                 </PressScale>
 
-                <PressScale haptic="light" onPress={() => setConsistencyOpen(false)}>
-                  <View style={styles.calendarButton}>
-                    <Ionicons name="close" size={18} color={AppColors.text} />
-                  </View>
-                </PressScale>
-              </View>
-            </View>
-
-            <View style={styles.calendarWeekdaysRow}>
-              {CALENDAR_WEEKDAY_LABELS.map((label) => (
-                <View key={label} style={styles.calendarWeekdayCell}>
+                <View style={styles.modalHeaderCopy}>
+                  <AppText variant="title">Consistency</AppText>
                   <AppText variant="micro" dimmed>
-                    {label}
+                    {formatMonthYear(calendarMonthStart)}
                   </AppText>
                 </View>
-              ))}
-            </View>
 
-            <View style={styles.calendarGrid}>
-              {calendarWeeks.map((week, weekIndex) => (
-                <View key={`calendar-week-${weekIndex}`} style={styles.calendarWeekRow}>
-                  {week.map((day) => (
-                    <PressScale
-                      key={day.dateKey}
-                      haptic="none"
-                      disabled={day.isFuture}
-                      onPress={() => handleSelectCalendarDay(day.dateKey)}
-                      pressEffect="opacity">
-                      <View
-                        style={[
-                          styles.calendarDayCell,
-                          !day.isCurrentMonth ? styles.calendarDayCellMuted : null,
-                          day.isSelected ? styles.calendarDayCellSelected : null,
-                          day.isFuture ? styles.calendarDayCellFuture : null,
-                        ]}>
-                        <AppText
-                          variant="micro"
-                          color={day.isCurrentMonth ? AppColors.text : AppColors.textSubtle}>
-                          {String(day.dayNumber)}
-                        </AppText>
-                        <View style={styles.calendarDayDots}>
-                          {day.tone === 'nutrition' || day.tone === 'both' ? (
-                            <View style={[styles.calendarDot, styles.calendarDotNutrition]} />
-                          ) : null}
-                          {day.tone === 'workout' || day.tone === 'both' ? (
-                            <View style={[styles.calendarDot, styles.calendarDotWorkout]} />
-                          ) : null}
-                        </View>
-                      </View>
-                    </PressScale>
-                  ))}
+                <View style={styles.modalHeaderActions}>
+                  <PressScale
+                    haptic="light"
+                    disabled={!canGoToNextMonth}
+                    onPress={() => setCalendarMonthStart((currentValue) => addMonths(currentValue, 1))}>
+                    <View
+                      style={[
+                        styles.weekPagerButton,
+                        !canGoToNextMonth ? styles.weekPagerButtonDisabled : null,
+                      ]}>
+                      <Ionicons name="chevron-forward" size={16} color={AppColors.text} />
+                    </View>
+                  </PressScale>
+
+                  <PressScale haptic="light" onPress={() => setConsistencyOpen(false)}>
+                    <View style={styles.calendarButton}>
+                      <Ionicons name="close" size={18} color={AppColors.text} />
+                    </View>
+                  </PressScale>
                 </View>
-              ))}
-            </View>
+              </View>
 
-            <View style={styles.modalLegend}>
-              <LegendPill label="Meals" tone="nutrition" />
-              <LegendPill label="Gym" tone="workout" />
-              <LegendPill label="Both" tone="both" />
-            </View>
-          </SurfaceCard>
+              <View style={styles.calendarWeekdaysRow}>
+                {CALENDAR_WEEKDAY_LABELS.map((label, index) => (
+                  <View key={`weekday-${index}-${label}`} style={styles.calendarWeekdayCell}>
+                    <AppText variant="micro" dimmed>
+                      {label}
+                    </AppText>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.calendarGrid}>
+                {calendarWeeks.map((week, weekIndex) => (
+                  <View key={`calendar-week-${weekIndex}`} style={styles.calendarWeekRow}>
+                    {week.map((day) => (
+                      <PressScale
+                        key={day.dateKey}
+                        haptic="none"
+                        disabled={day.isFuture}
+                        onPress={() => handleSelectCalendarDay(day.dateKey)}
+                        pressEffect="opacity">
+                        <View
+                          style={[
+                            styles.calendarDayCell,
+                            !day.isCurrentMonth ? styles.calendarDayCellMuted : null,
+                            day.isSelected ? styles.calendarDayCellSelected : null,
+                            day.isFuture ? styles.calendarDayCellFuture : null,
+                          ]}>
+                          <AppText
+                            variant="micro"
+                            color={day.isCurrentMonth ? AppColors.text : AppColors.textSubtle}>
+                            {String(day.dayNumber)}
+                          </AppText>
+                          <View style={styles.calendarDayDots}>
+                            {day.tone === 'nutrition' || day.tone === 'both' ? (
+                              <View style={[styles.calendarDot, styles.calendarDotNutrition]} />
+                            ) : null}
+                            {day.tone === 'workout' || day.tone === 'both' ? (
+                              <View style={[styles.calendarDot, styles.calendarDotWorkout]} />
+                            ) : null}
+                          </View>
+                        </View>
+                      </PressScale>
+                    ))}
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.modalLegend}>
+                <LegendPill label="Meals" tone="nutrition" />
+                <LegendPill label="Gym" tone="workout" />
+                <LegendPill label="Both" tone="both" />
+              </View>
+            </SurfaceCard>
+          </Pressable>
         </View>
       </Modal>
 
@@ -1310,9 +1340,7 @@ export function ProfileScreenPreview() {
           setGoalSettingsOpen(false);
         }}
         onClosePicker={() => setActiveGoalPicker(null)}
-        onTogglePicker={(picker) =>
-          setActiveGoalPicker((currentValue) => (currentValue === picker ? null : picker))
-        }
+        onOpenPicker={(picker) => setActiveGoalPicker(picker)}
         onRecalculate={handleRecalculateGoals}
         onSave={handleSaveGoals}
       />
@@ -1494,37 +1522,111 @@ function GoalSettingsModal({
   onChange,
   onClose,
   onClosePicker,
-  onTogglePicker,
+  onOpenPicker,
   onRecalculate,
   onSave,
 }: {
-  activePicker:
-    | null
-    | 'sex'
-    | 'activityLevel'
-    | 'nutritionGoal'
-    | 'heightFeet'
-    | 'heightInches'
-    | 'workoutsPerWeek';
+  activePicker: GoalPickerKey | null;
   draft: GoalPlanDraft;
   isOpen: boolean;
   onChange: <K extends keyof GoalPlanDraft>(key: K, value: GoalPlanDraft[K]) => void;
   onClose: () => void;
   onClosePicker: () => void;
-  onTogglePicker: (
-    picker: 'sex' | 'activityLevel' | 'nutritionGoal' | 'heightFeet' | 'heightInches' | 'workoutsPerWeek',
-  ) => void;
+  onOpenPicker: (picker: GoalPickerKey) => void;
   onRecalculate: () => void;
   onSave: () => void;
 }) {
+  const [pickerAnchor, setPickerAnchor] = useState<GoalPickerAnchor | null>(null);
   const sexLabel = SEX_OPTIONS.find((option) => option.value === draft.sex)?.label ?? 'Select';
   const activityLabel =
     ACTIVITY_LEVEL_OPTIONS.find((option) => option.value === draft.activityLevel)?.label ?? 'Select';
   const goalLabel =
     NUTRITION_GOAL_OPTIONS.find((option) => option.value === draft.nutritionGoal)?.label ?? 'Select';
 
+  let activePickerTitle = '';
+  let activePickerOptions: GoalPickerOption[] = [];
+
+  if (activePicker === 'heightFeet') {
+    activePickerTitle = 'Height (feet)';
+    activePickerOptions = Array.from({ length: 6 }, (_, i) => i + 3).map((value) => ({
+      label: `${value} ft`,
+      selected: draft.heightFeet === value,
+      onPress: () => {
+        onChange('heightFeet', value);
+        handleClosePickerMenu();
+      },
+    }));
+  } else if (activePicker === 'heightInches') {
+    activePickerTitle = 'Height (inches)';
+    activePickerOptions = Array.from({ length: 12 }, (_, i) => i).map((value) => ({
+      label: `${value} in`,
+      selected: draft.heightInches === value,
+      onPress: () => {
+        onChange('heightInches', value);
+        handleClosePickerMenu();
+      },
+    }));
+  } else if (activePicker === 'sex') {
+    activePickerTitle = 'Sex';
+    activePickerOptions = SEX_OPTIONS.map((option) => ({
+      label: option.label,
+      selected: draft.sex === option.value,
+      onPress: () => {
+        onChange('sex', option.value);
+        handleClosePickerMenu();
+      },
+    }));
+  } else if (activePicker === 'activityLevel') {
+    activePickerTitle = 'Activity level';
+    activePickerOptions = ACTIVITY_LEVEL_OPTIONS.map((option) => ({
+      label: option.label,
+      description: option.description,
+      selected: draft.activityLevel === option.value,
+      onPress: () => {
+        onChange('activityLevel', option.value);
+        handleClosePickerMenu();
+      },
+    }));
+  } else if (activePicker === 'workoutsPerWeek') {
+    activePickerTitle = 'Workouts per week';
+    activePickerOptions = WORKOUTS_PER_WEEK_OPTIONS.map((value) => ({
+      label: `${value} / wk`,
+      selected: draft.workoutsPerWeek === value,
+      onPress: () => {
+        onChange('workoutsPerWeek', value);
+        handleClosePickerMenu();
+      },
+    }));
+  } else if (activePicker === 'nutritionGoal') {
+    activePickerTitle = 'Goal';
+    activePickerOptions = NUTRITION_GOAL_OPTIONS.map((option) => ({
+      label: option.label,
+      description: option.description,
+      selected: draft.nutritionGoal === option.value,
+      onPress: () => {
+        onChange('nutritionGoal', option.value);
+        handleClosePickerMenu();
+      },
+    }));
+  }
+
+  function handleOpenPicker(picker: GoalPickerKey, anchor: GoalPickerAnchor) {
+    setPickerAnchor(anchor);
+    onOpenPicker(picker);
+  }
+
+  function handleClosePickerMenu() {
+    setPickerAnchor(null);
+    onClosePicker();
+  }
+
+  function handleCloseModal() {
+    setPickerAnchor(null);
+    onClose();
+  }
+
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+    <Modal animationType="fade" onRequestClose={handleCloseModal} transparent visible={isOpen}>
       <View style={styles.modalScrim}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1532,7 +1634,7 @@ function GoalSettingsModal({
           <SurfaceCard floating style={styles.goalModalCard}>
             <View style={styles.goalModalHeader}>
               <AppText variant="title">Goals</AppText>
-              <PressScale haptic="light" onPress={onClose}>
+              <PressScale haptic="light" onPress={handleCloseModal}>
                 <View style={styles.calendarButton}>
                   <Ionicons name="close" size={18} color={AppColors.text} />
                 </View>
@@ -1560,84 +1662,49 @@ function GoalSettingsModal({
                   />
                 </View>
 
-                <View style={[styles.goalTripleRow, { zIndex: 30 }]}>
+                <View style={styles.goalTripleRow}>
                   <GoalDropdownField
+                    compact
+                    isActive={activePicker === 'heightFeet'}
                     label="Height"
+                    onOpen={(anchor) => handleOpenPicker('heightFeet', anchor)}
                     value={`${draft.heightFeet} ft`}
-                    isOpen={activePicker === 'heightFeet'}
-                    onToggle={() => onTogglePicker('heightFeet')}
-                    compact
-                    options={Array.from({ length: 6 }, (_, i) => i + 3).map((v) => ({
-                      label: `${v} ft`,
-                      selected: draft.heightFeet === v,
-                      onPress: () => { onChange('heightFeet', v); onClosePicker(); },
-                    }))}
                   />
                   <GoalDropdownField
+                    compact
+                    isActive={activePicker === 'heightInches'}
                     label="Inches"
+                    onOpen={(anchor) => handleOpenPicker('heightInches', anchor)}
                     value={`${draft.heightInches} in`}
-                    isOpen={activePicker === 'heightInches'}
-                    onToggle={() => onTogglePicker('heightInches')}
-                    compact
-                    options={Array.from({ length: 12 }, (_, i) => i).map((v) => ({
-                      label: `${v} in`,
-                      selected: draft.heightInches === v,
-                      onPress: () => { onChange('heightInches', v); onClosePicker(); },
-                    }))}
                   />
                   <GoalDropdownField
-                    label="Sex"
-                    value={sexLabel}
-                    isOpen={activePicker === 'sex'}
-                    onToggle={() => onTogglePicker('sex')}
                     compact
-                    options={SEX_OPTIONS.map((o) => ({
-                      label: o.label,
-                      selected: draft.sex === o.value,
-                      onPress: () => { onChange('sex', o.value); onClosePicker(); },
-                    }))}
+                    isActive={activePicker === 'sex'}
+                    label="Sex"
+                    onOpen={(anchor) => handleOpenPicker('sex', anchor)}
+                    value={sexLabel}
                   />
                 </View>
 
                 <GoalDropdownField
+                  isActive={activePicker === 'activityLevel'}
                   label="Activity level"
+                  onOpen={(anchor) => handleOpenPicker('activityLevel', anchor)}
                   value={activityLabel}
-                  isOpen={activePicker === 'activityLevel'}
-                  onToggle={() => onTogglePicker('activityLevel')}
-                  zIndex={25}
-                  options={ACTIVITY_LEVEL_OPTIONS.map((o) => ({
-                    label: o.label,
-                    description: o.description,
-                    selected: draft.activityLevel === o.value,
-                    onPress: () => { onChange('activityLevel', o.value); onClosePicker(); },
-                  }))}
                 />
 
                 <GoalDropdownField
+                  isActive={activePicker === 'workoutsPerWeek'}
                   label="Workouts per week"
+                  onOpen={(anchor) => handleOpenPicker('workoutsPerWeek', anchor)}
                   value={`${draft.workoutsPerWeek} / wk`}
-                  isOpen={activePicker === 'workoutsPerWeek'}
-                  onToggle={() => onTogglePicker('workoutsPerWeek')}
-                  zIndex={20}
-                  options={WORKOUTS_PER_WEEK_OPTIONS.map((v) => ({
-                    label: `${v} / wk`,
-                    selected: draft.workoutsPerWeek === v,
-                    onPress: () => { onChange('workoutsPerWeek', v); onClosePicker(); },
-                  }))}
                 />
 
                 <GoalDropdownField
+                  isActive={activePicker === 'nutritionGoal'}
                   label="Goal"
+                  onOpen={(anchor) => handleOpenPicker('nutritionGoal', anchor)}
                   value={goalLabel}
-                  isOpen={activePicker === 'nutritionGoal'}
-                  onToggle={() => onTogglePicker('nutritionGoal')}
-                  zIndex={15}
-                  options={NUTRITION_GOAL_OPTIONS.map((o) => ({
-                    label: o.label,
-                    description: o.description,
-                    selected: draft.nutritionGoal === o.value,
-                    onPress: () => { onChange('nutritionGoal', o.value); onClosePicker(); },
-                  }))}
                 />
               </View>
 
@@ -1687,67 +1754,90 @@ function GoalSettingsModal({
             <ActionButton label="Save goals" onPress={onSave} style={styles.goalSaveButton} />
           </SurfaceCard>
         </KeyboardAvoidingView>
+
+        <GoalDropdownMenu
+          anchor={pickerAnchor}
+          isOpen={activePicker !== null && pickerAnchor !== null}
+          onClose={handleClosePickerMenu}
+          options={activePickerOptions}
+          title={activePickerTitle}
+        />
       </View>
     </Modal>
   );
 }
 
-function GoalDropdownField({
-  compact = false,
+function GoalDropdownMenu({
+  anchor,
   isOpen,
-  label,
-  onToggle,
+  onClose,
   options,
-  value,
-  zIndex = 10,
+  title,
 }: {
-  compact?: boolean;
+  anchor: GoalPickerAnchor | null;
   isOpen: boolean;
-  label: string;
-  onToggle: () => void;
-  options: {
-    description?: string | null;
-    label: string;
-    onPress: () => void;
-    selected: boolean;
-  }[];
-  value: string;
-  zIndex?: number;
+  onClose: () => void;
+  options: GoalPickerOption[];
+  title: string;
 }) {
+  const windowDimensions = Dimensions.get('window');
+  const estimatedHeight = Math.min(56 * options.length + Spacing.md * 2, 280);
+  const minimumWidth = title === 'Activity level' || title === 'Goal' ? 220 : 140;
+  const menuWidth = Math.min(
+    Math.max(anchor?.width ?? minimumWidth, minimumWidth),
+    windowDimensions.width - Spacing.lg * 2,
+  );
+  const left = Math.min(
+    Math.max(Spacing.lg, anchor?.x ?? Spacing.lg),
+    windowDimensions.width - menuWidth - Spacing.lg,
+  );
+  const shouldOpenUpward =
+    anchor !== null &&
+    anchor.y + anchor.height + estimatedHeight + Spacing.md > windowDimensions.height - Spacing.lg;
+  const top = anchor
+    ? shouldOpenUpward
+      ? Math.max(Spacing.lg, anchor.y - estimatedHeight - Spacing.sm)
+      : Math.min(
+          windowDimensions.height - estimatedHeight - Spacing.lg,
+          anchor.y + anchor.height + Spacing.sm,
+        )
+    : Spacing.lg;
+
+  if (!isOpen || anchor === null) {
+    return null;
+  }
+
   return (
-    <View style={[styles.dropdownWrapper, compact ? styles.dropdownWrapperCompact : null, { zIndex }]}>
-      <PressScale haptic="light" onPress={onToggle} pressEffect="opacity">
-        <View style={[styles.goalSelectionField, compact ? styles.goalSelectionFieldCompact : null]}>
-          <AppText variant="micro" dimmed>
-            {label}
-          </AppText>
-          <View style={styles.goalSelectionValueRow}>
-            <AppText variant="bodyStrong">{value}</AppText>
-            <Ionicons
-              name={isOpen ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={AppColors.textSubtle}
-            />
-          </View>
-        </View>
-      </PressScale>
-      {isOpen ? (
-        <View style={styles.dropdownMenu}>
+    <View pointerEvents="box-none" style={styles.dropdownOverlayRoot}>
+      <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        <SurfaceCard
+          floating
+          style={[
+            styles.dropdownMenuCard,
+            {
+              left,
+              top,
+              width: menuWidth,
+              maxHeight: estimatedHeight,
+            },
+          ]}>
           <ScrollView
-            showsVerticalScrollIndicator={false}
             bounces={false}
-            nestedScrollEnabled
-            style={styles.dropdownScroll}>
+            contentContainerStyle={styles.pickerOptionList}
+            showsVerticalScrollIndicator={false}
+            style={styles.pickerModalScroll}>
             {options.map((option, index) => (
               <PressScale
-                key={`${option.label}-${index}`}
+                key={`${title}-${option.label}-${index}`}
                 haptic="light"
                 onPress={option.onPress}
                 pressEffect="opacity">
                 <View
                   style={[
-                    styles.dropdownOptionRow,
-                    option.selected ? styles.dropdownOptionSelected : null,
+                    styles.pickerOptionRow,
+                    index > 0 ? styles.pickerOptionRowSeparated : null,
+                    option.selected ? styles.pickerOptionRowSelected : null,
                   ]}>
                   <View style={styles.pickerOptionCopy}>
                     <AppText variant={option.selected ? 'bodyStrong' : 'body'}>
@@ -1766,8 +1856,62 @@ function GoalDropdownField({
               </PressScale>
             ))}
           </ScrollView>
+        </SurfaceCard>
+      </View>
+    </View>
+  );
+}
+
+function GoalDropdownField({
+  compact = false,
+  isActive = false,
+  label,
+  onOpen,
+  value,
+}: {
+  compact?: boolean;
+  isActive?: boolean;
+  label: string;
+  onOpen: (anchor: GoalPickerAnchor) => void;
+  value: string;
+}) {
+  const triggerRef = useRef<View | null>(null);
+
+  function handleOpen() {
+    triggerRef.current?.measureInWindow((x, y, width, height) => {
+      onOpen({ height, width, x, y });
+    });
+  }
+
+  return (
+    <View style={[styles.dropdownWrapper, compact ? styles.dropdownWrapperCompact : null]}>
+      <PressScale
+        containerStyle={styles.dropdownTrigger}
+        haptic="light"
+        onPress={handleOpen}
+        pressEffect="opacity">
+        <View
+          ref={triggerRef}
+          style={[
+            styles.goalSelectionField,
+            compact ? styles.goalSelectionFieldCompact : null,
+            isActive ? styles.goalSelectionFieldActive : null,
+          ]}>
+          <AppText variant="micro" dimmed>
+            {label}
+          </AppText>
+          <View style={styles.goalSelectionValueRow}>
+            <AppText numberOfLines={1} style={styles.goalSelectionValue} variant="bodyStrong">
+              {value}
+            </AppText>
+            <Ionicons
+              name={isActive ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={AppColors.textSubtle}
+            />
+          </View>
         </View>
-      ) : null}
+      </PressScale>
     </View>
   );
 }
@@ -2090,17 +2234,26 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   goalSelectionField: {
-    flex: 1,
     borderRadius: Radii.md,
     backgroundColor: AppColors.surfaceLowest,
     borderWidth: 1,
     borderColor: AppColors.outlineVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
+    minHeight: 72,
+    justifyContent: 'center',
     gap: Spacing.xs,
+  },
+  goalSelectionFieldActive: {
+    borderColor: 'rgba(30, 98, 152, 0.3)',
+    backgroundColor: 'rgba(39, 116, 174, 0.05)',
   },
   goalSelectionFieldCompact: {
     minWidth: 0,
+    minHeight: 60,
+  },
+  goalSelectionValue: {
+    flex: 1,
   },
   goalSelectionValueRow: {
     flexDirection: 'row',
@@ -2215,6 +2368,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.md,
   },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalCardPressable: {
+    width: '100%',
+    maxWidth: 360,
+  },
   modalScrim: {
     flex: 1,
     backgroundColor: 'rgba(29, 31, 36, 0.24)',
@@ -2247,56 +2407,25 @@ const styles = StyleSheet.create({
   },
   dropdownWrapper: {
     position: 'relative',
+    alignSelf: 'stretch',
   },
   dropdownWrapperCompact: {
     flex: 1,
     minWidth: 0,
   },
-  dropdownMenu: {
+  dropdownTrigger: {
+    width: '100%',
+  },
+  dropdownOverlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  dropdownMenuCard: {
     position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: Spacing.xs,
-    backgroundColor: AppColors.surfaceLowest,
-    borderRadius: Radii.md,
-    borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-    overflow: 'hidden',
+    gap: Spacing.md,
+    padding: Spacing.md,
   },
-  dropdownScroll: {
+  pickerModalScroll: {
     maxHeight: 220,
-  },
-  dropdownOptionRow: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  dropdownOptionSelected: {
-    backgroundColor: AppColors.surfaceLow,
-  },
-  pickerModalCard: {
-    width: '100%',
-    maxWidth: 360,
-    gap: Spacing.md,
-  },
-  pickerModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  pickerModalRoot: {
-    width: '100%',
-    maxWidth: 360,
   },
   pickerOptionCopy: {
     flex: 1,
