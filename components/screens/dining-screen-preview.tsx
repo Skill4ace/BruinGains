@@ -851,37 +851,33 @@ function DiningHallModal({
                       <SurfaceCard
                         key={`${item.stationName}-${item.itemOrder}-${item.itemName}`}
                         style={styles.menuItemCard}>
-                        <View style={styles.menuItemTopRow}>
-                          <View style={styles.menuItemCopy}>
+                        <View style={styles.menuItemTopRowCompact}>
+                          <View style={styles.menuItemCopyCompact}>
                             <AppText numberOfLines={2} variant="bodyStrong">
                               {item.itemName}
                             </AppText>
+                            <AppText
+                              numberOfLines={1}
+                              style={styles.menuItemNutritionLabelCompact}
+                              variant="micro"
+                              dimmed>
+                              {formatInlineMacros(item)}
+                            </AppText>
                           </View>
-                          <PressScale
-                            haptic="light"
-                            onPress={() => onOpenItem(item)}>
-                            <View style={styles.menuAddButtonCompact}>
-                              <Ionicons name="add" size={17} color={AppColors.primary} />
-                            </View>
-                          </PressScale>
-                        </View>
-                        <View style={styles.menuItemBottomRow}>
-                          <AppText
-                            numberOfLines={1}
-                            style={styles.menuItemNutritionLabel}
-                            variant="micro"
-                            dimmed>
-                            {item.customizationOptions.length > 0
-                              ? 'Tap to customize'
-                              : formatInlineMacros(item)}
-                          </AppText>
                           {item.badgeLabels.length > 0 ? (
-                            <View style={styles.menuBadgeRow}>
-                              {item.badgeLabels.slice(0, 5).map((badge) => (
+                            <View style={styles.menuBadgeRowCompact}>
+                              {item.badgeLabels.slice(0, 4).map((badge) => (
                                 <MenuBadge key={`${item.itemName}-${badge}`} label={badge} />
                               ))}
                             </View>
                           ) : null}
+                          <PressScale
+                            haptic="light"
+                            onPress={() => onOpenItem(item)}>
+                            <View style={styles.menuAddButtonCompact}>
+                              <Ionicons name="add" size={16} color={AppColors.primary} />
+                            </View>
+                          </PressScale>
                         </View>
                       </SurfaceCard>
                     ))}
@@ -1828,8 +1824,12 @@ function formatInlineMacros(item: DiningMenuItem) {
     return 'Nutrition unavailable';
   }
 
+  if (item.customizationOptions.length > 0) {
+    return 'Build your own';
+  }
+
   if (item.proteinG === null || item.carbsG === null || item.fatsG === null) {
-    return `${item.calories ?? 0} cal • Macros unavailable`;
+    return `${item.calories ?? 0} cal • macros unavailable`;
   }
 
   return `${item.calories ?? 0} cal • P ${item.proteinG}g • C ${item.carbsG}g • F ${item.fatsG}g`;
@@ -2237,56 +2237,51 @@ const styles = StyleSheet.create({
   },
   menuItemCard: {
     backgroundColor: AppColors.surfaceLowest,
-    gap: Spacing.xs,
-    paddingVertical: Spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
-  menuItemTopRow: {
+  menuItemTopRowCompact: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.sm,
   },
-  menuItemCopy: {
+  menuItemCopyCompact: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
-  menuItemBottomRow: {
+  menuItemNutritionLabelCompact: {
+    letterSpacing: 0.2,
+  },
+  menuBadgeRowCompact: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    justifyContent: 'space-between',
-  },
-  menuBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    gap: 4,
     flexShrink: 0,
-    flexWrap: 'wrap',
+    marginTop: 2,
   },
   menuBadge: {
-    width: 24,
-    height: 24,
+    width: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   menuBadgeImage: {
-    width: 22,
-    height: 22,
+    width: 16,
+    height: 16,
   },
   menuBadgeText: {
     letterSpacing: 0,
   },
-  menuItemNutritionLabel: {
-    flex: 1,
-  },
   menuAddButtonCompact: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: AppColors.surfaceLow,
     borderWidth: 1,
     borderColor: AppColors.outlineVariant,
+    marginTop: 1,
   },
   menuEmptyState: {
     backgroundColor: AppColors.surfaceLowest,
