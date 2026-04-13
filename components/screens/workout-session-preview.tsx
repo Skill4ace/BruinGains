@@ -12,6 +12,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Switch,
   StyleSheet,
   TextInput,
   UIManager,
@@ -25,6 +26,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 
 import {
@@ -49,6 +51,7 @@ import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Layout, Radii, Shadows, Spacing } from '@/constants/theme';
 import type {
   ActiveWorkoutExerciseView,
+  ActiveWorkoutSessionView,
   ActiveWorkoutSetView,
   ExerciseLibraryEntry,
   WorkoutExerciseDraft,
@@ -123,6 +126,19 @@ const EXERCISE_FILTER_TYPES: ExerciseFilterType[] = [
 ];
 
 type WorkoutInputField = 'durationMinutes' | 'load' | 'reps';
+
+type WorkoutTimingDraft = {
+  automaticTiming: boolean;
+  endedAt: Date | null;
+  startedAt: Date;
+};
+
+type WorkoutTimingField = 'end' | 'start';
+
+type TimingWheelItem = {
+  label: string;
+  value: string;
+};
 
 type WorkoutInputTarget = {
   exercise: ActiveWorkoutExerciseView;
@@ -268,6 +284,130 @@ function getWorkoutInputSpecialKey(field: WorkoutInputField) {
   return null;
 }
 
+function startOfLocalDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function addDays(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function getLocalDayKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDayKey(value: string) {
+  const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  ) {
+    return new Date();
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function formatRelativeDateLabel(date: Date, referenceDate: Date) {
+  const dateStart = startOfLocalDay(date).getTime();
+  const referenceStart = startOfLocalDay(referenceDate).getTime();
+  const dayDiff = Math.round((dateStart - referenceStart) / (24 * 60 * 60 * 1000));
+
+  if (dayDiff === 0) {
+    return 'Today';
+  }
+
+  if (dayDiff === -1) {
+    return 'Yesterday';
+  }
+
+  if (dayDiff === 1) {
+    return 'Tomorrow';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function formatWorkoutTimingValue(date: Date, referenceDate: Date) {
+  return `${formatRelativeDateLabel(date, referenceDate)}, ${new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)}`;
+}
+
+function formatWorkoutTimingDuration(
+  startedAt: Date,
+  endedAt: Date | null,
+  referenceDate: Date,
+) {
+  const endBoundary = endedAt ?? referenceDate;
+  const elapsedSeconds = Math.max(
+    Math.floor((endBoundary.getTime() - startedAt.getTime()) / 1000),
+    0,
+  );
+  const hours = Math.floor(elapsedSeconds / 3600);
+  const minutes = String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, '0');
+  const seconds = String(elapsedSeconds % 60).padStart(2, '0');
+
+  if (hours > 0) {
+    return `${hours}:${minutes}:${seconds}`;
+  }
+
+  return `${minutes}:${seconds}`;
+}
+
+function toTwelveHourParts(date: Date) {
+  const hours = date.getHours();
+
+  return {
+    hour: String(hours % 12 || 12),
+    meridiem: hours >= 12 ? 'PM' : 'AM',
+    minute: String(date.getMinutes()).padStart(2, '0'),
+  };
+}
+
+function setDateToLocalDay(baseDate: Date, dayKey: string) {
+  const nextDay = parseLocalDayKey(dayKey);
+  const next = new Date(baseDate);
+  next.setFullYear(nextDay.getFullYear(), nextDay.getMonth(), nextDay.getDate());
+  return next;
+}
+
+function setDateToTwelveHour(baseDate: Date, hourValue: string, meridiem: string) {
+  const normalizedHour = Number.parseInt(hourValue, 10);
+  const next = new Date(baseDate);
+  const hour = normalizedHour % 12 + (meridiem === 'PM' ? 12 : 0);
+  next.setHours(hour);
+  return next;
+}
+
+function clampDate(date: Date, minDate: Date, maxDate: Date) {
+  return new Date(
+    Math.min(Math.max(date.getTime(), minDate.getTime()), maxDate.getTime()),
+  );
+}
+
+function createWorkoutTimingDraft(session: ActiveWorkoutSessionView['session']) {
+  return {
+    automaticTiming: session.endedAt === null,
+    startedAt: new Date(session.startedAt),
+    endedAt: session.endedAt ? new Date(session.endedAt) : null,
+  } satisfies WorkoutTimingDraft;
+}
+
 export function WorkoutSessionPreview() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -283,6 +423,7 @@ export function WorkoutSessionPreview() {
     replaceWorkoutExercise,
     state,
     toggleWorkoutSetCompletion,
+    updateWorkoutSessionTiming,
     updateWorkoutSessionTitle,
     updateWorkoutSetType,
     updateWorkoutSetValue,
@@ -307,6 +448,9 @@ export function WorkoutSessionPreview() {
   );
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [titleDraft, setTitleDraft] = useState('');
+  const [timingModalOpen, setTimingModalOpen] = useState(false);
+  const [timingDraft, setTimingDraft] = useState<WorkoutTimingDraft | null>(null);
+  const [activeTimingField, setActiveTimingField] = useState<WorkoutTimingField | null>(null);
   const [celebratingExerciseId, setCelebratingExerciseId] = useState<string | null>(null);
   const [activeInputKey, setActiveInputKey] = useState<string | null>(null);
   const [replaceInputOnNextKey, setReplaceInputOnNextKey] = useState(false);
@@ -848,6 +992,99 @@ export function WorkoutSessionPreview() {
     });
   }
 
+  function handleOpenTimingModal() {
+    if (!activeWorkout) {
+      return;
+    }
+
+    Keyboard.dismiss();
+    closeInputBoard();
+    setActiveExerciseAction(null);
+    setActiveSetTypeTarget(null);
+    setTimingDraft(createWorkoutTimingDraft(activeWorkout.session));
+    setActiveTimingField(null);
+    setTimingModalOpen(true);
+  }
+
+  function handleCloseTimingModal() {
+    setTimingModalOpen(false);
+    setTimingDraft(null);
+    setActiveTimingField(null);
+  }
+
+  function handleToggleAutomaticTiming(nextValue: boolean) {
+    setTimingDraft((currentValue) => {
+      if (!currentValue) {
+        return currentValue;
+      }
+
+      return {
+        ...currentValue,
+        automaticTiming: nextValue,
+        endedAt: nextValue
+          ? null
+          : clampDate(
+              currentValue.endedAt ?? clock,
+              currentValue.startedAt,
+              clock,
+            ),
+      };
+    });
+
+    if (nextValue && activeTimingField === 'end') {
+      setActiveTimingField(null);
+    }
+  }
+
+  function updateTimingField(field: WorkoutTimingField, nextDate: Date) {
+    setTimingDraft((currentValue) => {
+      if (!currentValue) {
+        return currentValue;
+      }
+
+      if (field === 'start') {
+        const maxStartDate = currentValue.automaticTiming
+          ? clock
+          : currentValue.endedAt ?? clock;
+        const nextStartedAt = clampDate(nextDate, addDays(clock, -365), maxStartDate);
+
+        return {
+          ...currentValue,
+          startedAt: nextStartedAt,
+          endedAt:
+            currentValue.automaticTiming || currentValue.endedAt === null
+              ? currentValue.endedAt
+              : clampDate(currentValue.endedAt, nextStartedAt, clock),
+        };
+      }
+
+      if (currentValue.automaticTiming) {
+        return currentValue;
+      }
+
+      return {
+        ...currentValue,
+        endedAt: clampDate(nextDate, currentValue.startedAt, clock),
+      };
+    });
+  }
+
+  function handleSaveTiming() {
+    if (!activeWorkout || !timingDraft) {
+      return;
+    }
+
+    updateWorkoutSessionTiming(activeWorkout.session.id, {
+      startedAt: timingDraft.startedAt.toISOString(),
+      endedAt:
+        timingDraft.automaticTiming || timingDraft.endedAt === null
+          ? null
+          : timingDraft.endedAt.toISOString(),
+    });
+    setClock(new Date());
+    handleCloseTimingModal();
+  }
+
   function handleFinishWorkout() {
     if (!activeWorkout) {
       return;
@@ -932,7 +1169,14 @@ export function WorkoutSessionPreview() {
               {formatWorkoutDate(activeWorkout.session.startedAt)}
             </AppText>
           </View>
-          <HeaderTimer value={formatWorkoutTimerLabel(activeWorkout.session.startedAt, clock)} />
+          <HeaderTimer
+            onPress={handleOpenTimingModal}
+            value={formatWorkoutTimerLabel(
+              activeWorkout.session.startedAt,
+              clock,
+              activeWorkout.session.endedAt,
+            )}
+          />
           <PressScale haptic="medium" onPress={handleFinishWorkout}>
             <View style={styles.finishButton}>
               <AppText variant="label" color={AppColors.white}>
@@ -1355,6 +1599,17 @@ export function WorkoutSessionPreview() {
           handleOpenExercisePicker('replace', exerciseId);
         }}
       />
+      <WorkoutTimingModal
+        activeField={activeTimingField}
+        draft={timingDraft}
+        isOpen={timingModalOpen}
+        onClose={handleCloseTimingModal}
+        onFieldChange={setActiveTimingField}
+        onSave={handleSaveTiming}
+        onToggleAutomaticTiming={handleToggleAutomaticTiming}
+        onUpdateField={updateTimingField}
+        referenceDate={clock}
+      />
       <SetTypeModal
         isOpen={Boolean(activeSetTypeTarget)}
         onClose={() => setActiveSetTypeTarget(null)}
@@ -1376,14 +1631,425 @@ export function WorkoutSessionPreview() {
   );
 }
 
-function HeaderTimer({ value }: { value: string }) {
+function WorkoutTimingModal({
+  activeField,
+  draft,
+  isOpen,
+  onClose,
+  onFieldChange,
+  onSave,
+  onToggleAutomaticTiming,
+  onUpdateField,
+  referenceDate,
+}: {
+  activeField: WorkoutTimingField | null;
+  draft: WorkoutTimingDraft | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onFieldChange: (field: WorkoutTimingField | null) => void;
+  onSave: () => void;
+  onToggleAutomaticTiming: (value: boolean) => void;
+  onUpdateField: (field: WorkoutTimingField, nextDate: Date) => void;
+  referenceDate: Date;
+}) {
+  if (!isOpen || !draft) {
+    return null;
+  }
+
+  const editableDate =
+    activeField === 'end' ? draft.endedAt ?? referenceDate : draft.startedAt;
+  const editableParts = toTwelveHourParts(editableDate);
+  const minDate =
+    activeField === 'end' ? draft.startedAt : addDays(referenceDate, -365);
+  const maxDate =
+    activeField === 'end'
+      ? referenceDate
+      : draft.automaticTiming
+        ? referenceDate
+        : draft.endedAt ?? referenceDate;
+  const dayItems: TimingWheelItem[] = [];
+  const startDay = startOfLocalDay(minDate);
+  const endDay = startOfLocalDay(maxDate);
+
+  for (
+    let cursor = new Date(startDay);
+    cursor.getTime() <= endDay.getTime();
+    cursor = addDays(cursor, 1)
+  ) {
+    dayItems.push({
+      label: formatRelativeDateLabel(cursor, referenceDate),
+      value: getLocalDayKey(cursor),
+    });
+  }
+
+  const hourItems: TimingWheelItem[] = Array.from({ length: 12 }, (_, index) => ({
+    label: String(index + 1),
+    value: String(index + 1),
+  }));
+  const minuteItems: TimingWheelItem[] = Array.from({ length: 60 }, (_, index) => ({
+    label: String(index).padStart(2, '0'),
+    value: String(index).padStart(2, '0'),
+  }));
+  const meridiemItems: TimingWheelItem[] = [
+    { label: 'AM', value: 'AM' },
+    { label: 'PM', value: 'PM' },
+  ];
+
   return (
-    <View style={styles.timerPill}>
-      <Ionicons name="time-outline" size={14} color={AppColors.primary} />
-      <AppText variant="bodyStrong" color={AppColors.primary}>
-        {value}
-      </AppText>
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
+      <View style={styles.timingModalScrim}>
+        <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
+        <View style={styles.timingModalContainer}>
+          <View style={styles.timingModalCard}>
+            <View style={styles.timingModalHeader}>
+              <PressScale haptic="none" onPress={onClose}>
+                <View style={styles.timingModalCloseButton}>
+                  <Ionicons name="close" size={22} color={AppColors.text} />
+                </View>
+              </PressScale>
+              <AppText color={AppColors.text} style={styles.timingModalTitle} variant="title">
+                Adjust Start/End Time
+              </AppText>
+              <PressScale haptic="none" onPress={onSave} pressEffect="opacity">
+                <View style={styles.timingModalSaveButton}>
+                  <AppText color={AppColors.primary} style={styles.timingModalSaveLabel} variant="bodyStrong">
+                    Save
+                  </AppText>
+                </View>
+              </PressScale>
+            </View>
+
+            <View style={styles.timingModalBody}>
+              <View style={styles.timingToggleCard}>
+                <View style={styles.timingToggleRow}>
+                  <View style={styles.timingSectionCopy}>
+                    <AppText color={AppColors.text} style={styles.timingSectionTitle} variant="bodyStrong">
+                      Automatic Timing
+                    </AppText>
+                  </View>
+                  <Switch
+                    ios_backgroundColor={AppColors.surfaceHighest}
+                    onValueChange={onToggleAutomaticTiming}
+                    thumbColor={AppColors.white}
+                    trackColor={{ false: AppColors.surfaceHighest, true: AppColors.primaryContainer }}
+                    value={draft.automaticTiming}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.timingSummaryGroup}>
+                <TimingSummaryRow
+                  disabled
+                  label="Duration"
+                  value={formatWorkoutTimingDuration(
+                    draft.startedAt,
+                    draft.automaticTiming ? null : draft.endedAt,
+                    referenceDate,
+                  )}
+                />
+                <TimingSummaryRow
+                  active={activeField === 'start'}
+                  label="Start Time"
+                  onPress={() => onFieldChange(activeField === 'start' ? null : 'start')}
+                  value={formatWorkoutTimingValue(draft.startedAt, referenceDate)}
+                />
+                <TimingSummaryRow
+                  active={activeField === 'end'}
+                  disabled={draft.automaticTiming}
+                  label="End Time"
+                  onPress={() =>
+                    !draft.automaticTiming && onFieldChange(activeField === 'end' ? null : 'end')
+                  }
+                  value={
+                    draft.automaticTiming
+                      ? 'Currently Active'
+                      : formatWorkoutTimingValue(draft.endedAt ?? referenceDate, referenceDate)
+                  }
+                />
+              </View>
+
+              {activeField ? (
+                <View style={styles.timingWheelSection}>
+                  <View style={styles.timingWheelHeader}>
+                    <AppText color={AppColors.text} variant="bodyStrong">
+                      {activeField === 'start' ? 'Edit Start Time' : 'Edit End Time'}
+                    </AppText>
+                    <PressScale
+                      haptic="none"
+                      onPress={() => onFieldChange(null)}
+                      pressEffect="opacity"
+                    >
+                      <AppText color={AppColors.primary} variant="bodyStrong">
+                        Done
+                      </AppText>
+                    </PressScale>
+                  </View>
+
+                  <View style={styles.timingWheelsRow}>
+                    <TimingWheelField label="Day">
+                      <TimingWheelPicker
+                        items={dayItems}
+                        onChange={(value) =>
+                          onUpdateField(
+                            activeField,
+                            clampDate(
+                              setDateToLocalDay(editableDate, value),
+                              minDate,
+                              maxDate,
+                            ),
+                          )
+                        }
+                        selectedValue={getLocalDayKey(editableDate)}
+                      />
+                    </TimingWheelField>
+                    <TimingWheelField label="Hour">
+                      <TimingWheelPicker
+                        items={hourItems}
+                        onChange={(value) =>
+                          onUpdateField(
+                            activeField,
+                            clampDate(
+                              setDateToTwelveHour(editableDate, value, editableParts.meridiem),
+                              minDate,
+                              maxDate,
+                            ),
+                          )
+                        }
+                        selectedValue={editableParts.hour}
+                      />
+                    </TimingWheelField>
+                    <TimingWheelField label="Min">
+                      <TimingWheelPicker
+                        items={minuteItems}
+                        onChange={(value) => {
+                          const next = new Date(editableDate);
+                          next.setMinutes(Number.parseInt(value, 10), 0, 0);
+                          onUpdateField(activeField, clampDate(next, minDate, maxDate));
+                        }}
+                        selectedValue={editableParts.minute}
+                      />
+                    </TimingWheelField>
+                    <TimingWheelField label="AM/PM">
+                      <TimingWheelPicker
+                        items={meridiemItems}
+                        onChange={(value) =>
+                          onUpdateField(
+                            activeField,
+                            clampDate(
+                              setDateToTwelveHour(editableDate, editableParts.hour, value),
+                              minDate,
+                              maxDate,
+                            ),
+                          )
+                        }
+                        selectedValue={editableParts.meridiem}
+                      />
+                    </TimingWheelField>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function TimingSummaryRow({
+  active = false,
+  disabled = false,
+  label,
+  onPress,
+  value,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  label: string;
+  onPress?: () => void;
+  value: string;
+}) {
+  const content = (
+    <View
+      style={[
+        styles.timingSummaryRow,
+        active ? styles.timingSummaryRowActive : null,
+        disabled ? styles.timingSummaryRowDisabled : null,
+      ]}>
+      <View style={styles.timingSummaryCopy}>
+        <AppText color={AppColors.textMuted} style={styles.timingSummaryCaption} variant="micro">
+          {label}
+        </AppText>
+        <AppText
+          color={disabled ? AppColors.textMuted : AppColors.text}
+          style={styles.timingSummaryValue}
+          variant="title"
+        >
+          {value}
+        </AppText>
+      </View>
+      {onPress ? (
+        <Ionicons
+          color={active ? AppColors.primary : AppColors.textSubtle}
+          name={active ? 'chevron-up' : 'chevron-forward'}
+          size={18}
+        />
+      ) : null}
     </View>
+  );
+
+  if (!onPress) {
+    return content;
+  }
+
+  return (
+    <PressScale haptic="none" onPress={onPress} pressEffect="opacity">
+      {content}
+    </PressScale>
+  );
+}
+
+function TimingWheelField({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <View style={styles.timingWheelField}>
+      <AppText color={AppColors.textMuted} style={styles.timingWheelLabel} variant="micro">
+        {label}
+      </AppText>
+      {children}
+    </View>
+  );
+}
+
+function TimingWheelPicker({
+  items,
+  onChange,
+  selectedValue,
+}: {
+  items: TimingWheelItem[];
+  onChange: (value: string) => void;
+  selectedValue: string;
+}) {
+  const itemHeight = 34;
+  const visibleRows = 5;
+  const frameHeight = itemHeight * visibleRows;
+  const verticalPadding = (frameHeight - itemHeight) / 2;
+  const scrollRef = useRef<ScrollView | null>(null);
+  const lastCommittedValueRef = useRef(selectedValue);
+  const [centeredValue, setCenteredValue] = useState(selectedValue);
+  const selectedIndex = Math.max(
+    0,
+    items.findIndex((item) => item.value === selectedValue),
+  );
+
+  function getIndexForOffset(offsetY: number) {
+    return Math.max(0, Math.min(items.length - 1, Math.round(offsetY / itemHeight)));
+  }
+
+  function syncCenteredValue(offsetY: number) {
+    const nextIndex = getIndexForOffset(offsetY);
+    const nextValue = items[nextIndex]?.value;
+
+    if (nextValue && nextValue !== centeredValue) {
+      setCenteredValue(nextValue);
+    }
+
+    return nextIndex;
+  }
+
+  useEffect(() => {
+    lastCommittedValueRef.current = selectedValue;
+    setCenteredValue(selectedValue);
+  }, [selectedValue]);
+
+  useEffect(() => {
+    const frameId = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: selectedIndex * itemHeight,
+        animated: false,
+      });
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [itemHeight, selectedIndex]);
+
+  function commitOffset(offsetY: number, animated: boolean) {
+    const nextIndex = syncCenteredValue(offsetY);
+    const nextValue = items[nextIndex]?.value;
+
+    if (nextValue && nextValue !== lastCommittedValueRef.current) {
+      lastCommittedValueRef.current = nextValue;
+      onChange(nextValue);
+      void Haptics.selectionAsync();
+    }
+
+    scrollRef.current?.scrollTo({
+      y: nextIndex * itemHeight,
+      animated,
+    });
+  }
+
+  return (
+    <View style={[styles.timingWheelFrame, { height: frameHeight }]}>
+      <ScrollView
+        bounces={false}
+        decelerationRate="fast"
+        onMomentumScrollEnd={(event) => {
+          commitOffset(event.nativeEvent.contentOffset.y, true);
+        }}
+        onScroll={(event) => {
+          syncCenteredValue(event.nativeEvent.contentOffset.y);
+        }}
+        onScrollEndDrag={(event) => {
+          const velocityY = Math.abs(event.nativeEvent.velocity?.y ?? 0);
+
+          if (velocityY < 0.05) {
+            commitOffset(event.nativeEvent.contentOffset.y, true);
+          }
+        }}
+        ref={scrollRef}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={itemHeight}
+        snapToOffsets={items.map((_, index) => index * itemHeight)}
+        contentContainerStyle={{ paddingVertical: verticalPadding }}
+      >
+        {items.map((item) => {
+          const selected = item.value === centeredValue;
+
+          return (
+            <View key={`${item.value}-${item.label}`} style={[styles.timingWheelRow, { height: itemHeight }]}>
+              <AppText
+                color={selected ? AppColors.text : AppColors.textSubtle}
+                style={styles.timingWheelValue}
+                variant={selected ? 'bodyStrong' : 'body'}
+              >
+                {item.label}
+              </AppText>
+            </View>
+          );
+        })}
+      </ScrollView>
+      <View pointerEvents="none" style={[styles.timingWheelSelectionBand, { height: itemHeight, top: verticalPadding }]} />
+    </View>
+  );
+}
+
+function HeaderTimer({ onPress, value }: { onPress: () => void; value: string }) {
+  return (
+    <PressScale haptic="none" onPress={onPress} pressEffect="opacity">
+      <View style={styles.timerPill}>
+        <Ionicons name="time-outline" size={14} color={AppColors.primary} />
+        <AppText variant="bodyStrong" color={AppColors.primary}>
+          {value}
+        </AppText>
+      </View>
+    </PressScale>
   );
 }
 
@@ -2345,6 +3011,165 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  timingModalBody: {
+    gap: Spacing.md,
+  },
+  timingModalCard: {
+    borderRadius: 26,
+    backgroundColor: AppColors.surfaceLowest,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 18,
+    gap: Spacing.md,
+    ...Shadows.floating,
+  },
+  timingModalCloseButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AppColors.surfaceVariant,
+  },
+  timingModalContainer: {
+    width: '100%',
+    maxWidth: 420,
+  },
+  timingModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  timingModalSaveButton: {
+    minWidth: 52,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  timingModalSaveLabel: {
+    fontSize: 15,
+    lineHeight: 18,
+  },
+  timingModalScrim: {
+    flex: 1,
+    backgroundColor: 'rgba(29, 31, 36, 0.22)',
+    paddingHorizontal: Layout.pagePadding,
+    paddingVertical: Spacing.huge,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timingModalTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  timingSectionCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  timingSectionTitle: {
+    fontSize: 15,
+    lineHeight: 18,
+  },
+  timingSummaryCaption: {
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  timingSummaryCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  timingSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+    minHeight: 72,
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceVariant,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  timingSummaryRowActive: {
+    backgroundColor: 'rgba(39, 116, 174, 0.08)',
+    borderColor: 'rgba(39, 116, 174, 0.16)',
+  },
+  timingSummaryRowDisabled: {
+    backgroundColor: AppColors.surfaceLow,
+  },
+  timingSummaryValue: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  timingSummaryGroup: {
+    gap: Spacing.sm,
+  },
+  timingToggleCard: {
+    borderRadius: Radii.lg,
+    backgroundColor: AppColors.surfaceVariant,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  timingToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  timingWheelField: {
+    flex: 1,
+    gap: Spacing.sm,
+    minWidth: 0,
+  },
+  timingWheelFrame: {
+    borderRadius: 18,
+    backgroundColor: AppColors.surfaceVariant,
+    overflow: 'hidden',
+  },
+  timingWheelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  timingWheelLabel: {
+    letterSpacing: 0.6,
+  },
+  timingWheelRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timingWheelSection: {
+    gap: Spacing.md,
+    marginTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: AppColors.outlineVariant,
+    paddingTop: Spacing.md,
+  },
+  timingWheelSelectionBand: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    borderRadius: Radii.md,
+    backgroundColor: 'rgba(39, 116, 174, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(39, 116, 174, 0.14)',
+  },
+  timingWheelsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  timingWheelValue: {
+    textAlign: 'center',
+    paddingHorizontal: 2,
   },
   scrollContent: {
     paddingHorizontal: Layout.pagePadding,

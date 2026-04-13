@@ -63,7 +63,11 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
               </View>
               <View style={styles.resumeMeta}>
                 <AppText variant="label" color={AppColors.primary}>
-                  {formatWorkoutTimerLabel(activeWorkout.session.startedAt, clock)}
+                  {formatWorkoutTimerLabel(
+                    activeWorkout.session.startedAt,
+                    clock,
+                    activeWorkout.session.endedAt,
+                  )}
                 </AppText>
                 <Ionicons name="chevron-up" size={16} color={AppColors.primary} />
               </View>

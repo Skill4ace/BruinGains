@@ -309,10 +309,22 @@ export function formatMealLogMeta(meal: MealLog) {
   return parts.join(' • ');
 }
 
-export function formatWorkoutTimerLabel(startedAt: string, referenceDate = new Date()) {
-  const elapsedMs = Math.max(referenceDate.getTime() - new Date(startedAt).getTime(), 0);
-  const elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));
-  const minutes = String(elapsedMinutes).padStart(2, '0');
-  const seconds = String(Math.floor((elapsedMs % (60 * 1000)) / 1000)).padStart(2, '0');
+export function formatWorkoutTimerLabel(
+  startedAt: string,
+  referenceDate = new Date(),
+  endedAt: string | null = null,
+) {
+  const startedAtMs = new Date(startedAt).getTime();
+  const endBoundaryMs = endedAt ? new Date(endedAt).getTime() : referenceDate.getTime();
+  const elapsedMs = Math.max(endBoundaryMs - startedAtMs, 0);
+  const elapsedSeconds = Math.floor(elapsedMs / 1000);
+  const hours = Math.floor(elapsedSeconds / 3600);
+  const minutes = String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, '0');
+  const seconds = String(elapsedSeconds % 60).padStart(2, '0');
+
+  if (hours > 0) {
+    return `${hours}:${minutes}:${seconds}`;
+  }
+
   return `${minutes}:${seconds}`;
 }

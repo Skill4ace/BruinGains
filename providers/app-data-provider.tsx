@@ -94,6 +94,10 @@ type AppDataContextValue = {
   startEmptyWorkout: () => string;
   startWorkoutFromTemplate: (templateId: string) => string;
   toggleWorkoutSetCompletion: (sessionExerciseId: string, setNumber: number) => void;
+  updateWorkoutSessionTiming: (
+    sessionId: string,
+    input: { endedAt: string | null; startedAt: string },
+  ) => void;
   updateWorkoutSessionTitle: (sessionId: string, title: string) => void;
   updateWorkoutTemplate: (
     input: {
@@ -1875,6 +1879,44 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function updateWorkoutSessionTiming(
+    sessionId: string,
+    input: { endedAt: string | null; startedAt: string },
+  ) {
+    setState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const startedAtMs = new Date(input.startedAt).getTime();
+      const endedAtMs = input.endedAt ? new Date(input.endedAt).getTime() : null;
+
+      if (!Number.isFinite(startedAtMs)) {
+        return currentState;
+      }
+
+      if (
+        endedAtMs !== null &&
+        (!Number.isFinite(endedAtMs) || endedAtMs < startedAtMs)
+      ) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        workoutSessions: currentState.workoutSessions.map((session) =>
+          session.id === sessionId
+            ? {
+                ...session,
+                startedAt: new Date(startedAtMs).toISOString(),
+                endedAt: endedAtMs === null ? null : new Date(endedAtMs).toISOString(),
+              }
+            : session,
+        ),
+      };
+    });
+  }
+
   function finishWorkoutSession(sessionId: string) {
     setState((currentState) => {
       if (!currentState) {
@@ -1969,6 +2011,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         toggleWorkoutSetCompletion,
         updateMealLog,
         updateGoalPlan,
+        updateWorkoutSessionTiming,
         updateWorkoutSessionTitle,
         updateWorkoutTemplate,
         updateWorkoutSetType,
