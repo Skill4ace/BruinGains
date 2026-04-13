@@ -199,8 +199,8 @@ function createPlaceholderWorkoutSet(
 function createCustomExerciseLibraryEntry(draft: WorkoutExerciseDraft) {
   return {
     aliases: [],
-    bodyPart: null,
-    category: null,
+    bodyPart: draft.bodyPart ?? null,
+    category: draft.category ?? null,
     description: null,
     difficulty: null,
     equipment: null,

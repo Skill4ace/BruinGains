@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.campus-data]
 verify_jwt = false
+
+[functions.campus-item-detail]
+verify_jwt = true

@@ -74,7 +74,7 @@ export const SEX_OPTIONS: {
   { label: 'Other', value: 'other' },
 ];
 
-export const WORKOUTS_PER_WEEK_OPTIONS = [2, 3, 4, 5, 6, 7] as const;
+export const WORKOUTS_PER_WEEK_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 
 const ACTIVITY_MULTIPLIERS: Record<ProfileActivityLevel, number> = {
   inactive: 1.2,

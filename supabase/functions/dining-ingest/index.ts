@@ -283,6 +283,24 @@ function parseIntegerValue(value: string | null | undefined) {
   return numeric === null ? null : Math.round(numeric)
 }
 
+function isZeroNutritionPlaceholder(
+  calories: number | null,
+  nutritionFacts: ParsedNutritionFact[],
+) {
+  return (
+    calories === 0 &&
+    nutritionFacts.length > 0 &&
+    nutritionFacts.every((fact) => {
+      const numericValue = parseNumericValue(fact.value)
+
+      return (
+        (numericValue === null || numericValue === 0) &&
+        (fact.dailyValuePercent === null || fact.dailyValuePercent === 0)
+      )
+    })
+  )
+}
+
 function normalizeNutritionFactId(label: string) {
   const words = cleanText(label)
     .replace(/[%*]/g, '')
@@ -510,6 +528,7 @@ function parseHallMenuPage(
   }
 
   const sections: ParsedMealSection[] = []
+  const sectionMealPeriods = new Set<MealPeriod>()
 
   for (const period of PERIOD_CONFIG) {
     if (selectedMealPeriods?.length && !selectedMealPeriods.includes(period.key)) {
@@ -578,8 +597,89 @@ function parseHallMenuPage(
         mealPeriod: period.key,
         items,
       })
+      sectionMealPeriods.add(period.key)
     }
   }
+
+  // Some UCLA pages expose the visible meal heading correctly but wire it to the wrong
+  // anchor id. Bruin Bowl dinner is the current example. When the standard anchor lookup
+  // misses a requested/open period, fall back to parsing the heading block directly.
+  $('.anchor-title-button h2').each((_, headingElement) => {
+    const heading = cleanText($(headingElement).text()).toLowerCase()
+    const fallbackPeriod = PERIOD_CONFIG.find((period) =>
+      heading.includes(period.heading.toLowerCase()),
+    )?.key
+
+    if (!fallbackPeriod || sectionMealPeriods.has(fallbackPeriod)) {
+      return
+    }
+
+    if (selectedMealPeriods?.length && !selectedMealPeriods.includes(fallbackPeriod)) {
+      return
+    }
+
+    if (!selectedMealPeriods?.length && !openMealPeriods.includes(fallbackPeriod)) {
+      return
+    }
+
+    const sectionContainer = $(headingElement).closest('.anchor-title-button').nextAll('div').first()
+    const stations = sectionContainer.find('.meal-station')
+
+    if (!stations.length) {
+      return
+    }
+
+    const items: ParsedMenuItem[] = []
+    let itemOrder = 0
+
+    stations.each((__, stationElement) => {
+      const stationName = cleanText(
+        $(stationElement).find('.category-heading h2').first().text(),
+      ) || 'Station'
+
+      $(stationElement)
+        .find('section.recipe-card, .recipe-card')
+        .each((___, recipeCard) => {
+          const itemName = cleanText(
+            $(recipeCard).find('.menu-item-title h3').first().text(),
+          )
+          const recipeId = extractRecipeIdFromHref(
+            $(recipeCard).find('.recipe-detail-link').attr('href'),
+          )
+
+          if (!itemName || recipeId === null) {
+            return
+          }
+
+          const badgeLabels = $(recipeCard)
+            .find('.menu-item-meta-data img')
+            .map((____, badgeImage) =>
+              normalizeBadgeLabel(
+                $(badgeImage).attr('title') ?? $(badgeImage).attr('alt'),
+              ),
+            )
+            .get()
+            .filter((badge): badge is string => Boolean(badge))
+
+          items.push({
+            badgeLabels: [...new Set(badgeLabels)],
+            itemName,
+            itemOrder,
+            recipeId,
+            stationName,
+          })
+          itemOrder += 1
+        })
+    })
+
+    if (items.length > 0) {
+      sections.push({
+        mealPeriod: fallbackPeriod,
+        items,
+      })
+      sectionMealPeriods.add(fallbackPeriod)
+    }
+  })
 
   return {
     hallId: hall.id,
@@ -594,6 +694,10 @@ function getOpenMealPeriodsForHall(
   hall: DiningHallRow,
   selectedMealPeriods: MealPeriod[] | undefined,
 ) {
+  if (selectedMealPeriods?.length) {
+    return [...selectedMealPeriods]
+  }
+
   const candidatePeriods = selectedMealPeriods?.length
     ? selectedMealPeriods
     : PERIOD_CONFIG.map((period) => period.key)
@@ -1421,8 +1525,13 @@ function parseNutritionPage(html: string): NutritionDetail {
         servingSize: null,
       })
     })
+  const parsedCalories = parseIntegerValue(cleanText($('.single-calories').first().text()))
   const hasCustomizationCalculator =
-    customizationOptions.length > 0 && nutritionRoot.find('#selected-items').length > 0
+    customizationOptions.length > 0 &&
+    (
+      nutritionRoot.find('#selected-items').length > 0 ||
+      isZeroNutritionPlaceholder(parsedCalories, nutritionFacts)
+    )
   const ingredients =
     tabIngredients.length > 0
       ? tabIngredients
@@ -1443,7 +1552,7 @@ function parseNutritionPage(html: string): NutritionDetail {
       : servingMatch?.[1]?.split('Calories')[0]?.trim() ?? null,
     calories: hasCustomizationCalculator
       ? null
-      : parseIntegerValue(cleanText($('.single-calories').first().text())),
+      : parsedCalories,
     fatsG: hasCustomizationCalculator
       ? null
       : parseIntegerValue(labelToValue.get('total fat')),
@@ -1860,10 +1969,12 @@ async function syncDiningMenus(
 
       const sourceUrl = buildHallUrl(hall.source_path ?? hall.id, targetDate)
       const openMealPeriods = getOpenMealPeriodsForHall(hall, selectedMealPeriods)
-      const closedMealPeriods = PERIOD_CONFIG.map((period) => period.key).filter(
-        (mealPeriod) =>
-          !getOpenMealPeriodsForHall(hall, undefined).includes(mealPeriod),
-      )
+      const closedMealPeriods = selectedMealPeriods?.length
+        ? []
+        : PERIOD_CONFIG.map((period) => period.key).filter(
+            (mealPeriod) =>
+              !getOpenMealPeriodsForHall(hall, undefined).includes(mealPeriod),
+          )
 
       try {
         const sourceHtml = await fetchHtml(sourceUrl)
@@ -2040,9 +2151,16 @@ async function syncDiningMenus(
                     defaultQuantity: option.defaultQuantity,
                     detailPath: optionDetailPath,
                     fatsG: optionNutrition?.fatsG ?? option.fatsG,
-                    ingredients: optionNutrition?.ingredients ?? option.ingredients,
+                    ingredients:
+                      optionNutrition?.ingredients && optionNutrition.ingredients.length > 0
+                        ? optionNutrition.ingredients
+                        : option.ingredients,
                     itemName: optionNutrition?.itemName ?? option.itemName,
-                    nutritionFacts: optionNutrition?.nutritionFacts ?? option.nutritionFacts,
+                    nutritionFacts:
+                      optionNutrition?.nutritionFacts &&
+                      optionNutrition.nutritionFacts.length > 0
+                        ? optionNutrition.nutritionFacts
+                        : option.nutritionFacts,
                     proteinG: optionNutrition?.proteinG ?? option.proteinG,
                     recipeId: option.recipeId,
                     servingSize: optionNutrition?.servingSize ?? option.servingSize,

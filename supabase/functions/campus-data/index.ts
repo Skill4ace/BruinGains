@@ -5,6 +5,8 @@ import { createClient } from '@supabase/supabase-js'
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000
 const USER_REQUEST_LIMIT = 12
 const IP_REQUEST_LIMIT = 60
+const MENU_PAGE_SIZE = 500
+const MENU_MAX_PAGES = 10
 
 type CampusDataBundle = {
   diningHalls: PublicDiningHall[]
@@ -487,20 +489,39 @@ async function loadGymCapacities(admin: ReturnType<typeof createAdminClient>) {
 }
 
 async function loadDiningMenuItems(admin: ReturnType<typeof createAdminClient>) {
-  const { data, error } = await admin
-    .from('latest_menu_items')
-    .select(
-      'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,customization_options,ingredients,item_order,nutrition_facts',
-    )
-    .order('hall_sort_order', { ascending: true })
-    .order('meal_period', { ascending: true })
-    .order('item_order', { ascending: true })
+  const rows: LatestDiningMenuItemRow[] = []
+  let pageStart = 0
 
-  if (error || !data) {
-    throw error ?? new Error('Unable to load dining menu items')
+  for (let page = 0; page < MENU_MAX_PAGES; page += 1) {
+    const pageEnd = pageStart + MENU_PAGE_SIZE - 1
+    const { data, error } = await admin
+      .from('latest_menu_items')
+      .select(
+        'allergen_labels,badge_labels,hall_id,hall_name,hall_sort_order,service_date,meal_period,snapshot_status,fetched_at,recipe_id,station_name,item_name,serving_size,calories,protein_g,carbs_g,fats_g,customization_options,ingredients,item_order,nutrition_facts',
+      )
+      .order('hall_sort_order', { ascending: true })
+      .order('meal_period', { ascending: true })
+      .order('item_order', { ascending: true })
+      .range(pageStart, pageEnd)
+
+    if (error || !data) {
+      throw error ?? new Error('Unable to load dining menu items')
+    }
+
+    if (data.length === 0) {
+      break
+    }
+
+    rows.push(...(data as LatestDiningMenuItemRow[]))
+
+    if (data.length < MENU_PAGE_SIZE) {
+      break
+    }
+
+    pageStart += MENU_PAGE_SIZE
   }
 
-  return (data as LatestDiningMenuItemRow[]).map(mapLatestDiningMenuItemRow)
+  return rows.map(mapLatestDiningMenuItemRow)
 }
 
 Deno.serve(async (req) => {

@@ -116,6 +116,8 @@ export type WorkoutTrackingMode = 'strength' | 'duration';
 export type WorkoutSetType = 'drop' | 'failure' | 'normal' | 'warmup';
 
 export type WorkoutExerciseDraft = {
+  bodyPart?: string | null;
+  category?: string | null;
   currentLoad?: number;
   name: string;
   repRange?: string;

@@ -1539,9 +1539,7 @@ function GoalSettingsModal({
               </PressScale>
             </View>
 
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.goalModalScrollContent}>
+            <View style={styles.goalModalScrollContent}>
               <View style={styles.goalModalSection}>
                 <AppText variant="label" dimmed>
                   Profile inputs
@@ -1562,128 +1560,85 @@ function GoalSettingsModal({
                   />
                 </View>
 
-                <View style={styles.goalTripleRow}>
-                  <GoalSelectionField
+                <View style={[styles.goalTripleRow, { zIndex: 30 }]}>
+                  <GoalDropdownField
                     label="Height"
-                    onPress={() => onTogglePicker('heightFeet')}
                     value={`${draft.heightFeet} ft`}
+                    isOpen={activePicker === 'heightFeet'}
+                    onToggle={() => onTogglePicker('heightFeet')}
                     compact
+                    options={Array.from({ length: 6 }, (_, i) => i + 3).map((v) => ({
+                      label: `${v} ft`,
+                      selected: draft.heightFeet === v,
+                      onPress: () => { onChange('heightFeet', v); onClosePicker(); },
+                    }))}
                   />
-                  <GoalSelectionField
+                  <GoalDropdownField
                     label="Inches"
-                    onPress={() => onTogglePicker('heightInches')}
                     value={`${draft.heightInches} in`}
+                    isOpen={activePicker === 'heightInches'}
+                    onToggle={() => onTogglePicker('heightInches')}
                     compact
+                    options={Array.from({ length: 12 }, (_, i) => i).map((v) => ({
+                      label: `${v} in`,
+                      selected: draft.heightInches === v,
+                      onPress: () => { onChange('heightInches', v); onClosePicker(); },
+                    }))}
                   />
-                  <GoalSelectionField
+                  <GoalDropdownField
                     label="Sex"
-                    onPress={() => onTogglePicker('sex')}
                     value={sexLabel}
+                    isOpen={activePicker === 'sex'}
+                    onToggle={() => onTogglePicker('sex')}
                     compact
+                    options={SEX_OPTIONS.map((o) => ({
+                      label: o.label,
+                      selected: draft.sex === o.value,
+                      onPress: () => { onChange('sex', o.value); onClosePicker(); },
+                    }))}
                   />
                 </View>
 
-                {activePicker === 'heightFeet' ? (
-                  <GoalInlinePicker
-                    options={Array.from({ length: 5 }, (_, index) => index + 4).map((value) => ({
-                      description: null,
-                      label: `${value} ft`,
-                      onPress: () => {
-                        onChange('heightFeet', value);
-                        onClosePicker();
-                      },
-                      selected: draft.heightFeet === value,
-                    }))}
-                  />
-                ) : null}
-
-                {activePicker === 'heightInches' ? (
-                  <GoalInlinePicker
-                    options={Array.from({ length: 12 }, (_, index) => index).map((value) => ({
-                      description: null,
-                      label: `${value} in`,
-                      onPress: () => {
-                        onChange('heightInches', value);
-                        onClosePicker();
-                      },
-                      selected: draft.heightInches === value,
-                    }))}
-                  />
-                ) : null}
-
-                {activePicker === 'sex' ? (
-                  <GoalInlinePicker
-                    options={SEX_OPTIONS.map((option) => ({
-                      description: null,
-                      label: option.label,
-                      onPress: () => {
-                        onChange('sex', option.value);
-                        onClosePicker();
-                      },
-                      selected: draft.sex === option.value,
-                    }))}
-                  />
-                ) : null}
-
-                <GoalSelectionField
+                <GoalDropdownField
                   label="Activity level"
-                  onPress={() => onTogglePicker('activityLevel')}
                   value={activityLabel}
+                  isOpen={activePicker === 'activityLevel'}
+                  onToggle={() => onTogglePicker('activityLevel')}
+                  zIndex={25}
+                  options={ACTIVITY_LEVEL_OPTIONS.map((o) => ({
+                    label: o.label,
+                    description: o.description,
+                    selected: draft.activityLevel === o.value,
+                    onPress: () => { onChange('activityLevel', o.value); onClosePicker(); },
+                  }))}
                 />
 
-                {activePicker === 'activityLevel' ? (
-                  <GoalInlinePicker
-                    options={ACTIVITY_LEVEL_OPTIONS.map((option) => ({
-                      description: option.description,
-                      label: option.label,
-                      onPress: () => {
-                        onChange('activityLevel', option.value);
-                        onClosePicker();
-                      },
-                      selected: draft.activityLevel === option.value,
-                    }))}
-                  />
-                ) : null}
-
-                <GoalSelectionField
+                <GoalDropdownField
                   label="Workouts per week"
-                  onPress={() => onTogglePicker('workoutsPerWeek')}
                   value={`${draft.workoutsPerWeek} / wk`}
+                  isOpen={activePicker === 'workoutsPerWeek'}
+                  onToggle={() => onTogglePicker('workoutsPerWeek')}
+                  zIndex={20}
+                  options={WORKOUTS_PER_WEEK_OPTIONS.map((v) => ({
+                    label: `${v} / wk`,
+                    selected: draft.workoutsPerWeek === v,
+                    onPress: () => { onChange('workoutsPerWeek', v); onClosePicker(); },
+                  }))}
                 />
 
-                {activePicker === 'workoutsPerWeek' ? (
-                  <GoalInlinePicker
-                    options={WORKOUTS_PER_WEEK_OPTIONS.map((value) => ({
-                      description: null,
-                      label: `${value} / wk`,
-                      onPress: () => {
-                        onChange('workoutsPerWeek', value);
-                        onClosePicker();
-                      },
-                      selected: draft.workoutsPerWeek === value,
-                    }))}
-                  />
-                ) : null}
-
-                <GoalSelectionField
+                <GoalDropdownField
                   label="Goal"
-                  onPress={() => onTogglePicker('nutritionGoal')}
                   value={goalLabel}
+                  isOpen={activePicker === 'nutritionGoal'}
+                  onToggle={() => onTogglePicker('nutritionGoal')}
+                  zIndex={15}
+                  options={NUTRITION_GOAL_OPTIONS.map((o) => ({
+                    label: o.label,
+                    description: o.description,
+                    selected: draft.nutritionGoal === o.value,
+                    onPress: () => { onChange('nutritionGoal', o.value); onClosePicker(); },
+                  }))}
                 />
-
-                {activePicker === 'nutritionGoal' ? (
-                  <GoalInlinePicker
-                    options={NUTRITION_GOAL_OPTIONS.map((option) => ({
-                      description: option.description,
-                      label: option.label,
-                      onPress: () => {
-                        onChange('nutritionGoal', option.value);
-                        onClosePicker();
-                      },
-                      selected: draft.nutritionGoal === option.value,
-                    }))}
-                  />
-                ) : null}
               </View>
 
               <View style={styles.goalModalSection}>
@@ -1727,7 +1682,7 @@ function GoalSettingsModal({
                   />
                 </View>
               </View>
-            </ScrollView>
+            </View>
 
             <ActionButton label="Save goals" onPress={onSave} style={styles.goalSaveButton} />
           </SurfaceCard>
@@ -1737,73 +1692,83 @@ function GoalSettingsModal({
   );
 }
 
-function GoalInlinePicker({
+function GoalDropdownField({
+  compact = false,
+  isOpen,
+  label,
+  onToggle,
   options,
+  value,
+  zIndex = 10,
 }: {
+  compact?: boolean;
+  isOpen: boolean;
+  label: string;
+  onToggle: () => void;
   options: {
-    description: string | null;
+    description?: string | null;
     label: string;
     onPress: () => void;
     selected: boolean;
   }[];
-}) {
-  return (
-    <View style={styles.inlinePickerCard}>
-      <View style={styles.pickerOptionList}>
-        {options.map((option, index) => (
-          <PressScale
-            key={`${option.label}-${index}`}
-            haptic="light"
-            onPress={option.onPress}
-            pressEffect="opacity">
-            <View
-              style={[
-                styles.pickerOptionRow,
-                option.selected ? styles.pickerOptionRowSelected : null,
-                index > 0 ? styles.pickerOptionRowSeparated : null,
-              ]}>
-              <View style={styles.pickerOptionCopy}>
-                <AppText variant="bodyStrong">{option.label}</AppText>
-                {option.description ? (
-                  <AppText variant="micro" dimmed>
-                    {option.description}
-                  </AppText>
-                ) : null}
-              </View>
-              {option.selected ? (
-                <Ionicons name="checkmark" size={18} color={AppColors.primary} />
-              ) : null}
-            </View>
-          </PressScale>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function GoalSelectionField({
-  compact = false,
-  label,
-  onPress,
-  value,
-}: {
-  compact?: boolean;
-  label: string;
-  onPress: () => void;
   value: string;
+  zIndex?: number;
 }) {
   return (
-    <PressScale haptic="light" onPress={onPress} pressEffect="opacity">
-      <View style={[styles.goalSelectionField, compact ? styles.goalSelectionFieldCompact : null]}>
-        <AppText variant="micro" dimmed>
-          {label}
-        </AppText>
-        <View style={styles.goalSelectionValueRow}>
-          <AppText variant="bodyStrong">{value}</AppText>
-          <Ionicons name="chevron-down" size={16} color={AppColors.textSubtle} />
+    <View style={[styles.dropdownWrapper, compact ? styles.dropdownWrapperCompact : null, { zIndex }]}>
+      <PressScale haptic="light" onPress={onToggle} pressEffect="opacity">
+        <View style={[styles.goalSelectionField, compact ? styles.goalSelectionFieldCompact : null]}>
+          <AppText variant="micro" dimmed>
+            {label}
+          </AppText>
+          <View style={styles.goalSelectionValueRow}>
+            <AppText variant="bodyStrong">{value}</AppText>
+            <Ionicons
+              name={isOpen ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={AppColors.textSubtle}
+            />
+          </View>
         </View>
-      </View>
-    </PressScale>
+      </PressScale>
+      {isOpen ? (
+        <View style={styles.dropdownMenu}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            nestedScrollEnabled
+            style={styles.dropdownScroll}>
+            {options.map((option, index) => (
+              <PressScale
+                key={`${option.label}-${index}`}
+                haptic="light"
+                onPress={option.onPress}
+                pressEffect="opacity">
+                <View
+                  style={[
+                    styles.dropdownOptionRow,
+                    option.selected ? styles.dropdownOptionSelected : null,
+                  ]}>
+                  <View style={styles.pickerOptionCopy}>
+                    <AppText variant={option.selected ? 'bodyStrong' : 'body'}>
+                      {option.label}
+                    </AppText>
+                    {option.description ? (
+                      <AppText variant="micro" dimmed>
+                        {option.description}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  {option.selected ? (
+                    <Ionicons name="checkmark" size={18} color={AppColors.primary} />
+                  ) : null}
+                </View>
+              </PressScale>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -2280,11 +2245,43 @@ const styles = StyleSheet.create({
   documentBodyText: {
     color: AppColors.text,
   },
-  inlinePickerCard: {
+  dropdownWrapper: {
+    position: 'relative',
+  },
+  dropdownWrapperCompact: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: Spacing.xs,
+    backgroundColor: AppColors.surfaceLowest,
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  dropdownScroll: {
+    maxHeight: 220,
+  },
+  dropdownOptionRow: {
+    paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  dropdownOptionSelected: {
+    backgroundColor: AppColors.surfaceLow,
   },
   pickerModalCard: {
     width: '100%',

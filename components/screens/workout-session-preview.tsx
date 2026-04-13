@@ -53,7 +53,6 @@ import type {
   ExerciseLibraryEntry,
   WorkoutExerciseDraft,
   WorkoutSetType,
-  WorkoutTrackingMode,
 } from '@/types/app-data';
 
 type PickerState = {
@@ -81,22 +80,19 @@ type ExerciseFilterType =
   | 'machine';
 
 type ExerciseComposerDraft = {
-  durationMinutes: string;
-  load: string;
+  bodyPart: string;
+  category: string;
   name: string;
-  repRange: string;
-  reps: string;
-  trackingMode: WorkoutTrackingMode;
 };
 
 const DEFAULT_COMPOSER_DRAFT: ExerciseComposerDraft = {
-  durationMinutes: '20:00',
-  load: '45',
+  bodyPart: '',
+  category: '',
   name: '',
-  repRange: '8-10',
-  reps: '8',
-  trackingMode: 'strength',
 };
+
+const COMPOSER_BODY_PARTS = ['Arms', 'Back', 'Cardio', 'Chest', 'Core', 'Legs', 'Shoulders', 'Other'];
+const COMPOSER_CATEGORIES = ['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Bodyweight', 'Other'];
 
 const SET_TYPE_OPTIONS: { label: string; shortLabel: string; tone: string; value: WorkoutSetType }[] = [
   { label: 'Regular', shortLabel: '', tone: AppColors.textMuted, value: 'normal' },
@@ -838,36 +834,16 @@ export function WorkoutSessionPreview() {
 
   function handleSaveCustomExercise() {
     const trimmedName = composerDraft.name.trim();
-    const targetSets = 1;
 
     if (!trimmedName) {
       return;
     }
 
-    if (composerDraft.trackingMode === 'duration') {
-      const parsedDurationMinutes = parseDurationMinutesInput(
-        composerDraft.durationMinutes,
-        20,
-      );
-
-      if (parsedDurationMinutes === null) {
-        return;
-      }
-
-      const targetDurationMinutes = Math.max(1 / 60, parsedDurationMinutes);
-
-      handleSelectExerciseDraft({
-        name: trimmedName,
-        targetSets,
-        targetDurationMinutes,
-        trackingMode: 'duration',
-      });
-      return;
-    }
-
     handleSelectExerciseDraft({
       name: trimmedName,
-      targetSets,
+      bodyPart: composerDraft.bodyPart || null,
+      category: composerDraft.category || null,
+      targetSets: 3,
       trackingMode: 'strength',
     });
   }
@@ -1259,7 +1235,7 @@ export function WorkoutSessionPreview() {
 
         <View style={styles.footerButtons}>
           <ActionButton
-            label="Add Exercise"
+            label="Add Exercises"
             onPress={() => {
               closeInputBoard();
               handleOpenExercisePicker('add');
@@ -1268,7 +1244,7 @@ export function WorkoutSessionPreview() {
           />
           <PressScale haptic="none" onPress={handleCancelWorkout}>
             <View style={styles.cancelWorkoutButton}>
-              <AppText variant="label" color={AppColors.danger}>
+              <AppText variant="bodyStrong" color={AppColors.danger}>
                 Cancel Workout
               </AppText>
             </View>
@@ -1639,31 +1615,39 @@ function ExercisePickerModal({
                 </PressScale>
                 <AppText variant="title">{title}</AppText>
               </View>
-              {pickerMode === 'add' ? (
-                <PressScale
-                  haptic="light"
-                  onPress={onCommitSelection}
-                  pressEffect="opacity"
-                  disabled={selectedExerciseIds.length === 0}
-                >
-                  <View style={styles.headerAddButton}>
-                    <AppText
-                      variant="label"
-                      color={
-                        selectedExerciseIds.length > 0
-                          ? AppColors.primary
-                          : AppColors.textSubtle
-                      }
-                    >
-                      {selectedExerciseIds.length > 0
-                        ? `add (${selectedExerciseIds.length})`
-                        : 'add'}
+              <View style={styles.modalHeaderTrailing}>
+                <PressScale haptic="light" onPress={onCreateCustom} pressEffect="opacity">
+                  <View style={styles.headerCustomButton}>
+                    <Ionicons name="add-circle-outline" size={16} color={AppColors.primary} />
+                    <AppText variant="micro" color={AppColors.primary}>
+                      Custom
                     </AppText>
                   </View>
                 </PressScale>
-              ) : (
-                <View style={styles.headerAddButtonPlaceholder} />
-              )}
+                {pickerMode === 'add' ? (
+                  <PressScale
+                    haptic="light"
+                    onPress={onCommitSelection}
+                    pressEffect="opacity"
+                    disabled={selectedExerciseIds.length === 0}
+                  >
+                    <View style={styles.headerAddButton}>
+                      <AppText
+                        variant="label"
+                        color={
+                          selectedExerciseIds.length > 0
+                            ? AppColors.primary
+                            : AppColors.textSubtle
+                        }
+                      >
+                        {selectedExerciseIds.length > 0
+                          ? `Add (${selectedExerciseIds.length})`
+                          : 'Add'}
+                      </AppText>
+                    </View>
+                  </PressScale>
+                ) : null}
+              </View>
             </View>
             <View style={styles.searchField}>
               <Ionicons name="search" size={18} color={AppColors.textSubtle} />
@@ -1676,87 +1660,108 @@ function ExercisePickerModal({
                 value={searchQuery}
               />
             </View>
-            <View style={styles.filterControlRow}>
-              <PressScale
-                containerStyle={styles.filterSelectorSlot}
-                haptic="none"
-                onPress={() =>
-                  setActiveFilterMenu((currentValue) =>
-                    currentValue === 'group' ? null : 'group',
-                  )
-                }
-              >
-                <View style={styles.filterSelector}>
-                  <AppText variant="micro" color={AppColors.textMuted}>
-                    {formatPrimaryFilterLabel(filterGroup)}
-                  </AppText>
-                  <Ionicons
-                    name={activeFilterMenu === 'group' ? 'chevron-up' : 'chevron-down'}
-                    size={16}
-                    color={AppColors.textMuted}
-                  />
-                </View>
-              </PressScale>
-              <PressScale
-                containerStyle={styles.filterSelectorSlot}
-                haptic="none"
-                onPress={() =>
-                  setActiveFilterMenu((currentValue) =>
-                    currentValue === 'type' ? null : 'type',
-                  )
-                }
-              >
-                <View style={styles.filterSelector}>
-                  <AppText variant="micro" color={AppColors.textMuted}>
-                    {formatSecondaryFilterLabel(filterType)}
-                  </AppText>
-                  <Ionicons
-                    name={activeFilterMenu === 'type' ? 'chevron-up' : 'chevron-down'}
-                    size={16}
-                    color={AppColors.textMuted}
-                  />
-                </View>
-              </PressScale>
-              <PressScale
-                containerStyle={styles.customActionSlot}
-                haptic="light"
-                onPress={onCreateCustom}>
-                <View style={styles.createCustomCompactButton}>
-                  <Ionicons name="add-circle-outline" size={18} color={AppColors.primary} />
-                  <AppText variant="micro" color={AppColors.primary}>
-                    add custom exercise
-                  </AppText>
-                </View>
-              </PressScale>
-            </View>
-            {activeFilterMenu ? (
-              <View style={styles.filterDropdownPanel}>
-                <View style={styles.filterDropdownWrap}>
-                  {(activeFilterMenu === 'group'
-                    ? EXERCISE_FILTER_GROUPS
-                    : EXERCISE_FILTER_TYPES
-                  ).map((value) => (
-                    <FilterChip
-                      key={value}
-                      active={
-                        activeFilterMenu === 'group'
-                          ? filterGroup === value
-                          : filterType === value
-                      }
-                      label={formatFilterLabel(value)}
-                      onPress={() => {
-                        if (activeFilterMenu === 'group') {
-                          setFilterGroup(value as ExerciseFilterGroup);
-                        } else {
-                          setFilterType(value as ExerciseFilterType);
-                        }
-                        setActiveFilterMenu(null);
-                      }}
+            <View style={[styles.filterControlRow, { zIndex: activeFilterMenu ? 20 : 0 }]}>
+              <View style={[styles.filterSelectorSlot, activeFilterMenu === 'group' ? { zIndex: 20 } : null]}>
+                <PressScale
+                  haptic="none"
+                  onPress={() =>
+                    setActiveFilterMenu((currentValue) =>
+                      currentValue === 'group' ? null : 'group',
+                    )
+                  }
+                >
+                  <View style={styles.filterSelector}>
+                    <AppText variant="micro" color={AppColors.textMuted}>
+                      {formatPrimaryFilterLabel(filterGroup)}
+                    </AppText>
+                    <Ionicons
+                      name={activeFilterMenu === 'group' ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={AppColors.textMuted}
                     />
-                  ))}
-                </View>
+                  </View>
+                </PressScale>
+                {activeFilterMenu === 'group' ? (
+                  <View style={styles.filterDropdownMenu}>
+                    <ScrollView bounces={false} nestedScrollEnabled style={styles.filterDropdownScroll}>
+                      {EXERCISE_FILTER_GROUPS.map((value) => (
+                        <PressScale
+                          key={value}
+                          haptic="light"
+                          onPress={() => {
+                            setFilterGroup(value as ExerciseFilterGroup);
+                            setActiveFilterMenu(null);
+                          }}
+                          pressEffect="opacity">
+                          <View
+                            style={[
+                              styles.filterDropdownOption,
+                              filterGroup === value ? styles.filterDropdownOptionActive : null,
+                            ]}>
+                            <AppText variant={filterGroup === value ? 'bodyStrong' : 'body'}>
+                              {formatFilterLabel(value)}
+                            </AppText>
+                            {filterGroup === value ? (
+                              <Ionicons name="checkmark" size={18} color={AppColors.primary} />
+                            ) : null}
+                          </View>
+                        </PressScale>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
+              <View style={[styles.filterSelectorSlot, activeFilterMenu === 'type' ? { zIndex: 20 } : null]}>
+                <PressScale
+                  haptic="none"
+                  onPress={() =>
+                    setActiveFilterMenu((currentValue) =>
+                      currentValue === 'type' ? null : 'type',
+                    )
+                  }
+                >
+                  <View style={styles.filterSelector}>
+                    <AppText variant="micro" color={AppColors.textMuted}>
+                      {formatSecondaryFilterLabel(filterType)}
+                    </AppText>
+                    <Ionicons
+                      name={activeFilterMenu === 'type' ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={AppColors.textMuted}
+                    />
+                  </View>
+                </PressScale>
+                {activeFilterMenu === 'type' ? (
+                  <View style={styles.filterDropdownMenu}>
+                    <ScrollView bounces={false} nestedScrollEnabled style={styles.filterDropdownScroll}>
+                      {EXERCISE_FILTER_TYPES.map((value) => (
+                        <PressScale
+                          key={value}
+                          haptic="light"
+                          onPress={() => {
+                            setFilterType(value as ExerciseFilterType);
+                            setActiveFilterMenu(null);
+                          }}
+                          pressEffect="opacity">
+                          <View
+                            style={[
+                              styles.filterDropdownOption,
+                              filterType === value ? styles.filterDropdownOptionActive : null,
+                            ]}>
+                            <AppText variant={filterType === value ? 'bodyStrong' : 'body'}>
+                              {formatFilterLabel(value)}
+                            </AppText>
+                            {filterType === value ? (
+                              <Ionicons name="checkmark" size={18} color={AppColors.primary} />
+                            ) : null}
+                          </View>
+                        </PressScale>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ) : null}
+              </View>
+            </View>
             <FlatList
               data={exerciseOptions}
               extraData={selectedExerciseIds}
@@ -1855,19 +1860,15 @@ function ExerciseComposerModal({
 }) {
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
-      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
-        <PressScale containerStyle={styles.modalBackdrop} haptic="none" onPress={onClose}>
-          <View />
-        </PressScale>
+      <View style={styles.composerScrim}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalContainer}
+          style={styles.composerAvoidingView}
         >
-          <SurfaceCard style={styles.modalCard}>
-            <View style={styles.modalHandle} />
+          <View style={styles.composerCard}>
             <View style={styles.modalHeader}>
-              <AppText variant="title">Custom exercise</AppText>
-              <PressScale haptic="none" onPress={onClose}>
+              <AppText variant="title">Create New Exercise</AppText>
+              <PressScale haptic="light" onPress={onClose}>
                 <View style={styles.headerButton}>
                   <Ionicons name="close" size={18} color={AppColors.text} />
                 </View>
@@ -1875,39 +1876,33 @@ function ExerciseComposerModal({
             </View>
 
             <ExerciseInputField
-              label="Exercise name"
+              label="Exercise Name"
               onChangeText={(value) => onChange({ ...draft, name: value })}
               value={draft.name}
             />
 
-            <View style={styles.modeRow}>
-              <TrackingModeChip
-                label="Strength"
-                onPress={() => onChange({ ...draft, trackingMode: 'strength' })}
-                selected={draft.trackingMode === 'strength'}
-              />
-              <TrackingModeChip
-                label="Duration"
-                onPress={() => onChange({ ...draft, trackingMode: 'duration' })}
-                selected={draft.trackingMode === 'duration'}
-              />
-            </View>
+            <ComposerDropdownField
+              label="Body Part"
+              value={draft.bodyPart || 'Select'}
+              options={COMPOSER_BODY_PARTS}
+              selectedValue={draft.bodyPart}
+              onSelect={(value) => onChange({ ...draft, bodyPart: value })}
+              zIndex={20}
+            />
 
-            {draft.trackingMode === 'duration' ? (
-              <ExerciseInputField
-                keyboardType="number-pad"
-                label="Duration per set"
-                onChangeText={(value) =>
-                  onChange({ ...draft, durationMinutes: formatDurationInput(value) })
-                }
-                value={draft.durationMinutes}
-              />
-            ) : null}
+            <ComposerDropdownField
+              label="Category"
+              value={draft.category || 'Select'}
+              options={COMPOSER_CATEGORIES}
+              selectedValue={draft.category}
+              onSelect={(value) => onChange({ ...draft, category: value })}
+              zIndex={10}
+            />
 
-            <ActionButton label="Save exercise" onPress={onSave} />
-          </SurfaceCard>
+            <ActionButton label="Save Exercise" onPress={onSave} />
+          </View>
         </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -1992,6 +1987,67 @@ function SetTypeModal({
   );
 }
 
+function ComposerDropdownField({
+  label,
+  onSelect,
+  options,
+  selectedValue,
+  value,
+  zIndex = 10,
+}: {
+  label: string;
+  onSelect: (value: string) => void;
+  options: string[];
+  selectedValue: string;
+  value: string;
+  zIndex?: number;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <View style={[styles.composerDropdownWrapper, { zIndex }]}>
+      <PressScale haptic="light" onPress={() => setIsOpen((prev) => !prev)} pressEffect="opacity">
+        <View style={styles.composerDropdownTrigger}>
+          <AppText variant="micro" dimmed>
+            {label}
+          </AppText>
+          <View style={styles.composerDropdownValueRow}>
+            <AppText variant={selectedValue ? 'bodyStrong' : 'body'} color={selectedValue ? AppColors.text : AppColors.textSubtle}>
+              {value}
+            </AppText>
+            <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={AppColors.textSubtle} />
+          </View>
+        </View>
+      </PressScale>
+      {isOpen ? (
+        <View style={styles.composerDropdownMenu}>
+          <ScrollView style={styles.composerDropdownScroll} bounces={false} keyboardShouldPersistTaps="handled">
+            {options.map((option) => {
+              const selected = option === selectedValue;
+              return (
+                <PressScale
+                  key={option}
+                  haptic="light"
+                  onPress={() => {
+                    onSelect(option);
+                    setIsOpen(false);
+                  }}
+                  pressEffect="opacity"
+                >
+                  <View style={[styles.composerDropdownOptionRow, selected ? styles.composerDropdownOptionSelected : null]}>
+                    <AppText variant={selected ? 'bodyStrong' : 'body'}>{option}</AppText>
+                    {selected ? <Ionicons name="checkmark" size={18} color={AppColors.primary} /> : null}
+                  </View>
+                </PressScale>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function ExerciseInputField({
   keyboardType = 'default',
   label,
@@ -2016,31 +2072,6 @@ function ExerciseInputField({
         value={value}
       />
     </View>
-  );
-}
-
-function TrackingModeChip({
-  label,
-  onPress,
-  selected,
-}: {
-  label: string;
-  onPress: () => void;
-  selected: boolean;
-}) {
-  return (
-    <PressScale haptic="none" onPress={onPress}>
-      <View
-        style={[
-          styles.modeChip,
-          selected ? styles.modeChipSelected : null,
-        ]}
-      >
-        <AppText variant="label" color={selected ? AppColors.white : AppColors.textMuted}>
-          {label}
-        </AppText>
-      </View>
-    </PressScale>
   );
 }
 
@@ -2182,22 +2213,22 @@ function getExerciseSearchScore(exercise: ExerciseLibraryEntry, query: string) {
 
 function formatFilterLabel(value: string) {
   if (value === 'all') {
-    return 'all';
+    return 'All';
   }
 
   if (value === 'bodyweight') {
-    return 'bodyweight';
+    return 'Bodyweight';
   }
 
-  return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function formatPrimaryFilterLabel(value: ExerciseFilterGroup) {
-  return value === 'all' ? 'any body part' : formatFilterLabel(value);
+  return value === 'all' ? 'Body Part' : formatFilterLabel(value);
 }
 
 function formatSecondaryFilterLabel(value: ExerciseFilterType) {
-  return value === 'all' ? 'any category' : formatFilterLabel(value);
+  return value === 'all' ? 'Category' : formatFilterLabel(value);
 }
 
 function getExerciseFilterGroup(exercise: ExerciseLibraryEntry): ExerciseFilterGroup {
@@ -2636,7 +2667,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   cancelWorkoutButton: {
-    minHeight: 42,
+    minHeight: 50,
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2659,6 +2690,25 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     borderTopLeftRadius: Radii.xl,
     borderTopRightRadius: Radii.xl,
+  },
+  composerScrim: {
+    flex: 1,
+    backgroundColor: 'rgba(11, 14, 18, 0.44)',
+    padding: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerAvoidingView: {
+    width: '100%',
+    maxWidth: 420,
+  },
+  composerCard: {
+    backgroundColor: AppColors.surfaceLowest,
+    borderRadius: Radii.xl,
+    padding: 24,
+    paddingBottom: 40,
+    gap: 20,
+    overflow: 'visible',
   },
   modalCardLarge: {
     height: '88%',
@@ -2685,16 +2735,28 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     flex: 1,
   },
+  modalHeaderTrailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  headerCustomButton: {
+    minHeight: 34,
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: AppColors.surfaceLow,
+  },
   headerAddButton: {
-    minHeight: 38,
+    minHeight: 34,
     borderRadius: Radii.pill,
     paddingHorizontal: Spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: AppColors.surfaceLow,
-  },
-  headerAddButtonPlaceholder: {
-    width: 56,
   },
   searchField: {
     minHeight: 42,
@@ -2717,6 +2779,7 @@ const styles = StyleSheet.create({
   },
   filterSelectorSlot: {
     flex: 1,
+    position: 'relative',
   },
   customActionSlot: {
     minWidth: 164,
@@ -2730,16 +2793,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: AppColors.surfaceLow,
   },
-  filterDropdownPanel: {
-    borderRadius: Radii.lg,
-    padding: Spacing.xs,
+  filterDropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    minWidth: 160,
+    marginTop: Spacing.xs,
+    borderRadius: Radii.md,
     backgroundColor: AppColors.surfaceLowest,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+    overflow: 'hidden',
     ...Shadows.soft,
+    zIndex: 20,
   },
-  filterDropdownWrap: {
+  filterDropdownScroll: {
+    maxHeight: 220,
+  },
+  filterDropdownOption: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  filterDropdownOptionActive: {
+    backgroundColor: AppColors.surfaceLow,
   },
   filterChip: {
     minHeight: 30,
@@ -2858,27 +2938,51 @@ const styles = StyleSheet.create({
     color: AppColors.text,
     fontSize: 15,
   },
-  modeRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    zIndex: 1,
+  composerDropdownWrapper: {
+    position: 'relative',
   },
-  modeChip: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+  composerDropdownTrigger: {
+    borderRadius: Radii.lg,
     backgroundColor: AppColors.surfaceLow,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    gap: Spacing.xs,
   },
-  modeChipSelected: {
-    backgroundColor: AppColors.primary,
-  },
-  composerStrengthRow: {
+  composerDropdownValueRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.sm,
   },
-  composerStrengthField: {
-    flex: 1,
+  composerDropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: Spacing.xs,
+    backgroundColor: AppColors.surfaceLowest,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: AppColors.outlineVariant,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  composerDropdownScroll: {
+    maxHeight: 220,
+  },
+  composerDropdownOptionRow: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  composerDropdownOptionSelected: {
+    backgroundColor: AppColors.surfaceLow,
   },
 });

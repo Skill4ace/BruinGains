@@ -62,6 +62,13 @@ const DINING_HALL_PRIORITY = ['bruin-plate', 'de-neve', 'epicuria-covel'] as con
 const UCLA_BADGE_ICON_BASE_URL = 'https://dining.ucla.edu/wp-content/uploads/2025/05';
 
 type PeriodKey = (typeof PERIODS)[number]['key'];
+type MenuItemTotals = {
+  calories: number;
+  carbs: number | null;
+  fats: number | null;
+  protein: number | null;
+};
+
 type CustomMealDraft = {
   id?: string;
   title: string;
@@ -253,6 +260,8 @@ export function DiningScreenPreview() {
     [activeHallId, diningMenuState.data, latestGlobalServiceDate, latestServiceDateByHall],
   );
 
+  const effectiveSelectedMenuItem = selectedMenuItem;
+
   const activeHallSections = useMemo(() => {
     const scopedItems = activeHallItems.filter((item) => {
       if (item.mealPeriod !== activeHallPeriod) {
@@ -280,13 +289,13 @@ export function DiningScreenPreview() {
     }));
   }, [activeHallItems, activeHallPeriod, deferredHallSearchQuery]);
 
-  const selectedItemTotals = useMemo(() => {
-    if (!selectedMenuItem) {
+  const selectedItemTotals = useMemo<MenuItemTotals | null>(() => {
+    if (!effectiveSelectedMenuItem) {
       return null;
     }
 
-    return getMenuItemTotals(selectedMenuItem, selectedServings);
-  }, [selectedMenuItem, selectedServings]);
+    return getMenuItemTotals(effectiveSelectedMenuItem, selectedServings);
+  }, [effectiveSelectedMenuItem, selectedServings]);
 
   useEffect(() => {
     if (hasSyncedLaunchDiningPeriodRef.current) {
@@ -426,7 +435,7 @@ export function DiningScreenPreview() {
     }
 
     addDiningMealLog({
-      item: selectedMenuItem,
+      item: effectiveSelectedMenuItem ?? selectedMenuItem,
       servings: overrides?.servings ?? selectedServings,
       nutritionOverride: overrides?.nutritionOverride,
       titleOverride: overrides?.titleOverride,
@@ -614,7 +623,7 @@ export function DiningScreenPreview() {
       </AppScreen>
 
       <DiningHallModal
-        activeItem={selectedMenuItem}
+        activeItem={effectiveSelectedMenuItem}
         activePeriod={activeHallPeriod}
         hall={activeHall}
         isLoading={diningMenuState.isLoading && activeHallItems.length === 0}
@@ -941,6 +950,7 @@ function DiningHallModal({
                           <View key={optionKey} style={styles.buildYourOwnOptionCard}>
                             <PressScale
                               haptic="light"
+                              pressEffect="none"
                               onPress={() => handleCustomizationToggle(option)}>
                               <View style={styles.buildYourOwnOptionTopRow}>
                                 <View style={styles.buildYourOwnOptionCopy}>
@@ -1088,10 +1098,24 @@ function DiningHallModal({
 
                     <SurfaceCard style={styles.compactMetricCard}>
                       <View style={styles.compactMetricRow}>
-                        <CompactMetric label="Calories" value={`${selectedItemTotals.calories} cal`} />
-                        <CompactMetric label="Protein" value={`${selectedItemTotals.protein}g`} />
-                        <CompactMetric label="Carbs" value={`${selectedItemTotals.carbs}g`} />
-                        <CompactMetric label="Fat" value={`${selectedItemTotals.fats}g`} />
+                        <CompactMetric
+                          label="Calories"
+                          value={formatMenuItemTotalValue(selectedItemTotals.calories, 'cal', {
+                            calories: true,
+                          })}
+                        />
+                        <CompactMetric
+                          label="Protein"
+                          value={formatMenuItemTotalValue(selectedItemTotals.protein, 'g')}
+                        />
+                        <CompactMetric
+                          label="Carbs"
+                          value={formatMenuItemTotalValue(selectedItemTotals.carbs, 'g')}
+                        />
+                        <CompactMetric
+                          label="Fat"
+                          value={formatMenuItemTotalValue(selectedItemTotals.fats, 'g')}
+                        />
                       </View>
                     </SurfaceCard>
 
@@ -1737,10 +1761,22 @@ function getMenuItemTotals(item: DiningMenuItem, servings: number) {
 
   return {
     calories: Math.round((item.calories ?? 0) * normalizedServings),
-    protein: Math.round((item.proteinG ?? 0) * normalizedServings),
-    carbs: Math.round((item.carbsG ?? 0) * normalizedServings),
-    fats: Math.round((item.fatsG ?? 0) * normalizedServings),
+    protein: item.proteinG === null ? null : Math.round(item.proteinG * normalizedServings),
+    carbs: item.carbsG === null ? null : Math.round(item.carbsG * normalizedServings),
+    fats: item.fatsG === null ? null : Math.round(item.fatsG * normalizedServings),
   };
+}
+
+function formatMenuItemTotalValue(
+  value: number | null,
+  unit: string,
+  options?: { calories?: boolean },
+) {
+  if (value === null) {
+    return options?.calories ? 'Unavailable' : '--';
+  }
+
+  return options?.calories ? `${value} ${unit}` : `${value}${unit}`;
 }
 
 function getCustomizationOptionKey(option: DiningCustomizationOption) {
@@ -1792,7 +1828,11 @@ function formatInlineMacros(item: DiningMenuItem) {
     return 'Nutrition unavailable';
   }
 
-  return `${item.calories ?? 0} cal • P ${item.proteinG ?? 0}g • C ${item.carbsG ?? 0}g • F ${item.fatsG ?? 0}g`;
+  if (item.proteinG === null || item.carbsG === null || item.fatsG === null) {
+    return `${item.calories ?? 0} cal • Macros unavailable`;
+  }
+
+  return `${item.calories ?? 0} cal • P ${item.proteinG}g • C ${item.carbsG}g • F ${item.fatsG}g`;
 }
 
 function getDetailNutritionFacts(item: DiningMenuItem) {
