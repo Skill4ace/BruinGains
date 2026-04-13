@@ -8,8 +8,12 @@
     "scheme": "bruingains",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "appleTeamId": "6KKCKD9A5P",
       "bundleIdentifier": "com.skill4ace.bruingains",
-      "supportsTablet": true
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -43,6 +47,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ead54be9-ad77-4d3f-b17e-60c2f98a4340"
+      }
+    },
+    "owner": "skill4ace"
   }
 }

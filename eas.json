@@ -1,0 +1,20 @@
+{
+  "cli": {
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleTeamId": "6KKCKD9A5P",
+        "ascApiKeyIssuerId": "21c64dd2-2de6-40de-ab0b-01ac1ed18db7",
+        "ascApiKeyId": "P32X94XVN7",
+        "ascApiKeyPath": "./.credentials/AuthKey_P32X94XVN7.p8"
+      }
+    }
+  }
+}
