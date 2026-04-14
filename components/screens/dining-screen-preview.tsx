@@ -34,6 +34,9 @@ import { PressScale } from '@/components/ui/press-scale';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Layout, Radii, Spacing } from '@/constants/theme';
+import type { ThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/providers/theme-provider';
+import { ThemeToggleButton } from '@/components/ui/theme-toggle-button';
 import type {
   CreateDiningMealLogInput,
   DiningCustomizationOption,
@@ -124,6 +127,8 @@ type DiningMealSaveOverrides = {
 };
 
 export function DiningScreenPreview() {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const {
     addCustomMealLog,
     addDiningMealLog,
@@ -432,6 +437,7 @@ export function DiningScreenPreview() {
       <AppScreen contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <AppText variant="headline">Dining</AppText>
+          <ThemeToggleButton />
         </View>
 
         <DiningSummarySection
@@ -547,6 +553,8 @@ function DiningSummarySection({
   proteinGoal: number;
   todaysMeals: MealLog[];
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const summaryLine = `${todaysMeals.length} meals today • P ${nutritionSummary.protein} • C ${nutritionSummary.carbs} • F ${nutritionSummary.fats}`;
   const [isMealsExpanded, setIsMealsExpanded] = useState(false);
 
@@ -722,6 +730,8 @@ function MiniSummaryRing({
 }: {
   progress: number;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={styles.summaryShelfRingWrap}>
       <ProgressRing
@@ -775,6 +785,8 @@ function DiningHallModal({
   selectedItemTotals: ReturnType<typeof getMenuItemTotals> | null;
   servings: number;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const [showIngredients, setShowIngredients] = useState(false);
   const [showNutritionFacts, setShowNutritionFacts] = useState(false);
   const [customizationQuantities, setCustomizationQuantities] = useState<Record<string, number>>(
@@ -1258,6 +1270,8 @@ function CustomMealComposer({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.sheetModalRoot}>
@@ -1382,6 +1396,8 @@ function InputField({
   placeholder: string;
   value: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={styles.sheetField}>
       <AppText variant="micro" dimmed>
@@ -1406,6 +1422,8 @@ function StepperButton({
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <PressScale haptic="light" onPress={onPress}>
       <View style={styles.stepperButton}>
@@ -1422,6 +1440,8 @@ function CompactMetric({
   label: string;
   value: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={styles.compactMetricCell}>
       <AppText variant="bodyStrong">{value}</AppText>
@@ -1445,6 +1465,8 @@ function CollapsibleDetailSection({
   onPress: () => void;
   title: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={styles.collapsibleSection}>
       <PressScale haptic="none" onPress={onPress}>
@@ -1469,6 +1491,8 @@ function NutritionFactChip({
   fact: DiningNutritionFact;
   isLast?: boolean;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={[styles.nutritionFactChip, isLast ? styles.nutritionFactRowLast : null]}>
       <View style={styles.nutritionFactColumns}>
@@ -1491,6 +1515,8 @@ function NutritionFactsPanel({
 }: {
   facts: DiningNutritionFact[];
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={styles.nutritionFactsPanel}>
       {facts.map((fact, index) => (
@@ -1505,6 +1531,8 @@ function NutritionFactsPanel({
 }
 
 function MenuBadge({ label }: { label: string }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const presentation = getBadgePresentation(label);
 
   return (
@@ -1539,6 +1567,8 @@ function DetailTag({
   label: string;
   tone?: 'default' | 'primary' | 'warning';
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View
       style={[
@@ -1573,6 +1603,8 @@ function PeriodChip({
   selected: boolean;
   onPress: () => void;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <PressScale onPress={onPress} containerStyle={styles.periodChipPress}>
       <View
@@ -1599,6 +1631,8 @@ function CustomPeriodChip({
   onPress: () => void;
   selected: boolean;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <PressScale containerStyle={{ flex: 1 }} onPress={onPress}>
       <View
@@ -1629,6 +1663,8 @@ function IconRing({
   size: number;
   strokeWidth?: number;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={[styles.iconRingWrap, { width: size, height: size }]}>
       <ProgressRing
@@ -1662,6 +1698,8 @@ function BreakdownRow({
   iconKey: keyof typeof MACRO_META;
   color: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   return (
     <View style={styles.breakdownRow}>
       <View style={styles.breakdownMain}>
@@ -1717,6 +1755,8 @@ function HallRow({
   onPress: () => void;
   selectedPeriod: PeriodKey;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const hours = hall.hours[selectedPeriod];
   const showActivity = hall.fitPercent !== null && isDiningHallOpenForHours(hours);
 
@@ -2052,7 +2092,8 @@ function getBadgePresentation(label: string): BadgePresentation {
   };
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: ThemeColors) {
+  return StyleSheet.create({
   content: {
     paddingTop: Spacing.sm,
     gap: Spacing.md,
@@ -2079,13 +2120,13 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: AppColors.outlineVariant,
+    backgroundColor: c.outlineVariant,
   },
   summaryMealsHeader: {
     flexDirection: 'row',
@@ -2159,7 +2200,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2167,7 +2208,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2180,7 +2221,7 @@ const styles = StyleSheet.create({
   rowSpacing: {
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: AppColors.outlineVariant,
+    borderBottomColor: c.outlineVariant,
   },
   loggedMealCopy: {
     flex: 1,
@@ -2194,7 +2235,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2256,7 +2297,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E3E5EA',
   },
   pageDotActive: {
-    backgroundColor: AppColors.text,
+    backgroundColor: c.text,
   },
   stack: {
     gap: Spacing.md,
@@ -2278,10 +2319,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   periodChipSelected: {
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
   },
   periodChipDefault: {
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
   },
   list: {
     gap: Spacing.md,
@@ -2316,7 +2357,7 @@ const styles = StyleSheet.create({
   },
   menuModalRoot: {
     flex: 1,
-    backgroundColor: AppColors.background,
+    backgroundColor: c.background,
   },
   menuModalCard: {
     flex: 1,
@@ -2337,7 +2378,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2350,8 +2391,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: Radii.xl,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-    backgroundColor: AppColors.surfaceLowest,
+    borderColor: c.outlineVariant,
+    backgroundColor: c.surfaceLowest,
     paddingHorizontal: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2359,7 +2400,7 @@ const styles = StyleSheet.create({
   },
   menuSearchInput: {
     flex: 1,
-    color: AppColors.text,
+    color: c.text,
     fontSize: 15,
     paddingVertical: 0,
   },
@@ -2379,7 +2420,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   menuItemCard: {
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
@@ -2421,13 +2462,13 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
+    borderColor: c.outlineVariant,
     marginTop: 1,
   },
   menuEmptyState: {
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     gap: Spacing.sm,
   },
   itemSheetOverlay: {
@@ -2440,7 +2481,7 @@ const styles = StyleSheet.create({
   itemSheetCard: {
     borderTopLeftRadius: Radii.xl,
     borderTopRightRadius: Radii.xl,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     maxHeight: '80%',
   },
   itemSheetScroll: {
@@ -2462,7 +2503,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 5,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceHighest,
+    backgroundColor: c.surfaceHighest,
     alignSelf: 'center',
   },
   itemSheetHeader: {
@@ -2494,7 +2535,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2513,12 +2554,12 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
   compactMetricCard: {
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
@@ -2543,7 +2584,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   buildYourOwnOptionCard: {
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
@@ -2570,9 +2611,9 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
+    borderColor: c.outlineVariant,
   },
   buildYourOwnOptionBadges: {
     flexDirection: 'row',
@@ -2581,11 +2622,11 @@ const styles = StyleSheet.create({
   },
   buildYourOwnAddButton: {
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
     overflow: 'hidden',
   },
   buildYourOwnAddButtonDisabled: {
-    backgroundColor: AppColors.surfaceHighest,
+    backgroundColor: c.surfaceHighest,
   },
   buildYourOwnAddButtonInner: {
     minHeight: 54,
@@ -2597,7 +2638,7 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     width: '47%',
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     borderRadius: Radii.lg,
     padding: Spacing.lg,
     gap: Spacing.xs,
@@ -2608,7 +2649,7 @@ const styles = StyleSheet.create({
   collapsibleSectionHeader: {
     minHeight: 44,
     borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     paddingHorizontal: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2625,7 +2666,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   nutritionFactsPanel: {
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
@@ -2633,7 +2674,7 @@ const styles = StyleSheet.create({
   nutritionFactChip: {
     paddingVertical: Spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: AppColors.outlineVariant,
+    borderBottomColor: c.outlineVariant,
   },
   nutritionFactColumns: {
     flexDirection: 'row',
@@ -2659,9 +2700,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Layout.pagePadding,
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.xl,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     borderTopWidth: 1,
-    borderTopColor: AppColors.outlineVariant,
+    borderTopColor: c.outlineVariant,
   },
   detailTagWrap: {
     flexDirection: 'row',
@@ -2671,13 +2712,13 @@ const styles = StyleSheet.create({
   detailTag: {
     minHeight: 32,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     paddingHorizontal: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   detailTagPrimary: {
-    backgroundColor: AppColors.secondaryContainer,
+    backgroundColor: c.secondaryContainer,
   },
   detailTagWarning: {
     backgroundColor: '#FFF0C6',
@@ -2685,7 +2726,7 @@ const styles = StyleSheet.create({
   detailToggleButton: {
     minHeight: 32,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     paddingHorizontal: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2706,7 +2747,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: Radii.pill,
     marginTop: 7,
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
   },
   ingredientText: {
     flex: 1,
@@ -2752,21 +2793,21 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     borderRadius: Radii.pill,
     paddingHorizontal: Spacing.xs,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
   customPeriodChipSelected: {
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
   },
   sheetInput: {
     minHeight: 48,
     borderRadius: Radii.lg,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
+    borderColor: c.outlineVariant,
     paddingHorizontal: Spacing.md,
-    color: AppColors.text,
-    backgroundColor: AppColors.surfaceLowest,
+    color: c.text,
+    backgroundColor: c.surfaceLowest,
   },
   customMacroGrid: {
     flexDirection: 'row',
@@ -2782,9 +2823,9 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: Radii.lg,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-    backgroundColor: AppColors.surfaceLowest,
-    color: AppColors.text,
+    borderColor: c.outlineVariant,
+    backgroundColor: c.surfaceLowest,
+    color: c.text,
     textAlign: 'center',
     fontSize: 16,
   },
@@ -2806,4 +2847,5 @@ const styles = StyleSheet.create({
   mealEditorSaveButton: {
     flex: 1,
   },
-});
+  });
+}

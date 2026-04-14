@@ -27,6 +27,9 @@ import { PressScale } from '@/components/ui/press-scale';
 import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
+import type { ThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/providers/theme-provider';
+import { ThemeToggleButton } from '@/components/ui/theme-toggle-button';
 import type { ExerciseLibraryEntry, GymCapacitySnapshot } from '@/types/app-data';
 
 type TemplateActionTarget = {
@@ -148,6 +151,8 @@ function GymCapacityCard({
   location: GymCapacitySnapshot;
   onPress: () => void;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   const zones = location.zones ?? [];
 
   return (
@@ -162,7 +167,7 @@ function GymCapacityCard({
                 location.isClosed
                   ? AppColors.textSubtle
                   : location.load >= 0.7
-                    ? '#A56D00'
+                    ? isDark ? '#E6A800' : '#A56D00'
                     : AppColors.primary
               }>
               {location.isClosed ? 'Closed' : `${location.percent}% full`}
@@ -235,6 +240,8 @@ function TemplateActionModal({
   onEdit: () => void;
   onRename: () => void;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
@@ -285,6 +292,8 @@ function RenameTemplateModal({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
@@ -364,6 +373,8 @@ function TemplatePreviewModal({
   onStartWorkout: () => void;
   preview: TemplatePreviewData | null;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
@@ -432,6 +443,8 @@ function TemplatePreviewModal({
 }
 
 export function GymScreenPreview() {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   const router = useRouter();
   const {
     deleteWorkoutTemplate,
@@ -615,12 +628,13 @@ export function GymScreenPreview() {
         <View style={styles.headerCopy}>
           <AppText variant="headline">Gym</AppText>
         </View>
+        <ThemeToggleButton />
       </View>
 
       <SurfaceCard floating style={styles.topCard}>
         <SectionHeader title="Capacity" />
         {capacityState.error ? (
-          <AppText variant="micro" color="#A56D00">
+          <AppText variant="micro" color={isDark ? '#E6A800' : '#A56D00'}>
             Refresh unavailable. Showing the best local snapshot.
           </AppText>
         ) : null}
@@ -779,276 +793,278 @@ export function GymScreenPreview() {
   );
 }
 
-const styles = StyleSheet.create({
-  content: {
-    paddingTop: Spacing.sm,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  headerCopy: {
-    gap: Spacing.xs,
-  },
-  stack: {
-    gap: Spacing.md,
-  },
-  templatesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  addTemplateButton: {
-    width: 36,
-    height: 36,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topCard: {
-    gap: Spacing.lg,
-  },
-  capacityCompactCard: {
-    gap: Spacing.sm,
-  },
-  capacityCompactRow: {
-    gap: Spacing.xs,
-  },
-  capacityCardPressable: {
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceLowest,
-    padding: Spacing.md,
-  },
-  capacityCompactDivider: {
-    paddingBottom: Spacing.xs,
-  },
-  capacityCompactCopy: {
-    gap: Spacing.xs,
-    flex: 1,
-  },
-  capacityTopLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  capacityTopRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  capacityBarTrack: {
-    height: 6,
-    borderRadius: Radii.pill,
-    overflow: 'hidden',
-    backgroundColor: AppColors.surfaceHighest,
-    marginTop: Spacing.xs,
-  },
-  capacityBarFill: {
-    height: '100%',
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.primary,
-  },
-  capacityDetailsPanel: {
-    marginTop: Spacing.md,
-    borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  capacityZoneList: {
-    gap: Spacing.sm,
-  },
-  capacityZoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: 2,
-  },
-  capacityZoneName: {
-    flex: 1,
-  },
-  capacityZoneMetric: {
-    minWidth: 44,
-    textAlign: 'right',
-  },
-  templateGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
-  },
-  templateCell: {
-    width: '48%',
-  },
-  templateCard: {
-    gap: Spacing.md,
-    minHeight: 128,
-    justifyContent: 'space-between',
-  },
-  emptyTemplateState: {
-    gap: Spacing.sm,
-  },
-  templateTopLine: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  templateTitle: {
-    flex: 1,
-  },
-  templateFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  templateMoreButton: {
-    width: 30,
-    height: 30,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11, 14, 18, 0.44)',
-  },
-  centerModalContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  smallActionModalCard: {
-    width: '100%',
-    maxWidth: 280,
-    gap: Spacing.xs,
-    borderRadius: Radii.xl,
-  },
-  smallActionModalButton: {
-    minHeight: 42,
-    borderRadius: Radii.md,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  renameModalCard: {
-    width: '100%',
-    maxWidth: 320,
-    gap: Spacing.md,
-    borderRadius: Radii.xl,
-  },
-  renameModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  renameModalCopy: {
-    flex: 1,
-    gap: Spacing.xs,
-  },
-  renameCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  renameInputField: {
-    gap: Spacing.xs,
-  },
-  renameInput: {
-    minHeight: 46,
-    borderRadius: Radii.md,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: AppColors.surfaceLow,
-    color: AppColors.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  renameActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  renameActionSlot: {
-    flex: 1,
-  },
-  previewModalCard: {
-    width: '100%',
-    maxWidth: 360,
-    maxHeight: '78%',
-    gap: Spacing.md,
-    borderRadius: Radii.xl,
-  },
-  previewModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  previewModalCopy: {
-    flex: 1,
-    gap: Spacing.xs,
-  },
-  previewExerciseList: {
-    gap: Spacing.sm,
-    paddingBottom: Spacing.xs,
-  },
-  previewExerciseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  previewExerciseImage: {
-    width: 56,
-    height: 56,
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  previewExerciseImageFallback: {
-    width: 56,
-    height: 56,
-    borderRadius: Radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  previewExerciseCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  renameSecondaryButton: {
-    minHeight: 40,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  renamePrimaryButton: {
-    minHeight: 40,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.primary,
-  },
-  emptyWorkoutButton: {
-    marginTop: Spacing.lg,
-  },
-});
+function createStyles(c: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    content: {
+      paddingTop: Spacing.sm,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    headerCopy: {
+      gap: Spacing.xs,
+    },
+    stack: {
+      gap: Spacing.md,
+    },
+    templatesHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    addTemplateButton: {
+      width: 36,
+      height: 36,
+      borderRadius: Radii.pill,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    topCard: {
+      gap: Spacing.lg,
+    },
+    capacityCompactCard: {
+      gap: Spacing.sm,
+    },
+    capacityCompactRow: {
+      gap: Spacing.xs,
+    },
+    capacityCardPressable: {
+      borderRadius: Radii.lg,
+      backgroundColor: c.surfaceLowest,
+      padding: Spacing.md,
+    },
+    capacityCompactDivider: {
+      paddingBottom: Spacing.xs,
+    },
+    capacityCompactCopy: {
+      gap: Spacing.xs,
+      flex: 1,
+    },
+    capacityTopLine: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: Spacing.md,
+    },
+    capacityTopRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    capacityBarTrack: {
+      height: 6,
+      borderRadius: Radii.pill,
+      overflow: 'hidden',
+      backgroundColor: c.surfaceHighest,
+      marginTop: Spacing.xs,
+    },
+    capacityBarFill: {
+      height: '100%',
+      borderRadius: Radii.pill,
+      backgroundColor: c.primary,
+    },
+    capacityDetailsPanel: {
+      marginTop: Spacing.md,
+      borderRadius: Radii.md,
+      backgroundColor: c.surfaceVariant,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+    },
+    capacityZoneList: {
+      gap: Spacing.sm,
+    },
+    capacityZoneRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      paddingVertical: 2,
+    },
+    capacityZoneName: {
+      flex: 1,
+    },
+    capacityZoneMetric: {
+      minWidth: 44,
+      textAlign: 'right',
+    },
+    templateGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.md,
+    },
+    templateCell: {
+      width: '48%',
+    },
+    templateCard: {
+      gap: Spacing.md,
+      minHeight: 128,
+      justifyContent: 'space-between',
+    },
+    emptyTemplateState: {
+      gap: Spacing.sm,
+    },
+    templateTopLine: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: Spacing.sm,
+    },
+    templateTitle: {
+      flex: 1,
+    },
+    templateFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+    },
+    templateMoreButton: {
+      width: 30,
+      height: 30,
+      borderRadius: Radii.pill,
+      backgroundColor: c.surfaceLow,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modalRoot: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    modalBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(11, 14, 18, 0.44)',
+    },
+    centerModalContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: Spacing.lg,
+    },
+    smallActionModalCard: {
+      width: '100%',
+      maxWidth: 280,
+      gap: Spacing.xs,
+      borderRadius: Radii.xl,
+    },
+    smallActionModalButton: {
+      minHeight: 42,
+      borderRadius: Radii.md,
+      paddingHorizontal: Spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    renameModalCard: {
+      width: '100%',
+      maxWidth: 320,
+      gap: Spacing.md,
+      borderRadius: Radii.xl,
+    },
+    renameModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    renameModalCopy: {
+      flex: 1,
+      gap: Spacing.xs,
+    },
+    renameCloseButton: {
+      width: 32,
+      height: 32,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    renameInputField: {
+      gap: Spacing.xs,
+    },
+    renameInput: {
+      minHeight: 46,
+      borderRadius: Radii.md,
+      paddingHorizontal: Spacing.md,
+      backgroundColor: c.surfaceLow,
+      color: c.text,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    renameActionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    renameActionSlot: {
+      flex: 1,
+    },
+    previewModalCard: {
+      width: '100%',
+      maxWidth: 360,
+      maxHeight: '78%',
+      gap: Spacing.md,
+      borderRadius: Radii.xl,
+    },
+    previewModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    previewModalCopy: {
+      flex: 1,
+      gap: Spacing.xs,
+    },
+    previewExerciseList: {
+      gap: Spacing.sm,
+      paddingBottom: Spacing.xs,
+    },
+    previewExerciseRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.sm,
+      backgroundColor: c.surfaceLow,
+    },
+    previewExerciseImage: {
+      width: 56,
+      height: 56,
+      borderRadius: Radii.lg,
+      backgroundColor: c.surfaceHighest,
+    },
+    previewExerciseImageFallback: {
+      width: 56,
+      height: 56,
+      borderRadius: Radii.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceHighest,
+    },
+    previewExerciseCopy: {
+      flex: 1,
+      gap: 2,
+    },
+    renameSecondaryButton: {
+      minHeight: 40,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    renamePrimaryButton: {
+      minHeight: 40,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.primary,
+    },
+    emptyWorkoutButton: {
+      marginTop: Spacing.lg,
+    },
+  });
+}

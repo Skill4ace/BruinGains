@@ -1,6 +1,7 @@
 import type { TextProps, TextStyle } from 'react-native';
 import { StyleSheet, Text } from 'react-native';
 
+import { useAppTheme } from '@/providers/theme-provider';
 import { AppColors, Typography } from '@/constants/theme';
 
 type TextVariant = keyof typeof Typography;
@@ -18,7 +19,8 @@ export function AppText({
   style,
   ...props
 }: AppTextProps) {
-  const resolvedColor = color ?? (dimmed ? AppColors.textMuted : AppColors.text);
+  const { colors } = useAppTheme();
+  const resolvedColor = color ?? (dimmed ? colors.textMuted : colors.text);
 
   return <Text allowFontScaling={false} style={[styles.base, styles[variant], { color: resolvedColor }, style]} {...props} />;
 }

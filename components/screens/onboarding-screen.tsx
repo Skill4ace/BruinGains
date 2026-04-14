@@ -18,7 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton } from '@/components/ui/action-button';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
-import { AppColors, Fonts, Radii, Shadows, Spacing } from '@/constants/theme';
+import { Fonts, Radii, Shadows, Spacing, type ThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/providers/theme-provider';
 import { calculateGoalTargets } from '@/lib/goal-calculator';
 import {
   getRecommendedStarterPackId,
@@ -260,6 +261,8 @@ function WheelPicker({
   selectedValue: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const frameHeight = itemHeight * WHEEL_VISIBLE_ROWS;
   const verticalPadding = (frameHeight - itemHeight) / 2;
   const scrollRef = useRef<ScrollView | null>(null);
@@ -383,6 +386,9 @@ function ReviewSectionCard({
   label: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+
   return (
     <View style={[styles.summarySectionCard, style]}>
       <AppText variant="label" dimmed>
@@ -412,6 +418,9 @@ function ReviewMacroRow({
   unit: string;
   value: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+
   return (
     <View style={styles.reviewMetricRow}>
       <View style={styles.reviewMetricLead}>
@@ -456,6 +465,9 @@ function ChoiceCard({
   selected: boolean;
   title: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+
   return (
     <PressScale onPress={onPress} pressEffect="none">
       <View style={[styles.choiceCard, selected ? styles.choiceCardSelected : null]}>
@@ -505,6 +517,9 @@ function PackCard({
   subtitle: string;
   title: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+
   return (
     <PressScale onPress={onPress} pressEffect="none">
       <View style={[styles.packCard, selected ? styles.packCardSelected : null]}>
@@ -549,6 +564,8 @@ function PackCard({
 }
 
 export function OnboardingScreen() {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const router = useRouter();
   const { completeOnboarding, isOnboardingComplete, skipOnboarding, state } = useAppData();
   const [hasStarted, setHasStarted] = useState(false);
@@ -1284,10 +1301,11 @@ export function OnboardingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: ThemeColors) {
+  return StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: AppColors.background,
+    backgroundColor: c.background,
   },
   safeArea: {
     flex: 1,
@@ -1311,7 +1329,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
   },
   backButtonPlaceholder: {
     width: 40,
@@ -1334,7 +1352,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.soft,
@@ -1352,13 +1370,13 @@ const styles = StyleSheet.create({
   progressTrack: {
     height: 4,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceHighest,
+    backgroundColor: c.surfaceHighest,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
   },
   headerCopy: {
     gap: Spacing.xs,
@@ -1392,7 +1410,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.xl,
     padding: Spacing.md,
     gap: Spacing.sm,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     ...Shadows.soft,
   },
   heroPanelWelcome: {
@@ -1403,7 +1421,7 @@ const styles = StyleSheet.create({
   },
   heroArtworkWrap: {
     borderRadius: Radii.xl,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1437,7 +1455,7 @@ const styles = StyleSheet.create({
   },
   choiceCard: {
     borderRadius: Radii.xl,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     padding: Spacing.md,
     gap: Spacing.sm,
     ...Shadows.soft,
@@ -1459,7 +1477,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   choiceIconSelected: {
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
   },
   packIcon: {
     width: 28,
@@ -1503,7 +1521,7 @@ const styles = StyleSheet.create({
   wheelFrame: {
     width: '100%',
     borderRadius: Radii.xl,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     overflow: 'hidden',
     ...Shadows.soft,
   },
@@ -1534,7 +1552,7 @@ const styles = StyleSheet.create({
   },
   packCard: {
     borderRadius: Radii.xl,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     paddingHorizontal: Spacing.md,
     paddingVertical: 6,
     height: '100%',
@@ -1574,7 +1592,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1604,7 +1622,7 @@ const styles = StyleSheet.create({
   },
   summarySectionCard: {
     borderRadius: Radii.xl,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     padding: Spacing.lg,
     gap: Spacing.md,
     ...Shadows.soft,
@@ -1631,7 +1649,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceLow,
+    backgroundColor: c.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1642,15 +1660,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: Spacing.xs,
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
+    borderColor: c.outlineVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
   },
   reviewMetricInput: {
     minWidth: 56,
-    color: AppColors.text,
+    color: c.text,
     fontSize: 18,
     lineHeight: 22,
     textAlign: 'right',
@@ -1658,7 +1676,7 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: AppColors.outlineVariant,
+    backgroundColor: c.outlineVariant,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -1692,4 +1710,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+  });
+}

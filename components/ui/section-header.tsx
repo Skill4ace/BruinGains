@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
-import { AppColors, Spacing } from '@/constants/theme';
+import { useAppTheme } from '@/providers/theme-provider';
+import { Spacing } from '@/constants/theme';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 
@@ -12,11 +13,13 @@ type SectionHeaderProps = {
 };
 
 export function SectionHeader({ eyebrow, title, actionLabel, onActionPress }: SectionHeaderProps) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.container}>
       <View style={styles.copy}>
         {eyebrow ? (
-          <AppText variant="eyebrow" color={AppColors.textMuted}>
+          <AppText variant="eyebrow" color={colors.textMuted}>
             {eyebrow}
           </AppText>
         ) : null}
@@ -24,7 +27,7 @@ export function SectionHeader({ eyebrow, title, actionLabel, onActionPress }: Se
       </View>
       {actionLabel ? (
         <PressScale haptic="none" onPress={onActionPress}>
-          <AppText variant="micro" color={AppColors.primary}>
+          <AppText variant="micro" color={colors.primary}>
             {actionLabel}
           </AppText>
         </PressScale>

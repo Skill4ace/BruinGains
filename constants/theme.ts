@@ -227,3 +227,77 @@ export const Gradients = {
 } as const;
 
 export type AppColor = (typeof AppColors)[keyof typeof AppColors];
+
+export type ThemeColors = { [K in keyof typeof AppColors]: string };
+export type ThemeShadows = {
+  floating: {
+    shadowColor: string;
+    shadowOpacity: number;
+    shadowRadius: number;
+    shadowOffset: { width: number; height: number };
+    elevation: number;
+  };
+  soft: {
+    shadowColor: string;
+    shadowOpacity: number;
+    shadowRadius: number;
+    shadowOffset: { width: number; height: number };
+    elevation: number;
+  };
+};
+
+export const LightAppColors: ThemeColors = AppColors;
+
+export const DarkAppColors: ThemeColors = {
+  background: '#0F1117',
+  surface: '#0F1117',
+  surfaceLow: '#171B23',
+  surfaceLowest: '#1D2129',
+  surfaceHighest: '#2A303A',
+  surfaceVariant: '#141820',
+  surfaceBright: '#1D2129',
+  primary: '#4A9FD8',
+  primaryContainer: '#3687BC',
+  secondary: '#FECC00',
+  secondaryContainer: '#332A00',
+  success: '#34C795',
+  warning: '#F4B400',
+  danger: '#F28279',
+  text: '#E8EAEE',
+  textMuted: '#8C929C',
+  textSubtle: '#5A6170',
+  outlineVariant: 'rgba(232, 234, 238, 0.08)',
+  scrim: 'rgba(232, 234, 238, 0.04)',
+  white: '#FFFFFF',
+} as const;
+
+export const DarkShadows: ThemeShadows = {
+  floating: {
+    shadowColor: '#000000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 7,
+  },
+  soft: {
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+} as const;
+
+export const DarkNavigationTheme: Theme = {
+  ...DefaultTheme,
+  dark: true,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: DarkAppColors.primary,
+    background: DarkAppColors.background,
+    card: DarkAppColors.surfaceLowest,
+    text: DarkAppColors.text,
+    border: 'transparent',
+    notification: DarkAppColors.secondary,
+  },
+};

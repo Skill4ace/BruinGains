@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
-import { AppColors, Radii, Spacing } from '@/constants/theme';
+import { useAppTheme } from '@/providers/theme-provider';
+import { Radii, Spacing } from '@/constants/theme';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 
@@ -11,10 +12,17 @@ type SegmentedChipProps = {
 };
 
 export function SegmentedChip({ label, selected = false, onPress }: SegmentedChipProps) {
+  const { colors } = useAppTheme();
+
   return (
     <PressScale onPress={onPress}>
-      <View style={[styles.chip, selected ? styles.chipSelected : styles.chipDefault]}>
-        <AppText variant="label" color={selected ? AppColors.white : AppColors.textMuted}>
+      <View
+        style={[
+          styles.chip,
+          { backgroundColor: selected ? colors.primary : colors.surfaceLow },
+        ]}
+      >
+        <AppText variant="label" color={selected ? colors.white : colors.textMuted}>
           {label}
         </AppText>
       </View>
@@ -29,11 +37,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  chipDefault: {
-    backgroundColor: AppColors.surfaceLow,
-  },
-  chipSelected: {
-    backgroundColor: AppColors.primary,
   },
 });

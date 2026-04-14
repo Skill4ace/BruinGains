@@ -39,11 +39,12 @@ import {
   parseDurationMinutesInput,
 } from '@/lib/workout-duration';
 import { useAppData } from '@/providers/app-data-provider';
+import { useAppTheme } from '@/providers/theme-provider';
 import { ActionButton } from '@/components/ui/action-button';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { AppColors, Layout, Radii, Shadows, Spacing } from '@/constants/theme';
+import { Layout, Radii, Shadows, Spacing, type ThemeColors } from '@/constants/theme';
 import type {
   LocalAppData,
   WorkoutExerciseDraft,
@@ -79,12 +80,14 @@ type TemplateEditorExercise = {
   trackingMode: WorkoutTrackingMode;
 };
 
-const SET_TYPE_OPTIONS: { label: string; shortLabel: string; tone: string; value: WorkoutSetType }[] = [
-  { label: 'Regular', shortLabel: '', tone: AppColors.textMuted, value: 'normal' },
-  { label: 'Warm-up', shortLabel: 'W', tone: '#D58C2F', value: 'warmup' },
-  { label: 'Drop', shortLabel: 'D', tone: '#7B3AED', value: 'drop' },
-  { label: 'Failure', shortLabel: 'F', tone: AppColors.danger, value: 'failure' },
-];
+function getSetTypeOptions(colors: ThemeColors): { label: string; shortLabel: string; tone: string; value: WorkoutSetType }[] {
+  return [
+    { label: 'Regular', shortLabel: '', tone: colors.textMuted, value: 'normal' },
+    { label: 'Warm-up', shortLabel: 'W', tone: '#D58C2F', value: 'warmup' },
+    { label: 'Drop', shortLabel: 'D', tone: '#7B3AED', value: 'drop' },
+    { label: 'Failure', shortLabel: 'F', tone: colors.danger, value: 'failure' },
+  ];
+}
 
 type WorkoutInputField = 'durationMinutes' | 'load' | 'reps';
 
@@ -408,6 +411,8 @@ export function WorkoutTemplateEditorPreview() {
   const { height: windowHeight } = useWindowDimensions();
   const params = useLocalSearchParams<{ templateId?: string }>();
   const { createWorkoutTemplate, state, updateWorkoutTemplate } = useAppData();
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const editingTemplateId = typeof params.templateId === 'string' ? params.templateId : null;
   const editingTemplate = state.workoutTemplates.find(
     (template) => template.id === editingTemplateId,
@@ -1306,12 +1311,12 @@ export function WorkoutTemplateEditorPreview() {
                             style={[
                               styles.setNumberCell,
                               {
-                                backgroundColor: getSetTypeBackground(setRow.setType),
+                                backgroundColor: getSetTypeBackground(setRow.setType, AppColors),
                               },
                             ]}>
                             <AppText
                               variant="label"
-                              color={getSetTypeColor(setRow.setType)}>
+                              color={getSetTypeColor(setRow.setType, AppColors)}>
                               {getSetTypeBadgeLabel(setRow)}
                             </AppText>
                           </View>
@@ -1536,6 +1541,9 @@ function WorkoutSetInput({
   style?: object;
   value: string;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+
   return (
     <PressScale containerStyle={[styles.setInputPressable, style]} haptic="none" onPress={onPress}>
       <View style={[styles.setInputShell, active ? styles.setInputShellActive : null]}>
@@ -1570,6 +1578,8 @@ function WorkoutInputBoard({
   onNext: () => void;
   onStep: (direction: -1 | 1) => void;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const specialKey = getWorkoutInputSpecialKey(activeTarget.field);
   const keypadRows = [
     ['1', '2', '3'],
@@ -1693,6 +1703,9 @@ function ExerciseActionModal({
   onRemove: () => void;
   onReplace: () => void;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
@@ -1729,6 +1742,10 @@ function SetTypeModal({
   onClose: () => void;
   onSelect: (value: WorkoutSetType) => void;
 }) {
+  const AppColors = useAppTheme().colors;
+  const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+  const setTypeOptions = useMemo(() => getSetTypeOptions(AppColors), [AppColors]);
+
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
@@ -1737,7 +1754,7 @@ function SetTypeModal({
         </PressScale>
         <View style={styles.centerModalContainer}>
           <SurfaceCard style={styles.smallActionModalCard}>
-            {SET_TYPE_OPTIONS.map((option) => (
+            {setTypeOptions.map((option) => (
               <PressScale key={option.value} haptic="none" onPress={() => onSelect(option.value)}>
                 <View style={styles.smallActionModalButton}>
                   <AppText
@@ -1773,7 +1790,7 @@ function getSetTypeBadgeLabel(setRow: TemplateEditorSet) {
   return String(setRow.setNumber);
 }
 
-function getSetTypeColor(setType: WorkoutSetType) {
+function getSetTypeColor(setType: WorkoutSetType, colors: ThemeColors) {
   if (setType === 'warmup') {
     return '#D58C2F';
   }
@@ -1783,13 +1800,13 @@ function getSetTypeColor(setType: WorkoutSetType) {
   }
 
   if (setType === 'failure') {
-    return AppColors.danger;
+    return colors.danger;
   }
 
-  return AppColors.textMuted;
+  return colors.textMuted;
 }
 
-function getSetTypeBackground(setType: WorkoutSetType) {
+function getSetTypeBackground(setType: WorkoutSetType, colors: ThemeColors) {
   if (setType === 'warmup') {
     return 'rgba(213, 140, 47, 0.18)';
   }
@@ -1802,7 +1819,7 @@ function getSetTypeBackground(setType: WorkoutSetType) {
     return 'rgba(231, 100, 92, 0.16)';
   }
 
-  return AppColors.surfaceLowest;
+  return colors.surfaceLowest;
 }
 
 function formatPreviousSetText(previousLoadLabel: string) {
@@ -1819,523 +1836,525 @@ function formatPreviousSetText(previousLoadLabel: string) {
   return trimmedValue;
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: AppColors.background,
-  },
-  header: {
-    paddingHorizontal: Layout.pagePadding,
-    paddingTop: Spacing.md,
-    paddingBottom: 6,
-    backgroundColor: AppColors.background,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  headerButton: {
-    width: 38,
-    height: 38,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLowest,
-  },
-  headerCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  titleInput: {
-    paddingVertical: 0,
-    fontSize: 20,
-    fontWeight: '800',
-    color: AppColors.text,
-    letterSpacing: -0.35,
-    lineHeight: 24,
-  },
-  saveButton: {
-    minHeight: 38,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.primary,
-    ...Shadows.soft,
-  },
-  scrollContent: {
-    paddingHorizontal: Layout.pagePadding,
-    paddingBottom: 64,
-    paddingTop: 14,
-    gap: 10,
-  },
-  exerciseCard: {
-    gap: 4,
-    overflow: 'visible',
-    padding: 10,
-  },
-  exerciseCardOverlayActive: {
-    zIndex: 60,
-    elevation: 10,
-  },
-  exerciseHeader: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  exerciseHeaderCopy: {
-    flex: 1,
-    paddingTop: 2,
-  },
-  exerciseHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  moreButton: {
-    width: 30,
-    height: 30,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  addSetHeaderButton: {
-    minHeight: 30,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  setHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 2,
-    paddingTop: 2,
-  },
-  setRows: {
-    gap: 6,
-  },
-  setNumberHeader: {
-    width: 32,
-    textAlign: 'center',
-  },
-  setPreviousHeader: {
-    width: 88,
-  },
-  setInputHeader: {
-    flex: 1,
-    textAlign: 'center',
-  },
-  setInputHeaderWide: {
-    flex: 1,
-    textAlign: 'center',
-  },
-  setRowWrap: {
-    position: 'relative',
-    zIndex: 1,
-  },
-  setRowWrapActive: {
-    zIndex: 80,
-  },
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: Radii.lg,
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  setNumberCell: {
-    width: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 32,
-    borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceLowest,
-  },
-  setPreviousCell: {
-    width: 88,
-    paddingHorizontal: 4,
-    justifyContent: 'center',
-  },
-  setInputPressable: {
-    flex: 1,
-  },
-  setInputShell: {
-    minHeight: 32,
-    borderRadius: Radii.md,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLowest,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  setInputShellActive: {
-    backgroundColor: '#F2F7FC',
-    borderColor: 'rgba(39, 116, 174, 0.26)',
-    ...Shadows.soft,
-  },
-  setInputValue: {
-    width: '100%',
-    textAlign: 'center',
-  },
-  inputBoardWrap: {
-    position: 'absolute',
-    left: Layout.pagePadding,
-    right: Layout.pagePadding,
-    bottom: Spacing.sm,
-    zIndex: 140,
-  },
-  inputBoardCard: {
-    gap: Spacing.sm,
-    paddingTop: 10,
-    paddingBottom: Spacing.md,
-    paddingHorizontal: 10,
-    borderRadius: Radii.xl,
-    backgroundColor: AppColors.surfaceLowest,
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 8,
+function createStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: c.background,
     },
-    elevation: 12,
-  },
-  inputBoardBody: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: Spacing.sm,
-  },
-  inputBoardKeypad: {
-    flex: 1,
-    gap: Spacing.xs,
-  },
-  inputBoardKeypadRow: {
-    flexDirection: 'row',
-    gap: Spacing.xs,
-  },
-  inputBoardKey: {
-    flex: 1,
-    minHeight: 58,
-    borderRadius: Radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  inputBoardKeyDisabled: {
-    opacity: 0.38,
-  },
-  inputBoardButtonPressed: {
-    opacity: 0.78,
-  },
-  inputBoardRail: {
-    width: 92,
-    gap: 10,
-  },
-  inputBoardRailButton: {
-    minHeight: 58,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  inputBoardStepperRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  inputBoardStepperAction: {
-    flex: 1,
-    minHeight: 58,
-    borderRadius: Radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F2F5FA',
-  },
-  inputBoardNextButton: {
-    flex: 1,
-    minHeight: 82,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: AppColors.primary,
-    ...Shadows.soft,
-  },
-  inputBoardNextButtonPressed: {
-    opacity: 0.9,
-  },
-  setInput: {
-    flex: 1,
-    minHeight: 32,
-    borderRadius: Radii.md,
-    paddingHorizontal: 8,
-    backgroundColor: AppColors.surfaceLowest,
-    color: AppColors.text,
-    textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  durationInput: {
-    flex: 1,
-  },
-  deleteSetAction: {
-    marginLeft: Spacing.sm,
-    width: 96,
-    minHeight: 44,
-    borderRadius: Radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    backgroundColor: AppColors.danger,
-  },
-  listFooterSpacer: {
-    height: 16,
-  },
-  footerButtons: {
-    marginTop: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11, 14, 18, 0.44)',
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    maxHeight: '72%',
-    gap: Spacing.md,
-    borderTopLeftRadius: Radii.xl,
-    borderTopRightRadius: Radii.xl,
-  },
-  modalCardLarge: {
-    height: '88%',
-    gap: Spacing.sm,
-    borderTopLeftRadius: Radii.xl,
-    borderTopRightRadius: Radii.xl,
-  },
-  modalHandle: {
-    width: 56,
-    height: 5,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceHighest,
-    alignSelf: 'center',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  modalHeaderLeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flex: 1,
-  },
-  headerAddButton: {
-    minHeight: 38,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  headerAddButtonPlaceholder: {
-    width: 56,
-  },
-  searchField: {
-    minHeight: 42,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  searchInput: {
-    flex: 1,
-    color: AppColors.text,
-    fontSize: 15,
-  },
-  filterControlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  filterSelectorSlot: {
-    flex: 1,
-  },
-  customActionSlot: {
-    minWidth: 164,
-  },
-  filterSelector: {
-    minHeight: 36,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  filterDropdownPanel: {
-    borderRadius: Radii.lg,
-    padding: Spacing.xs,
-    backgroundColor: AppColors.surfaceLowest,
-    ...Shadows.soft,
-  },
-  filterDropdownWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
-  filterChip: {
-    minHeight: 30,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  filterChipActive: {
-    backgroundColor: AppColors.primary,
-  },
-  createCustomCompactButton: {
-    minHeight: 36,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  optionList: {
-    gap: Spacing.sm,
-    paddingBottom: Spacing.xl,
-  },
-  optionScroll: {
-    flex: 1,
-  },
-  optionPressable: {
-    width: '100%',
-  },
-  optionMain: {
-    minHeight: 64,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  optionMainSelected: {
-    backgroundColor: '#EAF1F8',
-  },
-  optionImage: {
-    width: 56,
-    height: 56,
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  optionImageFallback: {
-    width: 56,
-    height: 56,
-    borderRadius: Radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  optionCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  optionCheck: {
-    width: 28,
-    height: 28,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLowest,
-    borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-  },
-  optionCheckSelected: {
-    backgroundColor: AppColors.primary,
-    borderColor: AppColors.primary,
-  },
-  centerModalContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Layout.pagePadding,
-  },
-  smallActionModalCard: {
-    width: '100%',
-    maxWidth: 280,
-    gap: Spacing.xs,
-    borderRadius: Radii.xl,
-    ...Shadows.soft,
-  },
-  smallActionModalButton: {
-    minHeight: 42,
-    borderRadius: Radii.md,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  inputField: {
-    gap: 6,
-  },
-  input: {
-    minHeight: 44,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: AppColors.surfaceLow,
-    color: AppColors.text,
-    fontSize: 15,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    zIndex: 1,
-  },
-  modeChip: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  modeChipSelected: {
-    backgroundColor: AppColors.primary,
-  },
-  setTypeOptionCode: {
-    minWidth: 14,
-    textAlign: 'center',
-  },
-  emptyExerciseCard: {
-    gap: Spacing.xs,
-  },
-});
+    header: {
+      paddingHorizontal: Layout.pagePadding,
+      paddingTop: Spacing.md,
+      paddingBottom: 6,
+      backgroundColor: c.background,
+    },
+    headerTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    headerButton: {
+      width: 38,
+      height: 38,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLowest,
+    },
+    headerCopy: {
+      flex: 1,
+      gap: 4,
+    },
+    titleInput: {
+      paddingVertical: 0,
+      fontSize: 20,
+      fontWeight: '800',
+      color: c.text,
+      letterSpacing: -0.35,
+      lineHeight: 24,
+    },
+    saveButton: {
+      minHeight: 38,
+      borderRadius: Radii.pill,
+      paddingHorizontal: Spacing.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.primary,
+      ...Shadows.soft,
+    },
+    scrollContent: {
+      paddingHorizontal: Layout.pagePadding,
+      paddingBottom: 64,
+      paddingTop: 14,
+      gap: 10,
+    },
+    exerciseCard: {
+      gap: 4,
+      overflow: 'visible',
+      padding: 10,
+    },
+    exerciseCardOverlayActive: {
+      zIndex: 60,
+      elevation: 10,
+    },
+    exerciseHeader: {
+      position: 'relative',
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    exerciseHeaderCopy: {
+      flex: 1,
+      paddingTop: 2,
+    },
+    exerciseHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    moreButton: {
+      width: 30,
+      height: 30,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    addSetHeaderButton: {
+      minHeight: 30,
+      borderRadius: Radii.pill,
+      paddingHorizontal: Spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: c.surfaceLow,
+    },
+    setHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 2,
+      paddingTop: 2,
+    },
+    setRows: {
+      gap: 6,
+    },
+    setNumberHeader: {
+      width: 32,
+      textAlign: 'center',
+    },
+    setPreviousHeader: {
+      width: 88,
+    },
+    setInputHeader: {
+      flex: 1,
+      textAlign: 'center',
+    },
+    setInputHeaderWide: {
+      flex: 1,
+      textAlign: 'center',
+    },
+    setRowWrap: {
+      position: 'relative',
+      zIndex: 1,
+    },
+    setRowWrapActive: {
+      zIndex: 80,
+    },
+    setRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: Radii.lg,
+      paddingHorizontal: 6,
+      paddingVertical: 5,
+      backgroundColor: c.surfaceLow,
+    },
+    setNumberCell: {
+      width: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 32,
+      borderRadius: Radii.md,
+      backgroundColor: c.surfaceLowest,
+    },
+    setPreviousCell: {
+      width: 88,
+      paddingHorizontal: 4,
+      justifyContent: 'center',
+    },
+    setInputPressable: {
+      flex: 1,
+    },
+    setInputShell: {
+      minHeight: 32,
+      borderRadius: Radii.md,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLowest,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    setInputShellActive: {
+      backgroundColor: c.primaryContainer + '14',
+      borderColor: c.primaryContainer + '42',
+      ...Shadows.soft,
+    },
+    setInputValue: {
+      width: '100%',
+      textAlign: 'center',
+    },
+    inputBoardWrap: {
+      position: 'absolute',
+      left: Layout.pagePadding,
+      right: Layout.pagePadding,
+      bottom: Spacing.sm,
+      zIndex: 140,
+    },
+    inputBoardCard: {
+      gap: Spacing.sm,
+      paddingTop: 10,
+      paddingBottom: Spacing.md,
+      paddingHorizontal: 10,
+      borderRadius: Radii.xl,
+      backgroundColor: c.surfaceLowest,
+      shadowOpacity: 0.08,
+      shadowRadius: 18,
+      shadowOffset: {
+        width: 0,
+        height: 8,
+      },
+      elevation: 12,
+    },
+    inputBoardBody: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: Spacing.sm,
+    },
+    inputBoardKeypad: {
+      flex: 1,
+      gap: Spacing.xs,
+    },
+    inputBoardKeypadRow: {
+      flexDirection: 'row',
+      gap: Spacing.xs,
+    },
+    inputBoardKey: {
+      flex: 1,
+      minHeight: 58,
+      borderRadius: Radii.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    inputBoardKeyDisabled: {
+      opacity: 0.38,
+    },
+    inputBoardButtonPressed: {
+      opacity: 0.78,
+    },
+    inputBoardRail: {
+      width: 92,
+      gap: 10,
+    },
+    inputBoardRailButton: {
+      minHeight: 58,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      backgroundColor: c.surfaceLow,
+    },
+    inputBoardStepperRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    inputBoardStepperAction: {
+      flex: 1,
+      minHeight: 58,
+      borderRadius: Radii.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceVariant,
+    },
+    inputBoardNextButton: {
+      flex: 1,
+      minHeight: 82,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: c.primary,
+      ...Shadows.soft,
+    },
+    inputBoardNextButtonPressed: {
+      opacity: 0.9,
+    },
+    setInput: {
+      flex: 1,
+      minHeight: 32,
+      borderRadius: Radii.md,
+      paddingHorizontal: 8,
+      backgroundColor: c.surfaceLowest,
+      color: c.text,
+      textAlign: 'center',
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    durationInput: {
+      flex: 1,
+    },
+    deleteSetAction: {
+      marginLeft: Spacing.sm,
+      width: 96,
+      minHeight: 44,
+      borderRadius: Radii.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+      backgroundColor: c.danger,
+    },
+    listFooterSpacer: {
+      height: 16,
+    },
+    footerButtons: {
+      marginTop: Spacing.sm,
+      gap: Spacing.sm,
+    },
+    modalRoot: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    modalBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(11, 14, 18, 0.44)',
+    },
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    modalCard: {
+      maxHeight: '72%',
+      gap: Spacing.md,
+      borderTopLeftRadius: Radii.xl,
+      borderTopRightRadius: Radii.xl,
+    },
+    modalCardLarge: {
+      height: '88%',
+      gap: Spacing.sm,
+      borderTopLeftRadius: Radii.xl,
+      borderTopRightRadius: Radii.xl,
+    },
+    modalHandle: {
+      width: 56,
+      height: 5,
+      borderRadius: Radii.pill,
+      backgroundColor: c.surfaceHighest,
+      alignSelf: 'center',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    modalHeaderLeading: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      flex: 1,
+    },
+    headerAddButton: {
+      minHeight: 38,
+      borderRadius: Radii.pill,
+      paddingHorizontal: Spacing.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    headerAddButtonPlaceholder: {
+      width: 56,
+    },
+    searchField: {
+      minHeight: 42,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      backgroundColor: c.surfaceLow,
+    },
+    searchInput: {
+      flex: 1,
+      color: c.text,
+      fontSize: 15,
+    },
+    filterControlRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+    },
+    filterSelectorSlot: {
+      flex: 1,
+    },
+    customActionSlot: {
+      minWidth: 164,
+    },
+    filterSelector: {
+      minHeight: 36,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: c.surfaceLow,
+    },
+    filterDropdownPanel: {
+      borderRadius: Radii.lg,
+      padding: Spacing.xs,
+      backgroundColor: c.surfaceLowest,
+      ...Shadows.soft,
+    },
+    filterDropdownWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.xs,
+    },
+    filterChip: {
+      minHeight: 30,
+      borderRadius: Radii.pill,
+      paddingHorizontal: Spacing.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    filterChipActive: {
+      backgroundColor: c.primary,
+    },
+    createCustomCompactButton: {
+      minHeight: 36,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.xs,
+      backgroundColor: c.surfaceLow,
+    },
+    optionList: {
+      gap: Spacing.sm,
+      paddingBottom: Spacing.xl,
+    },
+    optionScroll: {
+      flex: 1,
+    },
+    optionPressable: {
+      width: '100%',
+    },
+    optionMain: {
+      minHeight: 64,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      backgroundColor: c.surfaceLow,
+    },
+    optionMainSelected: {
+      backgroundColor: c.primaryContainer + '18',
+    },
+    optionImage: {
+      width: 56,
+      height: 56,
+      borderRadius: Radii.lg,
+      backgroundColor: c.surfaceHighest,
+    },
+    optionImageFallback: {
+      width: 56,
+      height: 56,
+      borderRadius: Radii.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceHighest,
+    },
+    optionCopy: {
+      flex: 1,
+      gap: 2,
+    },
+    optionCheck: {
+      width: 28,
+      height: 28,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLowest,
+      borderWidth: 1,
+      borderColor: c.outlineVariant,
+    },
+    optionCheckSelected: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+    },
+    centerModalContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: Layout.pagePadding,
+    },
+    smallActionModalCard: {
+      width: '100%',
+      maxWidth: 280,
+      gap: Spacing.xs,
+      borderRadius: Radii.xl,
+      ...Shadows.soft,
+    },
+    smallActionModalButton: {
+      minHeight: 42,
+      borderRadius: Radii.md,
+      paddingHorizontal: Spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    inputField: {
+      gap: 6,
+    },
+    input: {
+      minHeight: 44,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.md,
+      backgroundColor: c.surfaceLow,
+      color: c.text,
+      fontSize: 15,
+    },
+    modeRow: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+      zIndex: 1,
+    },
+    modeChip: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    modeChipSelected: {
+      backgroundColor: c.primary,
+    },
+    setTypeOptionCode: {
+      minWidth: 14,
+      textAlign: 'center',
+    },
+    emptyExerciseCard: {
+      gap: Spacing.xs,
+    },
+  });
+}

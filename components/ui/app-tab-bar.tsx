@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatWorkoutTimerLabel, getActiveWorkoutSessionView } from '@/data/local/selectors';
 import { useAppData } from '@/providers/app-data-provider';
+import { useAppTheme } from '@/providers/theme-provider';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { AppColors, Radii, Shadows, Spacing } from '@/constants/theme';
@@ -33,6 +34,7 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { state: appState } = useAppData();
+  const { colors, shadows } = useAppTheme();
   const activeWorkout = getActiveWorkoutSessionView(appState);
   const [clock, setClock] = useState(() => new Date());
 
@@ -49,11 +51,16 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
   }, [activeWorkout]);
 
   return (
-    <View style={[styles.safeArea, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+    <View
+      style={[
+        styles.safeArea,
+        { paddingBottom: Math.max(insets.bottom, 10), backgroundColor: colors.surfaceLowest, borderTopColor: colors.outlineVariant },
+      ]}
+    >
       {activeWorkout ? (
         <PressScale haptic="none" onPress={() => router.push('/workout/session')}>
-          <View style={styles.resumeBar}>
-            <View style={styles.resumeHandle} />
+          <View style={[styles.resumeBar, { backgroundColor: colors.surface }, shadows.floating]}>
+            <View style={[styles.resumeHandle, { backgroundColor: colors.surfaceHighest }]} />
             <View style={styles.resumeContent}>
               <View style={styles.resumeCopy}>
                 <AppText variant="bodyStrong">{activeWorkout.session.title}</AppText>
@@ -62,14 +69,14 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
                 </AppText>
               </View>
               <View style={styles.resumeMeta}>
-                <AppText variant="label" color={AppColors.primary}>
+                <AppText variant="label" color={colors.primary}>
                   {formatWorkoutTimerLabel(
                     activeWorkout.session.startedAt,
                     clock,
                     activeWorkout.session.endedAt,
                   )}
                 </AppText>
-                <Ionicons name="chevron-up" size={16} color={AppColors.primary} />
+                <Ionicons name="chevron-up" size={16} color={colors.primary} />
               </View>
             </View>
           </View>
@@ -102,13 +109,20 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
           return (
             <View key={route.key} style={styles.slot}>
               <PressScale onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel}>
-                <View style={[styles.item, focused ? styles.itemActive : styles.itemInactive]}>
+                <View
+                  style={[
+                    styles.item,
+                    focused
+                      ? [styles.itemActive, { backgroundColor: colors.primary }, shadows.soft]
+                      : styles.itemInactive,
+                  ]}
+                >
                   <Ionicons
                     size={22}
                     name={focused ? meta.activeIcon : meta.inactiveIcon}
-                    color={focused ? AppColors.white : AppColors.textSubtle}
+                    color={focused ? colors.white : colors.textSubtle}
                   />
-                  <AppText variant="tabLabel" color={focused ? AppColors.white : AppColors.textSubtle}>
+                  <AppText variant="tabLabel" color={focused ? colors.white : colors.textSubtle}>
                     {meta.label}
                   </AppText>
                 </View>

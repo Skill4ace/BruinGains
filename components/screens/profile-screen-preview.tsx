@@ -30,7 +30,10 @@ import { AppScreen } from '@/components/ui/app-screen';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
+import { ThemeToggleButton } from '@/components/ui/theme-toggle-button';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
+import type { ThemeColors } from '@/constants/theme';
+import { useAppTheme } from '@/providers/theme-provider';
 import type {
   LocalAppData,
   MealLog,
@@ -675,6 +678,8 @@ function buildProfileHistory(state: LocalAppData, referenceDate = new Date()) {
 }
 
 export function ProfileScreenPreview() {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   const router = useRouter();
   const { clearAllLocalData, reopenOnboarding, state, updateGoalPlan } = useAppData();
   const referenceDate = useMemo(() => new Date(), []);
@@ -847,6 +852,7 @@ export function ProfileScreenPreview() {
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <AppText variant="headline">Profile</AppText>
+        <ThemeToggleButton />
       </View>
 
       <View style={styles.stack}>
@@ -867,7 +873,7 @@ export function ProfileScreenPreview() {
                 <View style={styles.goalMetricsRow}>
                   <GoalMetric
                     icon="flame-outline"
-                    color="#1D1F24"
+                    color={AppColors.text}
                     label="Calories"
                     value={`${state.goals.calories.toLocaleString()} kcal`}
                   />
@@ -991,7 +997,7 @@ export function ProfileScreenPreview() {
                           <View style={styles.dayRowRight}>
                             {day.mealCount > 0 ? (
                               <ActivityCountPill
-                                color="#9A6700"
+                                color={isDark ? '#E6A800' : '#9A6700'}
                                 icon="restaurant-outline"
                                 tone="nutrition"
                                 value={String(day.mealCount)}
@@ -1036,7 +1042,7 @@ export function ProfileScreenPreview() {
                                     <Ionicons
                                       name="restaurant-outline"
                                       size={13}
-                                      color="#9A6700"
+                                      color={isDark ? '#E6A800' : '#9A6700'}
                                     />
                                   </View>
                                   <View style={styles.sectionSummaryCopy}>
@@ -1355,7 +1361,7 @@ export function ProfileScreenPreview() {
   );
 }
 
-function getActivityToneStyle(tone: DayActivityTone) {
+function getActivityToneStyle(tone: DayActivityTone, styles: ReturnType<typeof createStyles>) {
   switch (tone) {
     case 'nutrition':
       return styles.activityToneNutrition;
@@ -1375,9 +1381,11 @@ function LegendPill({
   label: string;
   tone: 'both' | 'nutrition' | 'workout';
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <View style={styles.legendPill}>
-      <View style={[styles.legendSwatch, getActivityToneStyle(tone)]} />
+      <View style={[styles.legendSwatch, getActivityToneStyle(tone, styles)]} />
       <AppText variant="micro" dimmed>
         {label}
       </AppText>
@@ -1386,6 +1394,8 @@ function LegendPill({
 }
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <View style={styles.summaryTile}>
       <AppText variant="micro" dimmed>
@@ -1407,6 +1417,8 @@ function ActivityCountPill({
   tone: 'nutrition' | 'workout';
   value: string;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <View
       style={[
@@ -1432,6 +1444,8 @@ function SettingsRow({
   onPress: () => void;
   title: string;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <PressScale haptic="light" onPress={onPress} pressEffect="opacity">
       <View style={[styles.settingsRow, danger ? styles.settingsRowDanger : null]}>
@@ -1474,6 +1488,8 @@ function ComplianceDocumentModal({
   sections: ComplianceDocumentSection[];
   title: string;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <View style={styles.modalScrim}>
@@ -1536,6 +1552,8 @@ function GoalSettingsModal({
   onRecalculate: () => void;
   onSave: () => void;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   const [pickerAnchor, setPickerAnchor] = useState<GoalPickerAnchor | null>(null);
   const sexLabel = SEX_OPTIONS.find((option) => option.value === draft.sex)?.label ?? 'Select';
   const activityLabel =
@@ -1780,6 +1798,8 @@ function GoalDropdownMenu({
   options: GoalPickerOption[];
   title: string;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   const windowDimensions = Dimensions.get('window');
   const estimatedHeight = Math.min(56 * options.length + Spacing.md * 2, 280);
   const minimumWidth = title === 'Activity level' || title === 'Goal' ? 220 : 140;
@@ -1875,6 +1895,8 @@ function GoalDropdownField({
   onOpen: (anchor: GoalPickerAnchor) => void;
   value: string;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   const triggerRef = useRef<View | null>(null);
 
   function handleOpen() {
@@ -1927,6 +1949,8 @@ function GoalTextField({
   onChangeText: (value: string) => void;
   value: string;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <View style={styles.goalInputCard}>
       <AppText variant="micro" dimmed>
@@ -1955,6 +1979,8 @@ function GoalMetric({
   value: string;
   material?: boolean;
 }) {
+  const { colors: AppColors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <View style={styles.goalMetric}>
       <View style={styles.goalMetricTop}>
@@ -1972,7 +1998,8 @@ function GoalMetric({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
   activityCountPill: {
     minHeight: 24,
     borderRadius: Radii.pill,
@@ -1988,26 +2015,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(39, 116, 174, 0.12)',
   },
   activityToneBoth: {
-    backgroundColor: AppColors.primary,
-    borderColor: AppColors.secondary,
+    backgroundColor: c.primary,
+    borderColor: c.secondary,
   },
   activityToneEmpty: {
-    backgroundColor: AppColors.surfaceHighest,
+    backgroundColor: c.surfaceHighest,
     borderColor: 'rgba(29, 31, 36, 0.03)',
   },
   activityToneNutrition: {
     backgroundColor: 'rgba(254, 204, 0, 0.32)',
-    borderColor: AppColors.secondary,
+    borderColor: c.secondary,
   },
   activityToneWorkout: {
     backgroundColor: 'rgba(30, 98, 152, 0.22)',
-    borderColor: AppColors.primary,
+    borderColor: c.primary,
   },
   calendarButton: {
     width: 34,
     height: 34,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2015,7 +2042,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
@@ -2028,8 +2055,8 @@ const styles = StyleSheet.create({
   },
   calendarDayCellSelected: {
     borderWidth: 1.5,
-    borderColor: AppColors.primary,
-    backgroundColor: AppColors.surfaceLowest,
+    borderColor: c.primary,
+    backgroundColor: c.surfaceLowest,
   },
   calendarDayDots: {
     flexDirection: 'row',
@@ -2043,10 +2070,10 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   calendarDotNutrition: {
-    backgroundColor: AppColors.secondary,
+    backgroundColor: c.secondary,
   },
   calendarDotWorkout: {
-    backgroundColor: AppColors.primary,
+    backgroundColor: c.primary,
   },
   calendarGrid: {
     gap: Spacing.sm,
@@ -2086,8 +2113,8 @@ const styles = StyleSheet.create({
   dayRow: {
     borderRadius: Radii.lg,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-    backgroundColor: AppColors.surfaceVariant,
+    borderColor: c.outlineVariant,
+    backgroundColor: c.surfaceVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     flexDirection: 'row',
@@ -2100,7 +2127,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   dayRowExpanded: {
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     borderColor: 'rgba(30, 98, 152, 0.18)',
   },
   dayRowRight: {
@@ -2124,7 +2151,7 @@ const styles = StyleSheet.create({
   },
   detailCardSeparated: {
     borderTopWidth: 1,
-    borderTopColor: AppColors.outlineVariant,
+    borderTopColor: c.outlineVariant,
     paddingTop: Spacing.md,
   },
   detailList: {
@@ -2136,17 +2163,17 @@ const styles = StyleSheet.create({
   },
   exerciseBlockSeparated: {
     borderTopWidth: 1,
-    borderTopColor: AppColors.outlineVariant,
+    borderTopColor: c.outlineVariant,
   },
   exerciseList: {
     gap: 0,
   },
   goalDivider: {
     height: 1,
-    backgroundColor: AppColors.outlineVariant,
+    backgroundColor: c.outlineVariant,
   },
   goalInput: {
-    color: AppColors.text,
+    color: c.text,
     fontSize: 16,
     paddingVertical: 0,
   },
@@ -2154,9 +2181,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: '46%',
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
+    borderColor: c.outlineVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     gap: Spacing.xs,
@@ -2235,9 +2262,9 @@ const styles = StyleSheet.create({
   },
   goalSelectionField: {
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
+    borderColor: c.outlineVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     minHeight: 72,
@@ -2262,7 +2289,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   goalsCard: {
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     gap: Spacing.lg,
   },
   gymGoalLeft: {
@@ -2278,6 +2305,9 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   legendPill: {
     flexDirection: 'row',
@@ -2310,7 +2340,7 @@ const styles = StyleSheet.create({
   },
   settingsRow: {
     borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     flexDirection: 'row',
@@ -2404,7 +2434,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   documentBodyText: {
-    color: AppColors.text,
+    color: c.text,
   },
   dropdownWrapper: {
     position: 'relative',
@@ -2444,12 +2474,12 @@ const styles = StyleSheet.create({
   },
   pickerOptionRowSeparated: {
     borderTopWidth: 1,
-    borderTopColor: AppColors.outlineVariant,
+    borderTopColor: c.outlineVariant,
     paddingTop: Spacing.md,
   },
   pickerOptionRowSelected: {
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceLowest,
+    backgroundColor: c.surfaceLowest,
     paddingHorizontal: Spacing.sm,
   },
   sectionSummaryCopy: {
@@ -2476,12 +2506,12 @@ const styles = StyleSheet.create({
   },
   sectionBlockSeparated: {
     borderTopWidth: 1,
-    borderTopColor: AppColors.outlineVariant,
+    borderTopColor: c.outlineVariant,
     paddingTop: Spacing.sm,
   },
   sectionDetailPanel: {
     borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     gap: Spacing.sm,
@@ -2514,7 +2544,7 @@ const styles = StyleSheet.create({
   summaryTile: {
     flex: 1,
     borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     gap: Spacing.xs,
@@ -2529,7 +2559,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2550,4 +2580,5 @@ const styles = StyleSheet.create({
   recalculateButtonWrap: {
     minWidth: 132,
   },
-});
+  });
+}

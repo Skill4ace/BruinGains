@@ -1,11 +1,12 @@
 import { Redirect, Tabs } from 'expo-router';
 
 import { AppTabBar } from '@/components/ui/app-tab-bar';
-import { AppColors } from '@/constants/theme';
 import { useAppData } from '@/providers/app-data-provider';
+import { useAppTheme } from '@/providers/theme-provider';
 
 export default function TabLayout() {
   const { isOnboardingComplete } = useAppData();
+  const { colors } = useAppTheme();
 
   if (!isOnboardingComplete) {
     return <Redirect href="/onboarding" />;
@@ -17,7 +18,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: {
-          backgroundColor: AppColors.background,
+          backgroundColor: colors.background,
         },
         tabBarHideOnKeyboard: true,
       }}

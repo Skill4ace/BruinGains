@@ -18,7 +18,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { AppDataProvider } from '@/providers/app-data-provider';
-import { NavigationTheme } from '@/constants/theme';
+import { AppThemeProvider, useAppTheme } from '@/providers/theme-provider';
 import { preloadCampusDataOnLaunch } from '@/hooks/use-campus-data';
 
 void SplashScreen.preventAutoHideAsync();
@@ -69,37 +69,47 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AppDataProvider>
-        <ThemeProvider value={NavigationTheme}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen
-              name="onboarding"
-              options={{
-                animation: 'slide_from_right',
-                gestureEnabled: false,
-              }}
-            />
-            <Stack.Screen
-              name="workout/session"
-              options={{
-                animation: 'slide_from_bottom',
-                gestureEnabled: true,
-                presentation: 'modal',
-              }}
-            />
-            <Stack.Screen
-              name="workout/template"
-              options={{
-                animation: 'slide_from_bottom',
-                gestureEnabled: true,
-                presentation: 'modal',
-              }}
-            />
-          </Stack>
-          <StatusBar style="dark" />
-        </ThemeProvider>
-      </AppDataProvider>
+      <AppThemeProvider>
+        <AppDataProvider>
+          <ThemedNavigationShell />
+        </AppDataProvider>
+      </AppThemeProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function ThemedNavigationShell() {
+  const { navigationTheme, isDark } = useAppTheme();
+
+  return (
+    <ThemeProvider value={navigationTheme}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="onboarding"
+          options={{
+            animation: 'slide_from_right',
+            gestureEnabled: false,
+          }}
+        />
+        <Stack.Screen
+          name="workout/session"
+          options={{
+            animation: 'slide_from_bottom',
+            gestureEnabled: true,
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="workout/template"
+          options={{
+            animation: 'slide_from_bottom',
+            gestureEnabled: true,
+            presentation: 'modal',
+          }}
+        />
+      </Stack>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+    </ThemeProvider>
   );
 }

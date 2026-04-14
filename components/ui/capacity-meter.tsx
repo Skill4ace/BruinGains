@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { useAppTheme } from '@/providers/theme-provider';
 import { AppColors, Radii, Spacing } from '@/constants/theme';
 import { AppText } from '@/components/ui/app-text';
 
@@ -21,6 +22,7 @@ export function CapacityMeter({
   load,
   tone = 'blue',
 }: CapacityMeterProps) {
+  const { colors, isDark } = useAppTheme();
   const width = useSharedValue(0);
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export function CapacityMeter({
     width: `${width.value * 100}%`,
   }));
 
-  const statusPill = getOccupancyLabel(load);
+  const statusPill = getOccupancyLabel(load, isDark);
 
   return (
     <View style={styles.wrapper}>
@@ -52,11 +54,11 @@ export function CapacityMeter({
             </View>
           </View>
         </View>
-        <AppText variant="title" color={tone === 'gold' ? '#A56D00' : AppColors.primary}>
+        <AppText variant="title" color={tone === 'gold' ? (isDark ? '#E6A800' : '#A56D00') : colors.primary}>
           {percent}% full
         </AppText>
       </View>
-      <View style={styles.track}>
+      <View style={[styles.track, { backgroundColor: colors.surfaceHighest }]}>
         <Animated.View style={[styles.fill, animatedStyle]}>
           <LinearGradient
             colors={['#2774AE', '#FECC00', '#E7645C']}
@@ -70,27 +72,27 @@ export function CapacityMeter({
   );
 }
 
-function getOccupancyLabel(load: number) {
+function getOccupancyLabel(load: number, isDark: boolean) {
   if (load >= 0.9) {
     return {
       label: 'Very busy',
-      backgroundColor: 'rgba(231, 100, 92, 0.12)',
-      textColor: '#B13830',
+      backgroundColor: isDark ? 'rgba(242, 130, 121, 0.16)' : 'rgba(231, 100, 92, 0.12)',
+      textColor: isDark ? '#F28279' : '#B13830',
     };
   }
 
   if (load >= 0.7) {
     return {
       label: 'Moderate',
-      backgroundColor: 'rgba(244, 180, 0, 0.16)',
-      textColor: '#8A6500',
+      backgroundColor: isDark ? 'rgba(244, 180, 0, 0.20)' : 'rgba(244, 180, 0, 0.16)',
+      textColor: isDark ? '#F4B400' : '#8A6500',
     };
   }
 
   return {
     label: 'Light',
-    backgroundColor: 'rgba(39, 116, 174, 0.12)',
-    textColor: '#1E6298',
+    backgroundColor: isDark ? 'rgba(74, 159, 216, 0.16)' : 'rgba(39, 116, 174, 0.12)',
+    textColor: isDark ? '#4A9FD8' : '#1E6298',
   };
 }
 
