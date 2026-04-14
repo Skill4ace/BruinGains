@@ -1802,7 +1802,7 @@ function HallRow({
           source={getDiningHallImageSource(hall.id)}
           style={styles.hallImage}
           contentFit="contain"
-          transition={150}
+          transition={0}
         />
         <View style={styles.hallCopy}>
           <AppText variant="title">{hall.name}</AppText>

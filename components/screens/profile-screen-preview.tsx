@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { formatMealLogMeta } from '@/data/local/selectors';
 import {
@@ -1504,7 +1505,8 @@ function ComplianceDocumentModal({
   const styles = useMemo(() => createStyles(AppColors, isDark), [AppColors, isDark]);
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
-      <View style={styles.modalScrim}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.modalScrim}>
+        <Pressable onPress={onClose} style={styles.modalBackdrop} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.documentModalRoot}>
@@ -1512,13 +1514,14 @@ function ComplianceDocumentModal({
             <View style={styles.goalModalHeader}>
               <AppText variant="title">{title}</AppText>
               <PressScale haptic="light" onPress={onClose}>
-                <View style={styles.calendarButton}>
+                <View style={styles.documentCloseButton}>
                   <Ionicons name="close" size={18} color={AppColors.text} />
                 </View>
               </PressScale>
             </View>
 
             <ScrollView
+              style={styles.documentModalScroll}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.documentModalScrollContent}>
               {sections.map((section) => (
@@ -1538,7 +1541,7 @@ function ComplianceDocumentModal({
             </ScrollView>
           </SurfaceCard>
         </KeyboardAvoidingView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -2420,24 +2423,40 @@ function createStyles(c: ThemeColors, isDark: boolean) {
   },
   modalScrim: {
     flex: 1,
-    backgroundColor: 'rgba(29, 31, 36, 0.24)',
+    backgroundColor: 'rgba(29, 31, 36, 0.42)',
     padding: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   documentModalRoot: {
+    flex: 1,
     width: '100%',
     maxWidth: 420,
+    justifyContent: 'center',
   },
   documentModalCard: {
+    flex: 1,
     width: '100%',
     maxWidth: 420,
+    maxHeight: '94%',
     gap: Spacing.md,
-    paddingBottom: Spacing.md,
+    paddingBottom: 0,
+  },
+  documentCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radii.pill,
+    backgroundColor: c.surfaceVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  documentModalScroll: {
+    flex: 1,
+    minHeight: 0,
   },
   documentModalScrollContent: {
     gap: Spacing.lg,
-    paddingBottom: Spacing.sm,
+    paddingBottom: Spacing.lg,
   },
   documentSection: {
     gap: Spacing.sm,
