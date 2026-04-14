@@ -5,14 +5,13 @@ import { type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState 
 import {
   Alert,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Platform,
   ScrollView,
   StyleSheet,
   TextInput,
-  useWindowDimensions,
+  UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -125,11 +124,9 @@ type DiningMealSaveOverrides = {
 };
 
 export function DiningScreenPreview() {
-  const { width } = useWindowDimensions();
   const {
     addCustomMealLog,
     addDiningMealLog,
-    clearTodayMealLogs,
     deleteMealLog,
     setPreferredDiningPeriod,
     state,
@@ -143,7 +140,7 @@ export function DiningScreenPreview() {
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>(
     launchDiningPeriod,
   );
-  const [activeSlide, setActiveSlide] = useState(0);
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
   const [customMealOpen, setCustomMealOpen] = useState(false);
   const [customMealDraft, setCustomMealDraft] = useState<CustomMealDraft>(
     createCustomMealDraft(launchDiningPeriod),
@@ -179,7 +176,6 @@ export function DiningScreenPreview() {
       return latestDate;
     }, null);
   }, [diningMenuState.data]);
-  const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
   const availableHallIdsForPeriod = useMemo(() => {
     if (!latestGlobalServiceDate) {
       return new Set<string>();
@@ -297,6 +293,12 @@ export function DiningScreenPreview() {
   }, [effectiveSelectedMenuItem, selectedServings]);
 
   useEffect(() => {
+    if (Platform.OS === 'android') {
+      UIManager.setLayoutAnimationEnabledExperimental?.(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (hasSyncedLaunchDiningPeriodRef.current) {
       return;
     }
@@ -312,9 +314,9 @@ export function DiningScreenPreview() {
     state.userPreferences.preferredDiningPeriod,
   ]);
 
-  const handleSlideEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const page = Math.round(event.nativeEvent.contentOffset.x / cardWidth);
-    setActiveSlide(page);
+  const handleSummaryToggle = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsSummaryCollapsed((currentValue) => !currentValue);
   };
 
   const handleCustomMealOpen = () => {
@@ -402,24 +404,6 @@ export function DiningScreenPreview() {
     );
   };
 
-  const handleClearAllMeals = () => {
-    Alert.alert('Clear all meals?', `Remove all ${todaysMeals.length} logged meals from today?`, [
-      {
-        style: 'cancel',
-        text: 'Cancel',
-      },
-      {
-        style: 'destructive',
-        text: 'Clear all',
-        onPress: () => {
-          clearTodayMealLogs();
-          setEditingMealLog(null);
-          setCustomMealOpen(false);
-        },
-      },
-    ]);
-  };
-
   const handleHallOpen = (hall: PublicDiningHall) => {
     setActiveHallId(hall.id);
     setActiveHallPeriod(selectedPeriod);
@@ -450,148 +434,18 @@ export function DiningScreenPreview() {
           <AppText variant="headline">Dining</AppText>
         </View>
 
-        <View style={styles.carouselWrap}>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            decelerationRate="fast"
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={handleSlideEnd}>
-            <View style={[styles.page, { width: cardWidth }]}>
-              <SurfaceCard floating style={styles.breakdownCard}>
-                <View style={styles.breakdownTop}>
-                  <View style={styles.breakdownCopy}>
-                    <AppText variant="micro" dimmed>
-                      Calories
-                    </AppText>
-                    <AppText variant="headline">
-                      {nutritionSummary.calories.toLocaleString()}/
-                      {state.goals.calories.toLocaleString()}
-                    </AppText>
-                  </View>
-                  <IconRing
-                    progress={nutritionSummary.calories / state.goals.calories}
-                    color={AppColors.text}
-                    icon="flame"
-                    size={74}
-                    strokeWidth={8}
-                  />
-                </View>
-
-                <View style={styles.breakdownRows}>
-                  <BreakdownRow
-                    label="Protein"
-                    value={`${nutritionSummary.protein}/${state.goals.protein}g`}
-                    progress={nutritionSummary.protein / state.goals.protein}
-                    iconKey={MACRO_META.protein.key}
-                    color={MACRO_META.protein.color}
-                  />
-                  <BreakdownRow
-                    label="Carbs"
-                    value={`${nutritionSummary.carbs}/${state.goals.carbs}g`}
-                    progress={nutritionSummary.carbs / state.goals.carbs}
-                    iconKey={MACRO_META.carbs.key}
-                    color={MACRO_META.carbs.color}
-                  />
-                  <BreakdownRow
-                    label="Fats"
-                    value={`${nutritionSummary.fats}/${state.goals.fats}g`}
-                    progress={nutritionSummary.fats / state.goals.fats}
-                    iconKey={MACRO_META.fats.key}
-                    color={MACRO_META.fats.color}
-                  />
-                </View>
-              </SurfaceCard>
-            </View>
-
-            <View style={[styles.page, { width: cardWidth }]}>
-              <SurfaceCard floating style={styles.loggedMealsCard}>
-                <View style={styles.loggedMealsHeader}>
-                  <View style={styles.loggedMealsHeaderCopy}>
-                    <AppText variant="title">Logged meals</AppText>
-                    <View style={styles.loggedMealsBadge}>
-                      <AppText variant="label" color={AppColors.primary}>
-                        {todaysMeals.length} today
-                      </AppText>
-                    </View>
-                    {todaysMeals.length > 0 ? (
-                      <PressScale haptic="light" onPress={handleClearAllMeals}>
-                        <View style={styles.clearAllMealsButton}>
-                          <AppText variant="label" color={AppColors.danger}>
-                            Clear all
-                          </AppText>
-                        </View>
-                      </PressScale>
-                    ) : null}
-                  </View>
-                  <PressScale haptic="light" onPress={handleCustomMealOpen}>
-                    <View style={styles.customMealButton}>
-                      <Ionicons name="add" size={18} color={AppColors.primary} />
-                    </View>
-                  </PressScale>
-                </View>
-                {todaysMeals.length > 0 ? (
-                  <ScrollView
-                    style={styles.loggedMealsScroller}
-                    contentContainerStyle={styles.loggedMealsList}
-                    showsVerticalScrollIndicator={false}>
-                    {todaysMeals.map((meal, index) => (
-                      <PressScale
-                        key={meal.id}
-                        haptic="light"
-                        onPress={() => handleMealLogEdit(meal)}>
-                        <View
-                          style={[
-                            styles.loggedMealRow,
-                            index < todaysMeals.length - 1 ? styles.rowSpacing : null,
-                          ]}>
-                          <View style={styles.loggedMealCopy}>
-                            <AppText variant="bodyStrong">{meal.title}</AppText>
-                            <AppText variant="micro" dimmed>
-                              {formatMealLogMeta(meal)}
-                            </AppText>
-                          </View>
-                          <View style={styles.loggedMealActions}>
-                            <AppText variant="title" color={AppColors.primary}>
-                              {meal.calories}
-                            </AppText>
-                            <View style={styles.loggedMealActionButton}>
-                              <Ionicons
-                                name="create-outline"
-                                size={18}
-                                color={AppColors.textSubtle}
-                              />
-                            </View>
-                          </View>
-                        </View>
-                      </PressScale>
-                    ))}
-                  </ScrollView>
-                ) : (
-                  <View style={styles.loggedMealsEmpty}>
-                    <AppText variant="bodyStrong">Nothing logged yet</AppText>
-                    <AppText dimmed>
-                      Use the plus button for a custom entry or open a hall to log from the live
-                      UCLA menu.
-                    </AppText>
-                  </View>
-                )}
-              </SurfaceCard>
-            </View>
-          </ScrollView>
-
-          <View style={styles.pageDots}>
-            {[0, 1].map((index) => (
-              <View
-                key={index}
-                style={[
-                  styles.pageDot,
-                  activeSlide === index ? styles.pageDotActive : null,
-                ]}
-              />
-            ))}
-          </View>
-        </View>
+        <DiningSummarySection
+          caloriesGoal={state.goals.calories}
+          carbsGoal={state.goals.carbs}
+          fatsGoal={state.goals.fats}
+          isCollapsed={isSummaryCollapsed}
+          nutritionSummary={nutritionSummary}
+          onCustomMealOpen={handleCustomMealOpen}
+          onMealLogEdit={handleMealLogEdit}
+          onToggleCollapsed={handleSummaryToggle}
+          proteinGoal={state.goals.protein}
+          todaysMeals={todaysMeals}
+        />
 
         <View style={styles.stack}>
           <View style={styles.periodGrid}>
@@ -662,6 +516,198 @@ export function DiningScreenPreview() {
         onSave={handleCustomMealSave}
       />
     </>
+  );
+}
+
+function DiningSummarySection({
+  caloriesGoal,
+  carbsGoal,
+  fatsGoal,
+  isCollapsed,
+  nutritionSummary,
+  onCustomMealOpen,
+  onMealLogEdit,
+  onToggleCollapsed,
+  proteinGoal,
+  todaysMeals,
+}: {
+  caloriesGoal: number;
+  carbsGoal: number;
+  fatsGoal: number;
+  isCollapsed: boolean;
+  nutritionSummary: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+  };
+  onCustomMealOpen: () => void;
+  onMealLogEdit: (meal: MealLog) => void;
+  onToggleCollapsed: () => void;
+  proteinGoal: number;
+  todaysMeals: MealLog[];
+}) {
+  const summaryLine = `${todaysMeals.length} meals today • P ${nutritionSummary.protein} • C ${nutritionSummary.carbs} • F ${nutritionSummary.fats}`;
+
+  if (isCollapsed) {
+    return (
+      <PressScale haptic="light" onPress={onToggleCollapsed}>
+        <SurfaceCard floating style={styles.summaryShelfCard}>
+          <View style={styles.summaryShelfContent}>
+            <View style={styles.summaryShelfLeading}>
+              <MiniSummaryRing progress={nutritionSummary.calories / caloriesGoal} />
+              <View style={styles.summaryShelfCopy}>
+                <AppText numberOfLines={1} variant="bodyStrong">
+                  {nutritionSummary.calories.toLocaleString()}/{caloriesGoal.toLocaleString()} cal
+                </AppText>
+                <AppText numberOfLines={1} variant="micro" dimmed>
+                  {summaryLine}
+                </AppText>
+              </View>
+            </View>
+            <Ionicons name="chevron-down" size={18} color={AppColors.textSubtle} />
+          </View>
+        </SurfaceCard>
+      </PressScale>
+    );
+  }
+
+  return (
+    <SurfaceCard floating style={styles.summaryModuleCard}>
+      <View style={styles.summaryModuleHeader}>
+        <View />
+        <PressScale haptic="light" onPress={onToggleCollapsed}>
+          <View style={styles.summaryChevronButton}>
+            <Ionicons name="chevron-up" size={18} color={AppColors.textSubtle} />
+          </View>
+        </PressScale>
+      </View>
+
+      <View style={styles.breakdownTop}>
+        <View style={styles.breakdownCopy}>
+          <AppText variant="micro" dimmed>
+            Calories
+          </AppText>
+          <AppText variant="headline">
+            {nutritionSummary.calories.toLocaleString()}/{caloriesGoal.toLocaleString()}
+          </AppText>
+        </View>
+        <IconRing
+          progress={nutritionSummary.calories / caloriesGoal}
+          color={AppColors.text}
+          icon="flame"
+          size={74}
+          strokeWidth={8}
+        />
+      </View>
+
+      <View style={styles.breakdownRows}>
+        <BreakdownRow
+          label="Protein"
+          value={`${nutritionSummary.protein}/${proteinGoal}g`}
+          progress={nutritionSummary.protein / proteinGoal}
+          iconKey={MACRO_META.protein.key}
+          color={MACRO_META.protein.color}
+        />
+        <BreakdownRow
+          label="Carbs"
+          value={`${nutritionSummary.carbs}/${carbsGoal}g`}
+          progress={nutritionSummary.carbs / carbsGoal}
+          iconKey={MACRO_META.carbs.key}
+          color={MACRO_META.carbs.color}
+        />
+        <BreakdownRow
+          label="Fats"
+          value={`${nutritionSummary.fats}/${fatsGoal}g`}
+          progress={nutritionSummary.fats / fatsGoal}
+          iconKey={MACRO_META.fats.key}
+          color={MACRO_META.fats.color}
+        />
+      </View>
+
+      <View style={styles.summaryDivider} />
+
+      <View style={styles.summaryMealsHeader}>
+        <AppText variant="title">Logged meals</AppText>
+        <PressScale haptic="light" onPress={onCustomMealOpen}>
+          <View style={styles.customMealButton}>
+            <Ionicons name="add" size={18} color={AppColors.primary} />
+          </View>
+        </PressScale>
+      </View>
+
+      {todaysMeals.length > 0 ? (
+        <ScrollView
+          nestedScrollEnabled
+          style={styles.summaryMealsScroller}
+          contentContainerStyle={styles.summaryMealsList}
+          showsVerticalScrollIndicator={false}>
+          {todaysMeals.map((meal, index) => (
+            <PressScale
+              key={meal.id}
+              haptic="light"
+              onPress={() => onMealLogEdit(meal)}>
+              <View
+                style={[
+                  styles.loggedMealRow,
+                  index < todaysMeals.length - 1 ? styles.rowSpacing : null,
+                ]}>
+                <View style={styles.loggedMealCopy}>
+                  <AppText variant="bodyStrong">{meal.title}</AppText>
+                  <AppText variant="micro" dimmed>
+                    {formatMealLogMeta(meal)}
+                  </AppText>
+                </View>
+                <View style={styles.loggedMealActions}>
+                  <AppText variant="title" color={AppColors.primary}>
+                    {meal.calories}
+                  </AppText>
+                  <View style={styles.loggedMealActionButton}>
+                    <Ionicons
+                      name="create-outline"
+                      size={18}
+                      color={AppColors.textSubtle}
+                    />
+                  </View>
+                </View>
+              </View>
+            </PressScale>
+          ))}
+        </ScrollView>
+      ) : (
+        <View style={styles.summaryMealsEmpty}>
+          <AppText variant="bodyStrong">Nothing logged yet</AppText>
+          <AppText dimmed>
+            Use the plus button for a custom entry or open a hall to log from the live UCLA menu.
+          </AppText>
+        </View>
+      )}
+    </SurfaceCard>
+  );
+}
+
+function MiniSummaryRing({
+  progress,
+}: {
+  progress: number;
+}) {
+  return (
+    <View style={styles.summaryShelfRingWrap}>
+      <ProgressRing
+        progress={progress}
+        value=""
+        unit=""
+        caption=""
+        size={34}
+        strokeWidth={4}
+        color={AppColors.text}
+        trackColor="#ECECF4"
+        hideLabel
+      />
+      <View style={styles.summaryShelfRingCenter}>
+        <Ionicons name="flame" size={11} color={AppColors.text} />
+      </View>
+    </View>
   );
 }
 
@@ -1978,6 +2024,7 @@ function getBadgePresentation(label: string): BadgePresentation {
 const styles = StyleSheet.create({
   content: {
     paddingTop: Spacing.sm,
+    gap: Spacing.md,
   },
   header: {
     paddingTop: Spacing.xs,
@@ -1986,11 +2033,78 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
-  carouselWrap: {
+  summaryModuleCard: {
+    gap: Spacing.lg,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+  },
+  summaryModuleHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-end',
     gap: Spacing.md,
   },
-  page: {
+  summaryChevronButton: {
+    width: 34,
+    height: 34,
+    borderRadius: Radii.pill,
+    backgroundColor: AppColors.surfaceLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: AppColors.outlineVariant,
+  },
+  summaryMealsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  summaryMealsScroller: {
+    maxHeight: 332,
+  },
+  summaryMealsList: {
     gap: Spacing.sm,
+    paddingRight: Spacing.xs,
+  },
+  summaryMealsEmpty: {
+    gap: Spacing.sm,
+  },
+  summaryShelfCard: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+  },
+  summaryShelfContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  summaryShelfLeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  summaryShelfCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  summaryShelfRingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 34,
+    height: 34,
+  },
+  summaryShelfRingCenter: {
+    position: 'absolute',
+    left: 11.5,
+    width: 11,
+    height: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconRingWrap: {
     alignSelf: 'center',
@@ -2006,39 +2120,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loggedMealsCard: {
-    height: 292,
-    gap: Spacing.lg,
-  },
-  loggedMealsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  loggedMealsHeaderCopy: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flexWrap: 'wrap',
-    flex: 1,
-  },
-  loggedMealsBadge: {
-    minHeight: 32,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: AppColors.surfaceLow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  clearAllMealsButton: {
-    minHeight: 32,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: '#FDEDEC',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   customMealButton: {
     width: 36,
     height: 36,
@@ -2046,18 +2127,6 @@ const styles = StyleSheet.create({
     backgroundColor: AppColors.surfaceLow,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  loggedMealsScroller: {
-    flex: 1,
-  },
-  loggedMealsList: {
-    gap: Spacing.md,
-    paddingRight: Spacing.xs,
-  },
-  loggedMealsEmpty: {
-    minHeight: 160,
-    justifyContent: 'center',
-    gap: Spacing.sm,
   },
   loggedMealRow: {
     flexDirection: 'row',

@@ -851,9 +851,9 @@ export function ProfileScreenPreview() {
 
       <View style={styles.stack}>
         <PressScale haptic="light" onPress={handleOpenGoalSettings}>
-          <SurfaceCard tone="low" style={styles.goalsCard}>
+          <SurfaceCard floating style={styles.goalsCard}>
             <View style={styles.goalHeaderRow}>
-              <AppText variant="micro" dimmed>
+              <AppText variant="title">
                 Goals
               </AppText>
               <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
@@ -2262,6 +2262,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   goalsCard: {
+    backgroundColor: AppColors.surfaceLowest,
     gap: Spacing.lg,
   },
   gymGoalLeft: {
