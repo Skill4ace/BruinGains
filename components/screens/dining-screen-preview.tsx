@@ -140,7 +140,7 @@ export function DiningScreenPreview() {
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>(
     launchDiningPeriod,
   );
-  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
   const [customMealOpen, setCustomMealOpen] = useState(false);
   const [customMealDraft, setCustomMealDraft] = useState<CustomMealDraft>(
     createCustomMealDraft(launchDiningPeriod),
@@ -548,6 +548,13 @@ function DiningSummarySection({
   todaysMeals: MealLog[];
 }) {
   const summaryLine = `${todaysMeals.length} meals today • P ${nutritionSummary.protein} • C ${nutritionSummary.carbs} • F ${nutritionSummary.fats}`;
+  const [isMealsExpanded, setIsMealsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isCollapsed) {
+      setIsMealsExpanded(false);
+    }
+  }, [isCollapsed]);
 
   if (isCollapsed) {
     return (
@@ -627,61 +634,85 @@ function DiningSummarySection({
 
       <View style={styles.summaryDivider} />
 
-      <View style={styles.summaryMealsHeader}>
-        <AppText variant="title">Logged meals</AppText>
-        <PressScale haptic="light" onPress={onCustomMealOpen}>
-          <View style={styles.customMealButton}>
-            <Ionicons name="add" size={18} color={AppColors.primary} />
+      <View style={styles.summaryMealsSection}>
+        <View style={styles.summaryMealsHeader}>
+          <View style={styles.summaryMealsTitleWrap}>
+            <AppText variant="title">Logged meals</AppText>
+            {todaysMeals.length > 0 ? (
+              <AppText variant="micro" dimmed>
+                {todaysMeals.length} logged today
+              </AppText>
+            ) : null}
           </View>
-        </PressScale>
-      </View>
-
-      {todaysMeals.length > 0 ? (
-        <ScrollView
-          nestedScrollEnabled
-          style={styles.summaryMealsScroller}
-          contentContainerStyle={styles.summaryMealsList}
-          showsVerticalScrollIndicator={false}>
-          {todaysMeals.map((meal, index) => (
-            <PressScale
-              key={meal.id}
-              haptic="light"
-              onPress={() => onMealLogEdit(meal)}>
-              <View
-                style={[
-                  styles.loggedMealRow,
-                  index < todaysMeals.length - 1 ? styles.rowSpacing : null,
-                ]}>
-                <View style={styles.loggedMealCopy}>
-                  <AppText variant="bodyStrong">{meal.title}</AppText>
-                  <AppText variant="micro" dimmed>
-                    {formatMealLogMeta(meal)}
-                  </AppText>
-                </View>
-                <View style={styles.loggedMealActions}>
-                  <AppText variant="title" color={AppColors.primary}>
-                    {meal.calories}
-                  </AppText>
-                  <View style={styles.loggedMealActionButton}>
-                    <Ionicons
-                      name="create-outline"
-                      size={18}
-                      color={AppColors.textSubtle}
-                    />
-                  </View>
-                </View>
+          <View style={styles.summaryMealsHeaderActions}>
+            <PressScale haptic="light" onPress={onCustomMealOpen}>
+              <View style={styles.customMealButton}>
+                <Ionicons name="add" size={18} color={AppColors.primary} />
               </View>
             </PressScale>
-          ))}
-        </ScrollView>
-      ) : (
-        <View style={styles.summaryMealsEmpty}>
-          <AppText variant="bodyStrong">Nothing logged yet</AppText>
-          <AppText dimmed>
-            Use the plus button for a custom entry or open a hall to log from the live UCLA menu.
-          </AppText>
+            <PressScale
+              haptic="light"
+              onPress={() => setIsMealsExpanded((currentValue) => !currentValue)}>
+              <View style={styles.summaryChevronButton}>
+                <Ionicons
+                  name={isMealsExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={AppColors.textSubtle}
+                />
+              </View>
+            </PressScale>
+          </View>
         </View>
-      )}
+
+        {todaysMeals.length > 0 ? (
+          isMealsExpanded ? (
+            <ScrollView
+              nestedScrollEnabled
+              style={styles.summaryMealsScroller}
+              contentContainerStyle={styles.summaryMealsList}
+              showsVerticalScrollIndicator={false}>
+              {todaysMeals.map((meal, index) => (
+                <PressScale
+                  key={meal.id}
+                  haptic="light"
+                  onPress={() => onMealLogEdit(meal)}>
+                  <View
+                    style={[
+                      styles.loggedMealRow,
+                      index < todaysMeals.length - 1 ? styles.rowSpacing : null,
+                    ]}>
+                    <View style={styles.loggedMealCopy}>
+                      <AppText variant="bodyStrong">{meal.title}</AppText>
+                      <AppText variant="micro" dimmed>
+                        {formatMealLogMeta(meal)}
+                      </AppText>
+                    </View>
+                    <View style={styles.loggedMealActions}>
+                      <AppText variant="title" color={AppColors.primary}>
+                        {meal.calories}
+                      </AppText>
+                      <View style={styles.loggedMealActionButton}>
+                        <Ionicons
+                          name="create-outline"
+                          size={18}
+                          color={AppColors.textSubtle}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </PressScale>
+              ))}
+            </ScrollView>
+          ) : null
+        ) : (
+          <View style={styles.summaryMealsEmpty}>
+            <AppText variant="bodyStrong">Nothing logged yet</AppText>
+            <AppText dimmed>
+              Use the plus button for a custom entry or open a hall to log from the live UCLA menu.
+            </AppText>
+          </View>
+        )}
+      </View>
     </SurfaceCard>
   );
 }
@@ -2062,8 +2093,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
+  summaryMealsSection: {
+    gap: Spacing.sm,
+  },
+  summaryMealsTitleWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  summaryMealsHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   summaryMealsScroller: {
-    maxHeight: 332,
+    maxHeight: 252,
   },
   summaryMealsList: {
     gap: Spacing.sm,

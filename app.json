@@ -31,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./appassets/bruingains splash screen.png",
+          "image": "./assets/images/bg.png",
           "imageWidth": 1080,
           "resizeMode": "cover",
           "backgroundColor": "#ffffff",
