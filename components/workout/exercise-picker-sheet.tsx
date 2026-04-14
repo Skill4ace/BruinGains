@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -17,9 +17,10 @@ import { ActionButton } from '@/components/ui/action-button';
 import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { AppColors, Radii, Shadows, Spacing } from '@/constants/theme';
+import { Radii, Spacing, type ThemeColors, type ThemeShadows } from '@/constants/theme';
 import { getExerciseLibraryImageSource } from '@/data/local/exercise-library';
 import { formatDurationInput } from '@/lib/workout-duration';
+import { useAppTheme } from '@/providers/theme-provider';
 import type { ExerciseLibraryEntry, WorkoutTrackingMode } from '@/types/app-data';
 
 export type ExerciseFilterGroup =
@@ -227,6 +228,17 @@ function formatSecondaryFilterLabel(value: ExerciseFilterType) {
   return value === 'all' ? 'Category' : formatFilterLabel(value);
 }
 
+function useExercisePickerStyles() {
+  const { colors, shadows, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows, isDark), [colors, shadows, isDark]);
+
+  return {
+    AppColors: colors,
+    isDark,
+    styles,
+  };
+}
+
 type ExercisePickerModalProps = {
   canCreateCustomExercise?: boolean;
   filterGroup: ExerciseFilterGroup;
@@ -264,6 +276,7 @@ export function ExercisePickerModal({
   setSearchQuery,
   title,
 }: ExercisePickerModalProps) {
+  const { AppColors, styles } = useExercisePickerStyles();
   const [activeFilterMenu, setActiveFilterMenu] = useState<'group' | 'type' | null>(null);
 
   useEffect(() => {
@@ -546,6 +559,8 @@ export function ExerciseComposerModal({
   saveLabel = 'Save Exercise',
   title = 'Create New Exercise',
 }: ExerciseComposerModalProps) {
+  const { AppColors, styles } = useExercisePickerStyles();
+
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={isOpen}>
       <View style={styles.composerScrim}>
@@ -638,6 +653,7 @@ function ComposerDropdownField({
   value: string;
   zIndex?: number;
 }) {
+  const { AppColors, styles } = useExercisePickerStyles();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -710,6 +726,8 @@ function ExerciseInputField({
   onChangeText: (value: string) => void;
   value: string;
 }) {
+  const { AppColors, styles } = useExercisePickerStyles();
+
   return (
     <View style={styles.inputField}>
       <AppText dimmed variant="micro">
@@ -735,6 +753,8 @@ function TrackingModeChip({
   onPress: () => void;
   selected: boolean;
 }) {
+  const { AppColors, styles } = useExercisePickerStyles();
+
   return (
     <PressScale haptic="none" onPress={onPress}>
       <View style={[styles.modeChip, selected ? styles.modeChipSelected : null]}>
@@ -746,284 +766,285 @@ function TrackingModeChip({
   );
 }
 
-const styles = StyleSheet.create({
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11, 14, 18, 0.44)',
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalCardLarge: {
-    height: '88%',
-    gap: Spacing.sm,
-    borderTopLeftRadius: Radii.xl,
-    borderTopRightRadius: Radii.xl,
-  },
-  modalHandle: {
-    width: 56,
-    height: 5,
-    borderRadius: Radii.pill,
-    backgroundColor: AppColors.surfaceHighest,
-    alignSelf: 'center',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  modalHeaderLeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flex: 1,
-  },
-  modalHeaderTrailing: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  headerButton: {
-    width: 38,
-    height: 38,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLowest,
-  },
-  headerCustomButton: {
-    minHeight: 34,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  headerAddButton: {
-    minHeight: 34,
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  searchField: {
-    minHeight: 42,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  searchInput: {
-    flex: 1,
-    color: AppColors.text,
-    fontSize: 15,
-  },
-  filterControlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  filterSelectorSlot: {
-    flex: 1,
-    position: 'relative',
-  },
-  filterSelector: {
-    minHeight: 36,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  filterDropdownMenu: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    minWidth: 160,
-    marginTop: Spacing.xs,
-    borderRadius: Radii.md,
-    backgroundColor: AppColors.surfaceLowest,
-    borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-    overflow: 'hidden',
-    ...Shadows.soft,
-    zIndex: 20,
-  },
-  filterDropdownScroll: {
-    maxHeight: 220,
-  },
-  filterDropdownOption: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  filterDropdownOptionActive: {
-    backgroundColor: AppColors.surfaceLow,
-  },
-  optionList: {
-    gap: Spacing.sm,
-    paddingBottom: Spacing.xl,
-  },
-  optionScroll: {
-    flex: 1,
-  },
-  optionPressable: {
-    width: '100%',
-  },
-  optionMain: {
-    minHeight: 64,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: AppColors.surfaceLow,
-  },
-  optionMainSelected: {
-    backgroundColor: '#EAF1F8',
-  },
-  optionImage: {
-    width: 56,
-    height: 56,
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  optionImageFallback: {
-    width: 56,
-    height: 56,
-    borderRadius: Radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceHighest,
-  },
-  optionCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  optionCheck: {
-    width: 28,
-    height: 28,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLowest,
-    borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-  },
-  optionCheckSelected: {
-    backgroundColor: AppColors.primary,
-    borderColor: AppColors.primary,
-  },
-  emptyExerciseCard: {
-    gap: Spacing.xs,
-  },
-  composerScrim: {
-    flex: 1,
-    backgroundColor: 'rgba(11, 14, 18, 0.44)',
-    padding: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  composerAvoidingView: {
-    width: '100%',
-    maxWidth: 420,
-  },
-  composerCard: {
-    backgroundColor: AppColors.surfaceLowest,
-    borderRadius: Radii.xl,
-    padding: 24,
-    paddingBottom: 40,
-    gap: 20,
-    overflow: 'visible',
-  },
-  inputField: {
-    gap: 6,
-  },
-  input: {
-    minHeight: 44,
-    borderRadius: Radii.lg,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: AppColors.surfaceLow,
-    color: AppColors.text,
-    fontSize: 15,
-  },
-  composerDropdownWrapper: {
-    position: 'relative',
-  },
-  composerDropdownTrigger: {
-    borderRadius: Radii.lg,
-    backgroundColor: AppColors.surfaceLow,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    gap: Spacing.xs,
-  },
-  composerDropdownValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  composerDropdownMenu: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: Spacing.xs,
-    backgroundColor: AppColors.surfaceLowest,
-    borderRadius: Radii.md,
-    borderWidth: 1,
-    borderColor: AppColors.outlineVariant,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-    overflow: 'hidden',
-  },
-  composerDropdownScroll: {
-    maxHeight: 220,
-  },
-  composerDropdownOptionRow: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  composerDropdownOptionSelected: {
-    backgroundColor: AppColors.surfaceLow,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    zIndex: 1,
-  },
-  modeChip: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: AppColors.surfaceLow,
-  },
-  modeChipSelected: {
-    backgroundColor: AppColors.primary,
-  },
-});
+function createStyles(c: ThemeColors, shadows: ThemeShadows, isDark: boolean) {
+  return StyleSheet.create({
+    modalRoot: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    modalBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: isDark ? 'rgba(3, 4, 7, 0.62)' : 'rgba(11, 14, 18, 0.44)',
+    },
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    modalCardLarge: {
+      height: '88%',
+      gap: Spacing.sm,
+      borderTopLeftRadius: Radii.xl,
+      borderTopRightRadius: Radii.xl,
+    },
+    modalHandle: {
+      width: 56,
+      height: 5,
+      borderRadius: Radii.pill,
+      backgroundColor: c.surfaceHighest,
+      alignSelf: 'center',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    modalHeaderLeading: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      flex: 1,
+    },
+    modalHeaderTrailing: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+    },
+    headerButton: {
+      width: 38,
+      height: 38,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    headerCustomButton: {
+      minHeight: 34,
+      borderRadius: Radii.pill,
+      paddingHorizontal: Spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      backgroundColor: c.surfaceLow,
+    },
+    headerAddButton: {
+      minHeight: 34,
+      borderRadius: Radii.pill,
+      paddingHorizontal: Spacing.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    searchField: {
+      minHeight: 42,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      backgroundColor: c.surfaceLow,
+    },
+    searchInput: {
+      flex: 1,
+      color: c.text,
+      fontSize: 15,
+    },
+    filterControlRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+    },
+    filterSelectorSlot: {
+      flex: 1,
+      position: 'relative',
+    },
+    filterSelector: {
+      minHeight: 36,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: c.surfaceLow,
+    },
+    filterDropdownMenu: {
+      position: 'absolute',
+      top: '100%',
+      left: 0,
+      minWidth: 160,
+      marginTop: Spacing.xs,
+      borderRadius: Radii.md,
+      backgroundColor: c.surfaceLowest,
+      borderWidth: 1,
+      borderColor: c.outlineVariant,
+      overflow: 'hidden',
+      ...shadows.soft,
+      zIndex: 20,
+    },
+    filterDropdownScroll: {
+      maxHeight: 220,
+    },
+    filterDropdownOption: {
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    filterDropdownOptionActive: {
+      backgroundColor: c.surfaceLow,
+    },
+    optionList: {
+      gap: Spacing.sm,
+      paddingBottom: Spacing.xl,
+    },
+    optionScroll: {
+      flex: 1,
+    },
+    optionPressable: {
+      width: '100%',
+    },
+    optionMain: {
+      minHeight: 64,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      backgroundColor: c.surfaceLow,
+    },
+    optionMainSelected: {
+      backgroundColor: isDark ? 'rgba(74, 159, 216, 0.16)' : '#EAF1F8',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(74, 159, 216, 0.32)' : 'rgba(39, 116, 174, 0.12)',
+    },
+    optionImage: {
+      width: 56,
+      height: 56,
+      borderRadius: Radii.lg,
+      backgroundColor: c.surfaceHighest,
+    },
+    optionImageFallback: {
+      width: 56,
+      height: 56,
+      borderRadius: Radii.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceHighest,
+    },
+    optionCopy: {
+      flex: 1,
+      gap: 2,
+    },
+    optionCheck: {
+      width: 28,
+      height: 28,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLowest,
+      borderWidth: 1,
+      borderColor: c.outlineVariant,
+    },
+    optionCheckSelected: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+    },
+    emptyExerciseCard: {
+      gap: Spacing.xs,
+    },
+    composerScrim: {
+      flex: 1,
+      backgroundColor: isDark ? 'rgba(3, 4, 7, 0.62)' : 'rgba(11, 14, 18, 0.44)',
+      padding: Spacing.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    composerAvoidingView: {
+      width: '100%',
+      maxWidth: 420,
+    },
+    composerCard: {
+      backgroundColor: c.surfaceLowest,
+      borderRadius: Radii.xl,
+      padding: 24,
+      paddingBottom: 40,
+      gap: 20,
+      overflow: 'visible',
+      ...shadows.soft,
+    },
+    inputField: {
+      gap: 6,
+    },
+    input: {
+      minHeight: 44,
+      borderRadius: Radii.lg,
+      paddingHorizontal: Spacing.md,
+      backgroundColor: c.surfaceLow,
+      color: c.text,
+      fontSize: 15,
+    },
+    composerDropdownWrapper: {
+      position: 'relative',
+    },
+    composerDropdownTrigger: {
+      borderRadius: Radii.lg,
+      backgroundColor: c.surfaceLow,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.md,
+      gap: Spacing.xs,
+    },
+    composerDropdownValueRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.sm,
+    },
+    composerDropdownMenu: {
+      position: 'absolute',
+      top: '100%',
+      left: 0,
+      right: 0,
+      marginTop: Spacing.xs,
+      backgroundColor: c.surfaceLowest,
+      borderRadius: Radii.md,
+      borderWidth: 1,
+      borderColor: c.outlineVariant,
+      overflow: 'hidden',
+      ...shadows.soft,
+    },
+    composerDropdownScroll: {
+      maxHeight: 220,
+    },
+    composerDropdownOptionRow: {
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+    },
+    composerDropdownOptionSelected: {
+      backgroundColor: c.surfaceLow,
+    },
+    modeRow: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+      zIndex: 1,
+    },
+    modeChip: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: Radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceLow,
+    },
+    modeChipSelected: {
+      backgroundColor: c.primary,
+    },
+  });
+}
