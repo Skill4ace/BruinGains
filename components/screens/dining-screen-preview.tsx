@@ -180,7 +180,6 @@ export function DiningScreenPreview() {
     }, null);
   }, [diningMenuState.data]);
   const cardWidth = Math.min(width - Layout.pagePadding * 2, Layout.maxContentWidth);
-  const currentDiningActivityPeriod = useMemo(() => getCurrentDiningActivityPeriod(), []);
   const availableHallIdsForPeriod = useMemo(() => {
     if (!latestGlobalServiceDate) {
       return new Set<string>();
@@ -612,7 +611,6 @@ export function DiningScreenPreview() {
             {hallsForPeriod.map((hall) => (
               <HallRow
                 key={hall.id}
-                currentDiningActivityPeriod={currentDiningActivityPeriod}
                 hall={hall}
                 onPress={() => handleHallOpen(hall)}
                 selectedPeriod={selectedPeriod}
@@ -1634,21 +1632,16 @@ function MacroIcon({
 }
 
 function HallRow({
-  currentDiningActivityPeriod,
   hall,
   onPress,
   selectedPeriod,
 }: {
-  currentDiningActivityPeriod: PeriodKey | null;
   hall: PublicDiningHall;
   onPress: () => void;
   selectedPeriod: PeriodKey;
 }) {
   const hours = hall.hours[selectedPeriod];
-  const showActivity =
-    hall.fitPercent !== null &&
-    currentDiningActivityPeriod === selectedPeriod &&
-    isDiningHallOpenForHours(hours);
+  const showActivity = hall.fitPercent !== null && isDiningHallOpenForHours(hours);
 
   return (
     <PressScale haptic="light" onPress={onPress}>
@@ -1714,31 +1707,11 @@ function getLaunchDiningPeriod(): PeriodKey {
   return 'lateNight';
 }
 
-function getCurrentDiningActivityPeriod(): PeriodKey | null {
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  if (currentMinutes >= 5 * 60 && currentMinutes < 11 * 60) {
-    return 'breakfast';
-  }
-
-  if (currentMinutes >= 11 * 60 && currentMinutes < 17 * 60) {
-    return 'lunch';
-  }
-
-  if (currentMinutes >= 17 * 60 && currentMinutes < 22 * 60) {
-    return 'dinner';
-  }
-
-  if (currentMinutes >= 22 * 60 && currentMinutes < 24 * 60) {
-    return 'lateNight';
-  }
-
-  return null;
-}
-
 function parseTimeLabelToMinutes(timeLabel: string) {
-  const normalized = timeLabel.trim().toUpperCase();
+  const normalized = timeLabel
+    .trim()
+    .toUpperCase()
+    .replace(/\./g, '');
   const match = normalized.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/);
 
   if (!match) {
