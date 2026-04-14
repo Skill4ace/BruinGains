@@ -730,23 +730,37 @@ function MiniSummaryRing({
 }: {
   progress: number;
 }) {
-  const AppColors = useAppTheme().colors;
+  const { colors: AppColors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+  const ringSize = 34;
+  const strokeWidth = 4;
+  const ringColor = isDark ? AppColors.background : AppColors.text;
+  const ringTrackColor = isDark ? 'rgba(15, 17, 23, 0.14)' : '#ECECF4';
+
   return (
-    <View style={styles.summaryShelfRingWrap}>
+    <View
+      style={[
+        styles.summaryShelfRingWrap,
+        isDark
+          ? {
+              borderRadius: ringSize / 2,
+              backgroundColor: AppColors.white,
+            }
+          : null,
+      ]}>
       <ProgressRing
         progress={progress}
         value=""
         unit=""
         caption=""
-        size={34}
-        strokeWidth={4}
-        color={AppColors.text}
-        trackColor="#ECECF4"
+        size={ringSize}
+        strokeWidth={strokeWidth}
+        color={ringColor}
+        trackColor={ringTrackColor}
         hideLabel
       />
       <View style={styles.summaryShelfRingCenter}>
-        <Ionicons name="flame" size={11} color={AppColors.text} />
+        <Ionicons name="flame" size={11} color={ringColor} />
       </View>
     </View>
   );
@@ -1663,10 +1677,23 @@ function IconRing({
   size: number;
   strokeWidth?: number;
 }) {
-  const AppColors = useAppTheme().colors;
+  const { colors: AppColors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+  const ringColor = isDark ? AppColors.background : color;
+  const ringTrackColor = isDark ? 'rgba(15, 17, 23, 0.14)' : '#ECECF4';
+
   return (
-    <View style={[styles.iconRingWrap, { width: size, height: size }]}>
+    <View
+      style={[
+        styles.iconRingWrap,
+        { width: size, height: size },
+        isDark
+          ? {
+              borderRadius: size / 2,
+              backgroundColor: AppColors.white,
+            }
+          : null,
+      ]}>
       <ProgressRing
         progress={progress}
         value=""
@@ -1674,12 +1701,20 @@ function IconRing({
         caption=""
         size={size}
         strokeWidth={strokeWidth}
-        color={color}
-        trackColor="#ECECF4"
+        color={ringColor}
+        trackColor={ringTrackColor}
         hideLabel
       />
-      <View style={styles.iconRingCenter}>
-        <Ionicons name={icon} size={14} color={color} />
+      <View
+        style={[
+          styles.iconRingCenter,
+          isDark
+            ? {
+                backgroundColor: AppColors.white,
+              }
+            : null,
+        ]}>
+        <Ionicons name={icon} size={14} color={ringColor} />
       </View>
     </View>
   );

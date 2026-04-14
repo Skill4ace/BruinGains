@@ -31,7 +31,7 @@ import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { SurfaceCard } from '@/components/ui/surface-card';
 import { ThemeToggleButton } from '@/components/ui/theme-toggle-button';
-import { AppColors, Radii, Spacing } from '@/constants/theme';
+import { Radii, Spacing } from '@/constants/theme';
 import type { ThemeColors } from '@/constants/theme';
 import { useAppTheme } from '@/providers/theme-provider';
 import type {
@@ -160,27 +160,30 @@ const PRIVACY_POLICY_SECTIONS: ComplianceDocumentSection[] = [
     title: 'Local-first storage',
     items: [
       'BruinGains stores your profile, meals, workouts, templates, goals, and preferences locally on this device using AsyncStorage.',
-      'Your personal data is not uploaded to BruinGains servers because this version of the app does not use user accounts.',
+      'BruinGains is designed so your private workout and nutrition log content stays on your device in this version of the app.',
     ],
   },
   {
-    title: 'Public UCLA data',
+    title: 'Public data requests',
     items: [
-      'BruinGains uses Supabase only as a read-only source for public UCLA dining menus, dining hall metadata, gym locations, and gym capacity snapshots.',
-      'No personal workout or nutrition data is transmitted to Supabase.',
+      'BruinGains uses Supabase-hosted services to deliver public dining menus, dining hall metadata, gym locations, and gym capacity snapshots.',
+      'When the app refreshes public campus data, BruinGains creates an anonymous session token and sends the request to Supabase so the service can authenticate the request and apply rate limits.',
+      'These requests may include technical data such as an anonymous user identifier, IP address, and request timestamp for security, abuse prevention, and service operations.',
+      'BruinGains does not intentionally send your private workout logs, meal logs, templates, or goal history to Supabase in this version.',
     ],
   },
   {
-    title: 'Tracking and advertising',
+    title: 'Analytics and advertising',
     items: [
       'BruinGains does not include analytics, advertising, or cross-app tracking in this version.',
       'BruinGains does not sell personal information.',
     ],
   },
   {
-    title: 'Deleting your data',
+    title: 'Data retention and deletion',
     items: [
-      'You can delete all BruinGains data stored on this device at any time from Settings & compliance in the Profile screen.',
+      'You can delete BruinGains data stored on this device at any time from Settings & compliance in the Profile screen.',
+      'Server-side request logs used for public data delivery are retained only for a limited operational period and are not displayed publicly in the app.',
     ],
   },
 ];
@@ -190,6 +193,7 @@ const TERMS_OF_SERVICE_SECTIONS: ComplianceDocumentSection[] = [
     title: 'Unofficial product',
     items: [
       'BruinGains is an unofficial app and is not affiliated with, endorsed by, or sponsored by UCLA.',
+      'References to UCLA locations, dining venues, and public campus information are provided for descriptive purposes only.',
     ],
   },
   {
@@ -200,7 +204,7 @@ const TERMS_OF_SERVICE_SECTIONS: ComplianceDocumentSection[] = [
     ],
   },
   {
-    title: 'No warranty',
+    title: 'Use at your own risk',
     items: [
       'BruinGains is provided as-is without warranties of availability, accuracy, or fitness for a particular purpose.',
       'You are responsible for verifying dining, facility, and workout information when accuracy matters.',
@@ -210,6 +214,14 @@ const TERMS_OF_SERVICE_SECTIONS: ComplianceDocumentSection[] = [
     title: 'Local data responsibility',
     items: [
       'Because BruinGains stores personal data locally on-device, deleting the app or clearing local data permanently removes that information unless you have recorded it elsewhere.',
+      'You are responsible for maintaining access to your own device and backups if you want to preserve locally stored information.',
+    ],
+  },
+  {
+    title: 'Service changes',
+    items: [
+      'BruinGains may change, suspend, or remove app features or public data integrations at any time.',
+      'Access to the app may be limited by third-party service availability, platform rules, or operational constraints.',
     ],
   },
 ];

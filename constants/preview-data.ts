@@ -11,7 +11,7 @@ export const diningPreview = {
     {
       id: 'bruin-plate',
       name: 'Bruin Plate',
-      imageSource: require('../Ucla dining hall logos /bruin plate.png'),
+      imageSource: require('../Ucla dining hall logos transparent/bruin plate.png'),
       fitPercent: 94,
       hours: {
         breakfast: '7:00 AM - 9:00 AM',
@@ -23,7 +23,7 @@ export const diningPreview = {
     {
       id: 'epicuria-covel',
       name: 'Epicuria at Covel',
-      imageSource: require('../Ucla dining hall logos /epicuria at covel.png'),
+      imageSource: require('../Ucla dining hall logos transparent/epicuria at covel.png'),
       fitPercent: 92,
       hours: {
         breakfast: null,
@@ -35,7 +35,7 @@ export const diningPreview = {
     {
       id: 'de-neve',
       name: 'De Neve',
-      imageSource: require('../Ucla dining hall logos /De Neve.png'),
+      imageSource: require('../Ucla dining hall logos transparent/De Neve.png'),
       fitPercent: 88,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -47,7 +47,7 @@ export const diningPreview = {
     {
       id: 'feast-rieber',
       name: 'Feast at Rieber',
-      imageSource: require('../Ucla dining hall logos /Feast.png'),
+      imageSource: require('../Ucla dining hall logos transparent/Feast.png'),
       fitPercent: 90,
       hours: {
         breakfast: null,
@@ -59,7 +59,7 @@ export const diningPreview = {
     {
       id: 'bruin-cafe',
       name: 'Bruin Cafe',
-      imageSource: require('../Ucla dining hall logos /bruin cafe.png'),
+      imageSource: require('../Ucla dining hall logos transparent/bruin cafe.png'),
       fitPercent: 81,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -71,7 +71,7 @@ export const diningPreview = {
     {
       id: 'cafe-1919',
       name: 'Cafe 1919',
-      imageSource: require('../Ucla dining hall logos /cafe 1919.png'),
+      imageSource: require('../Ucla dining hall logos transparent/cafe 1919.png'),
       fitPercent: 76,
       hours: {
         breakfast: null,
@@ -83,7 +83,7 @@ export const diningPreview = {
     {
       id: 'study-hedrick',
       name: 'The Study',
-      imageSource: require('../Ucla dining hall logos /the study.png'),
+      imageSource: require('../Ucla dining hall logos transparent/the study.png'),
       fitPercent: 84,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -95,7 +95,7 @@ export const diningPreview = {
     {
       id: 'the-drey',
       name: 'The Drey',
-      imageSource: require('../Ucla dining hall logos /drey.png'),
+      imageSource: require('../Ucla dining hall logos transparent/drey.png'),
       fitPercent: 79,
       hours: {
         breakfast: null,
@@ -107,7 +107,7 @@ export const diningPreview = {
     {
       id: 'rendezvous',
       name: 'Rendezvous',
-      imageSource: require('../Ucla dining hall logos /rende.png'),
+      imageSource: require('../Ucla dining hall logos transparent/rende.png'),
       fitPercent: 86,
       hours: {
         breakfast: null,
@@ -119,7 +119,7 @@ export const diningPreview = {
     {
       id: 'bruin-bowl',
       name: 'Bruin Bowl',
-      imageSource: require('../Ucla dining hall logos /Bruin Bowl.png'),
+      imageSource: require('../Ucla dining hall logos transparent/Bruin Bowl.png'),
       fitPercent: 91,
       hours: {
         breakfast: null,
@@ -131,7 +131,7 @@ export const diningPreview = {
     {
       id: 'epicuria-ackerman',
       name: 'Epicuria at Ackerman',
-      imageSource: require('../Ucla dining hall logos /epic at akermann.png'),
+      imageSource: require('../Ucla dining hall logos transparent/epic at akermann.png'),
       fitPercent: 83,
       hours: {
         breakfast: null,

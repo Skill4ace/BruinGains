@@ -564,7 +564,7 @@ function PackCard({
 }
 
 export function OnboardingScreen() {
-  const AppColors = useAppTheme().colors;
+  const { colors: AppColors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const router = useRouter();
   const { completeOnboarding, isOnboardingComplete, skipOnboarding, state } = useAppData();
@@ -1042,6 +1042,7 @@ export function OnboardingScreen() {
     const selectedPacks = STARTER_TEMPLATE_PACKS.filter((pack) =>
       draft.selectedPackIds.includes(pack.id),
     );
+    const caloriesIconColor = isDark ? AppColors.white : AppColors.text;
 
     return (
       <View style={styles.stepBody}>
@@ -1049,7 +1050,7 @@ export function OnboardingScreen() {
           <ReviewSectionCard label="Diet">
             <View style={styles.reviewMetricList}>
               <ReviewMacroRow
-                color="#1D1F24"
+                color={caloriesIconColor}
                 icon="flame-outline"
                 label="Calories"
                 maxLength={4}
