@@ -14,6 +14,10 @@ type CampusDataBundle = {
   gymCapacities: GymCapacitySnapshot[]
 }
 
+type CampusDataRequest = {
+  includeDiningMenuItems?: boolean
+}
+
 type DiningHallRow = {
   breakfast_hours: string | null
   dinner_hours: string | null
@@ -379,6 +383,20 @@ function mapLatestDiningMenuItemRow(row: LatestDiningMenuItemRow): DiningMenuIte
   }
 }
 
+async function parseCampusDataRequest(req: Request): Promise<CampusDataRequest> {
+  try {
+    const requestBody = await req.json()
+
+    if (!requestBody || typeof requestBody !== 'object') {
+      return {}
+    }
+
+    return requestBody as CampusDataRequest
+  } catch {
+    return {}
+  }
+}
+
 async function authenticateRequest(req: Request) {
   const token = getBearerToken(req)
 
@@ -530,6 +548,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const requestBody = await parseCampusDataRequest(req)
     const authResult = await authenticateRequest(req)
 
     if (authResult.error || !authResult.userId) {
@@ -544,9 +563,11 @@ Deno.serve(async (req) => {
       return jsonResponse(429, { error: rateLimit.error })
     }
 
+    const includeDiningMenuItems = requestBody.includeDiningMenuItems ?? true
+
     const [diningHalls, diningMenuItems, gymCapacities] = await Promise.all([
       loadDiningHalls(admin),
-      loadDiningMenuItems(admin),
+      includeDiningMenuItems ? loadDiningMenuItems(admin) : Promise.resolve([]),
       loadGymCapacities(admin),
     ])
 

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useColorScheme } from 'react-native';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Theme } from '@react-navigation/native';
 
@@ -32,13 +33,19 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 export function AppThemeProvider({ children }: { children: ReactNode }) {
-  const [isDark, setIsDark] = useState(false);
+  const systemColorScheme = useColorScheme();
+  const [isDark, setIsDark] = useState(systemColorScheme === 'dark');
 
   useEffect(() => {
     AsyncStorage.getItem(THEME_STORAGE_KEY)
       .then((value) => {
         if (value === 'dark') {
           setIsDark(true);
+        } else if (value === 'light') {
+          setIsDark(false);
+        } else {
+          // No saved preference — follow system
+          setIsDark(systemColorScheme === 'dark');
         }
       })
       .catch(() => {});

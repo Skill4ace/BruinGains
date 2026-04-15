@@ -19,7 +19,10 @@ import 'react-native-reanimated';
 
 import { AppDataProvider } from '@/providers/app-data-provider';
 import { AppThemeProvider, useAppTheme } from '@/providers/theme-provider';
-import { preloadCampusDataOnLaunch } from '@/hooks/use-campus-data';
+import {
+  preloadCampusDataOnLaunch,
+  refreshCampusDataInBackground,
+} from '@/hooks/use-campus-data';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -62,6 +65,14 @@ export default function RootLayout() {
       isMounted = false;
     };
   }, [loaded]);
+
+  useEffect(() => {
+    if (!isLaunchReady) {
+      return;
+    }
+
+    void refreshCampusDataInBackground();
+  }, [isLaunchReady]);
 
   if (!loaded || !isLaunchReady) {
     return null;

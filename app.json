@@ -13,7 +13,8 @@
       "supportsTablet": false,
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "darkIcon": "./appassets/bruingains app icons dark.png"
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +37,8 @@
           "resizeMode": "cover",
           "backgroundColor": "#ffffff",
           "dark": {
-            "backgroundColor": "#000000"
+            "image": "./appassets/bruingains splash dark.png",
+            "backgroundColor": "#0F1117"
           }
         }
       ],

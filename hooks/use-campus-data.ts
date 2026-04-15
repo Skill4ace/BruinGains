@@ -25,6 +25,7 @@ const DINING_MENU_ITEMS_CACHE_KEY = '@bruingains/public-dining-menu-items-v4';
 const GYM_CAPACITY_CACHE_KEY = '@bruingains/public-gym-capacities-v3';
 const PUBLIC_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const EMPTY_DINING_MENU_ITEMS: DiningMenuItem[] = [];
+const LAUNCH_PRELOAD_TIMEOUT_MS = 900;
 
 type CacheEnvelope<T> = {
   data: T;
@@ -35,6 +36,10 @@ type CampusDataBundle = {
   diningHalls: PublicDiningHall[];
   diningMenuItems: DiningMenuItem[];
   gymCapacities: GymCapacitySnapshot[];
+};
+
+type CampusDataRequestOptions = {
+  includeDiningMenuItems?: boolean;
 };
 
 function parseJsonStringArray(value: unknown) {
@@ -186,7 +191,8 @@ function createInitialState<T>(fallbackData: T): PublicResourceState<T> {
   };
 }
 
-let campusDataInFlight: Promise<CampusDataBundle | null> | null = null;
+let campusDataSummaryInFlight: Promise<CampusDataBundle | null> | null = null;
+let campusDataFullInFlight: Promise<CampusDataBundle | null> | null = null;
 
 function normalizeCampusDataBundle(value: unknown): CampusDataBundle | null {
   if (!value || typeof value !== 'object') {
@@ -208,18 +214,29 @@ function normalizeCampusDataBundle(value: unknown): CampusDataBundle | null {
   };
 }
 
-async function fetchCampusDataBundleFromFunction() {
+async function fetchCampusDataBundleFromFunction(
+  options: CampusDataRequestOptions = {},
+) {
   if (!hasSupabasePublicEnv || !supabasePublicClient) {
     return null;
   }
 
-  if (campusDataInFlight) {
-    return campusDataInFlight;
+  const includeDiningMenuItems = options.includeDiningMenuItems ?? true;
+  const existingPromise = includeDiningMenuItems
+    ? campusDataFullInFlight
+    : campusDataSummaryInFlight;
+
+  if (existingPromise) {
+    return existingPromise;
   }
 
-  campusDataInFlight = (async () => {
+  const requestPromise = (async () => {
     await ensureAnonymousSupabaseSession();
-    const { data, error } = await supabasePublicClient.functions.invoke('campus-data');
+    const { data, error } = await supabasePublicClient.functions.invoke('campus-data', {
+      body: {
+        includeDiningMenuItems,
+      },
+    });
 
     if (error) {
       throw error;
@@ -227,24 +244,41 @@ async function fetchCampusDataBundleFromFunction() {
 
     return normalizeCampusDataBundle(data);
   })().finally(() => {
-    campusDataInFlight = null;
+    if (includeDiningMenuItems) {
+      campusDataFullInFlight = null;
+      return;
+    }
+
+    campusDataSummaryInFlight = null;
   });
 
-  return campusDataInFlight;
+  if (includeDiningMenuItems) {
+    campusDataFullInFlight = requestPromise;
+  } else {
+    campusDataSummaryInFlight = requestPromise;
+  }
+
+  return requestPromise;
 }
 
 async function fetchDiningHallsFromSupabase() {
-  const bundle = await fetchCampusDataBundleFromFunction();
+  const bundle = await fetchCampusDataBundleFromFunction({
+    includeDiningMenuItems: false,
+  });
   return bundle && bundle.diningHalls.length > 0 ? bundle.diningHalls : null;
 }
 
 async function fetchGymCapacitiesFromSupabase() {
-  const bundle = await fetchCampusDataBundleFromFunction();
+  const bundle = await fetchCampusDataBundleFromFunction({
+    includeDiningMenuItems: false,
+  });
   return bundle && bundle.gymCapacities.length > 0 ? bundle.gymCapacities : null;
 }
 
 async function fetchLatestDiningMenuItemsFromSupabase() {
-  const bundle = await fetchCampusDataBundleFromFunction();
+  const bundle = await fetchCampusDataBundleFromFunction({
+    includeDiningMenuItems: true,
+  });
   return bundle && bundle.diningMenuItems.length > 0 ? bundle.diningMenuItems : null;
 }
 
@@ -258,18 +292,60 @@ async function saveCampusDataBundle(bundle: CampusDataBundle) {
   ]);
 }
 
+async function saveCampusSummaryBundle(bundle: CampusDataBundle) {
+  const updatedAt = new Date().toISOString();
+
+  await Promise.all([
+    saveCachedResourceAt(DINING_CACHE_KEY, bundle.diningHalls, updatedAt),
+    saveCachedResourceAt(GYM_CAPACITY_CACHE_KEY, bundle.gymCapacities, updatedAt),
+  ]);
+}
+
 export async function preloadCampusDataOnLaunch() {
   if (!hasSupabasePublicEnv || !supabasePublicClient) {
     return;
   }
 
-  const bundle = await fetchCampusDataBundleFromFunction();
+  const cachedDiningHalls = await loadCachedResource<PublicDiningHall[]>(DINING_CACHE_KEY);
+
+  if (cachedDiningHalls?.data.length) {
+    return;
+  }
+
+  const bundle = await Promise.race([
+    fetchCampusDataBundleFromFunction({
+      includeDiningMenuItems: false,
+    }),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), LAUNCH_PRELOAD_TIMEOUT_MS);
+    }),
+  ]);
 
   if (!bundle) {
     return;
   }
 
-  await saveCampusDataBundle(bundle);
+  await saveCampusSummaryBundle(bundle);
+}
+
+export async function refreshCampusDataInBackground() {
+  if (!hasSupabasePublicEnv || !supabasePublicClient) {
+    return;
+  }
+
+  try {
+    const bundle = await fetchCampusDataBundleFromFunction({
+      includeDiningMenuItems: true,
+    });
+
+    if (!bundle) {
+      return;
+    }
+
+    await saveCampusDataBundle(bundle);
+  } catch {
+    // Background refresh failure should not interrupt the visible app.
+  }
 }
 
 function useCachedCampusResource<T>(
