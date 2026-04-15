@@ -14,11 +14,3 @@ export const fallbackGymCapacities: GymCapacitySnapshot[] = gymPreview.capacitie
     zoneName: location.zoneName,
   }),
 );
-
-const diningHallImageSources = Object.fromEntries(
-  diningPreview.halls.map((hall) => [hall.id, hall.imageSource as number]),
-) as Record<string, number>;
-
-export function getDiningHallImageSource(hallId: string) {
-  return diningHallImageSources[hallId] ?? diningHallImageSources['bruin-plate'];
-}

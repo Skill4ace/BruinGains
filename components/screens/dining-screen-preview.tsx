@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getDiningHallImageSource } from '@/data/public/campus-fallbacks';
 import {
   formatMealLogMeta,
   getMealLogsForDate,
@@ -1864,12 +1863,6 @@ function HallRow({
   return (
     <PressScale haptic="light" onPress={onPress}>
       <SurfaceCard style={styles.hallCard}>
-        <Image
-          source={getDiningHallImageSource(hall.id)}
-          style={styles.hallImage}
-          contentFit="contain"
-          transition={0}
-        />
         <View style={styles.hallCopy}>
           <AppText variant="title">{hall.name}</AppText>
           <AppText dimmed>{hours}</AppText>
@@ -2431,19 +2424,14 @@ function createStyles(c: ThemeColors) {
   hallCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-  },
-  hallImage: {
-    width: 68,
-    height: 44,
+    paddingVertical: 15,
   },
   hallCopy: {
     flex: 1,
-    gap: Spacing.xs,
+    gap: 2,
     justifyContent: 'center',
-    paddingTop: 4,
   },
   hallMeta: {
     alignItems: 'flex-end',

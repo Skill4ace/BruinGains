@@ -11,7 +11,6 @@ export const diningPreview = {
     {
       id: 'bruin-plate',
       name: 'Bruin Plate',
-      imageSource: require('../assets/dining-hall-logos-optimized/bruin plate.png'),
       fitPercent: 94,
       hours: {
         breakfast: '7:00 AM - 9:00 AM',
@@ -23,7 +22,6 @@ export const diningPreview = {
     {
       id: 'epicuria-covel',
       name: 'Epicuria at Covel',
-      imageSource: require('../assets/dining-hall-logos-optimized/epicuria at covel.png'),
       fitPercent: 92,
       hours: {
         breakfast: null,
@@ -35,7 +33,6 @@ export const diningPreview = {
     {
       id: 'de-neve',
       name: 'De Neve',
-      imageSource: require('../assets/dining-hall-logos-optimized/De Neve.png'),
       fitPercent: 88,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -47,7 +44,6 @@ export const diningPreview = {
     {
       id: 'feast-rieber',
       name: 'Feast at Rieber',
-      imageSource: require('../assets/dining-hall-logos-optimized/Feast.png'),
       fitPercent: 90,
       hours: {
         breakfast: null,
@@ -59,7 +55,6 @@ export const diningPreview = {
     {
       id: 'bruin-cafe',
       name: 'Bruin Cafe',
-      imageSource: require('../assets/dining-hall-logos-optimized/bruin cafe.png'),
       fitPercent: 81,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -71,7 +66,6 @@ export const diningPreview = {
     {
       id: 'cafe-1919',
       name: 'Cafe 1919',
-      imageSource: require('../assets/dining-hall-logos-optimized/cafe 1919.png'),
       fitPercent: 76,
       hours: {
         breakfast: null,
@@ -83,7 +77,6 @@ export const diningPreview = {
     {
       id: 'study-hedrick',
       name: 'The Study',
-      imageSource: require('../assets/dining-hall-logos-optimized/the study.png'),
       fitPercent: 84,
       hours: {
         breakfast: '7:00 AM - 10:00 AM',
@@ -95,7 +88,6 @@ export const diningPreview = {
     {
       id: 'the-drey',
       name: 'The Drey',
-      imageSource: require('../assets/dining-hall-logos-optimized/drey.png'),
       fitPercent: 79,
       hours: {
         breakfast: null,
@@ -107,7 +99,6 @@ export const diningPreview = {
     {
       id: 'rendezvous',
       name: 'Rendezvous',
-      imageSource: require('../assets/dining-hall-logos-optimized/rende.png'),
       fitPercent: 86,
       hours: {
         breakfast: null,
@@ -119,7 +110,6 @@ export const diningPreview = {
     {
       id: 'bruin-bowl',
       name: 'Bruin Bowl',
-      imageSource: require('../assets/dining-hall-logos-optimized/Bruin Bowl.png'),
       fitPercent: 91,
       hours: {
         breakfast: null,
@@ -131,7 +121,6 @@ export const diningPreview = {
     {
       id: 'epicuria-ackerman',
       name: 'Epicuria at Ackerman',
-      imageSource: require('../assets/dining-hall-logos-optimized/epic at akermann.png'),
       fitPercent: 83,
       hours: {
         breakfast: null,

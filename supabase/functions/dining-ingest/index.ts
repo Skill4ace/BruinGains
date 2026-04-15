@@ -1256,17 +1256,111 @@ function parseAtAGlancePage(
       continue
     }
 
-    for (const hallBlockHtml of extractHallBlocks(sectionHtml)) {
-      const parsedHall = parseAtAGlanceHallBlock(
-        hallBlockHtml,
-        lookup,
-        period.key,
-        pageDateLabel,
-        targetDate,
-      )
+    const sectionDom = cheerio.load(sectionHtml)
+
+    sectionDom('.at-a-glance-menu__dining-location').each((_, hallElement) => {
+      const hallName = cleanText(sectionDom(hallElement).find('h3').first().text())
+      const rawDetailHref = sectionDom(hallElement)
+        .find('a.dining-location__link, a.dining-location__detailed-menu, h3 + a, h3 ~ a')
+        .first()
+        .attr('href')
+      const detailHref =
+        rawDetailHref && rawDetailHref !== '#' ? rawDetailHref : undefined
+      const hall =
+        (detailHref
+          ? lookup.bySourcePath.get(
+              normalizeComparableValue(detailHref.replace(/\/$/, '')),
+            )
+          : null) ??
+        lookup.byName.get(normalizeComparableValue(hallName))
+
+      if (!hall) {
+        return
+      }
+
+      const noServiceMessage = cleanText(sectionDom(hallElement).find('p').first().text())
+
+      if (noServiceMessage.toLowerCase().includes('there is no')) {
+        const existingNoService = parsedHalls.get(hall.id)
+
+        parsedHalls.set(hall.id, {
+          hallId: hall.id,
+          hallName: hall.name,
+          pageDateLabel,
+          sourceUrl: detailHref
+            ? `${UCLA_DINING_BASE_URL}${detailHref}`
+            : buildAtAGlanceUrl(targetDate),
+          sections: existingNoService?.sections ?? [],
+        })
+        return
+      }
+
+      const items: ParsedMenuItem[] = []
+      let itemOrder = 0
+
+      sectionDom(hallElement)
+        .find(
+          'div.dining-location__menu-item-group, div.dining-location__menu-section, div.at-a-glance-menu__meal-station',
+        )
+        .each((__, stationEl) => {
+          const rawStationName = cleanText(sectionDom(stationEl).find('h4, h5').first().text())
+          const stationName =
+            rawStationName && rawStationName !== '.' ? rawStationName : 'Station'
+
+          sectionDom(stationEl)
+            .find('li')
+            .each((___, itemEl) => {
+              const link = sectionDom(itemEl).find('a').first()
+              const itemName = cleanText(link.text())
+
+              if (!itemName) {
+                return
+              }
+
+              const href = link.attr('href') ?? ''
+              const recipeId = extractRecipeIdFromHref(href)
+              const badgeLabels = sectionDom(itemEl)
+                .find('img')
+                .map((____, badgeImage) =>
+                  normalizeBadgeLabel(
+                    sectionDom(badgeImage).attr('title') ??
+                      sectionDom(badgeImage).attr('alt'),
+                  ),
+                )
+                .get()
+                .filter((badge): badge is string => Boolean(badge))
+
+              items.push({
+                badgeLabels: [...new Set(badgeLabels)],
+                itemName,
+                itemOrder,
+                recipeId,
+                stationName,
+              })
+              itemOrder += 1
+            })
+        })
+
+      const parsedHall =
+        items.length > 0
+          ? {
+              hallId: hall.id,
+              hallName: hall.name,
+              pageDateLabel,
+              sourceUrl: detailHref
+                ? `${UCLA_DINING_BASE_URL}${detailHref}`
+                : buildAtAGlanceUrl(targetDate),
+              sections: [
+                {
+                  items,
+                  mealPeriod: period.key,
+                },
+              ],
+            }
+          : null
 
       if (!parsedHall) {
-        continue
+        return
       }
 
       const existing = parsedHalls.get(parsedHall.hallId)
@@ -1277,7 +1371,7 @@ function parseAtAGlancePage(
           ? [...existing.sections, ...parsedHall.sections]
           : parsedHall.sections,
       })
-    }
+    })
   }
 
   return parsedHalls
@@ -1922,11 +2016,17 @@ async function syncDiningMenus(
   let halls = await loadActiveHalls()
 
   if (targetDate === getLosAngelesToday()) {
-    const syncedHoursByHallId = await syncDiningHallHours(admin, halls)
-    halls = halls.map((hall) => ({
-      ...hall,
-      ...(syncedHoursByHallId.get(hall.id) ?? {}),
-    }))
+    try {
+      const syncedHoursByHallId = await syncDiningHallHours(admin, halls)
+      halls = halls.map((hall) => ({
+        ...hall,
+        ...(syncedHoursByHallId.get(hall.id) ?? {}),
+      }))
+    } catch (error) {
+      console.error('Dining hours sync failed; continuing with stored hall hours', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   const filteredHalls = halls.filter((hall) =>
@@ -2046,6 +2146,17 @@ async function syncDiningMenus(
               }))
               .filter((section) => section.items.length > 0),
           }
+        }
+
+        if (
+          openMealPeriods.length > 0 &&
+          parsedHall.sections.length === 0 &&
+          !selectedStationNames?.length &&
+          !selectedItemNames?.length
+        ) {
+          throw new Error(
+            `Parsed zero menu items for open hall ${hall.id} on ${targetDate}`,
+          )
         }
 
         for (const mealPeriod of closedMealPeriods) {
@@ -2216,7 +2327,7 @@ async function syncDiningMenus(
           sourceUrl,
         })
         hallResults.push({
-          error: 'Hall menu sync failed',
+          error: error instanceof Error ? error.message : 'Hall menu sync failed',
           hallId: hall.id,
           hallName: hall.name,
           itemCount: 0,
@@ -2316,6 +2427,7 @@ Deno.serve(async (req) => {
     console.error('Dining ingestion failed', error)
     return jsonResponse(500, {
       error: 'Dining ingestion failed',
+      detail: error instanceof Error ? error.message : String(error),
       targetDate,
     })
   }
