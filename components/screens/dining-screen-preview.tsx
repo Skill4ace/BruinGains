@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
-import { type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, type SetStateAction, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -794,7 +794,7 @@ function DiningHallModal({
   onCloseItem: () => void;
   onSaveItem: (overrides?: DiningMealSaveOverrides) => void;
   onSearchChange: (value: string) => void;
-  onServingsChange: (value: number) => void;
+  onServingsChange: (value: SetStateAction<number>) => void;
   searchQuery: string;
   selectedItemTotals: ReturnType<typeof getMenuItemTotals> | null;
   servings: number;
@@ -1183,12 +1183,22 @@ function DiningHallModal({
                       <View style={styles.stepper}>
                         <StepperButton
                           icon="remove"
-                          onPress={() => onServingsChange(normalizeServingStep(servings - 0.5))}
+                          holdRepeat
+                          onPress={() =>
+                            onServingsChange((currentValue) =>
+                              normalizeServingStep(currentValue - 0.5),
+                            )
+                          }
                         />
                         <AppText variant="headline">{formatServingCount(servings)}</AppText>
                         <StepperButton
                           icon="add"
-                          onPress={() => onServingsChange(normalizeServingStep(servings + 0.5))}
+                          holdRepeat
+                          onPress={() =>
+                            onServingsChange((currentValue) =>
+                              normalizeServingStep(currentValue + 0.5),
+                            )
+                          }
                         />
                       </View>
                     </View>
@@ -1430,16 +1440,72 @@ function InputField({
 }
 
 function StepperButton({
+  holdRepeat = false,
   icon,
   onPress,
 }: {
+  holdRepeat?: boolean;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 }) {
   const AppColors = useAppTheme().colors;
   const styles = useMemo(() => createStyles(AppColors), [AppColors]);
+  const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const repeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const suppressReleasePressRef = useRef(false);
+
+  const clearHoldTimers = () => {
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+
+    if (repeatIntervalRef.current) {
+      clearInterval(repeatIntervalRef.current);
+      repeatIntervalRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearHoldTimers();
+    };
+  }, []);
+
+  const handlePressIn = () => {
+    if (!holdRepeat) {
+      return;
+    }
+
+    suppressReleasePressRef.current = false;
+    holdTimeoutRef.current = setTimeout(() => {
+      suppressReleasePressRef.current = true;
+      onPress();
+      repeatIntervalRef.current = setInterval(() => {
+        onPress();
+      }, 120);
+    }, 280);
+  };
+
+  const handlePressOut = () => {
+    clearHoldTimers();
+  };
+
+  const handlePress = () => {
+    if (suppressReleasePressRef.current) {
+      suppressReleasePressRef.current = false;
+      return;
+    }
+
+    onPress();
+  };
+
   return (
-    <PressScale haptic="light" onPress={onPress}>
+    <PressScale
+      haptic="light"
+      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}>
       <View style={styles.stepperButton}>
         <Ionicons name={icon} size={18} color={AppColors.text} />
       </View>
