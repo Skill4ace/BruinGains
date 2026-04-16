@@ -2057,6 +2057,10 @@ function matchesDiningMenuQuery(item: DiningMenuItem, query: string) {
 }
 
 function formatInlineMacros(item: DiningMenuItem) {
+  if (item.customizationOptions.length > 0) {
+    return 'Tap to customize';
+  }
+
   if (
     item.calories === null &&
     item.proteinG === null &&
@@ -2064,10 +2068,6 @@ function formatInlineMacros(item: DiningMenuItem) {
     item.fatsG === null
   ) {
     return 'Nutrition unavailable';
-  }
-
-  if (item.customizationOptions.length > 0) {
-    return 'Build your own';
   }
 
   if (item.proteinG === null || item.carbsG === null || item.fatsG === null) {

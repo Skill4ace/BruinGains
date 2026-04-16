@@ -2180,40 +2180,37 @@ async function syncDiningMenus(
         }
 
         for (const section of parsedHall.sections) {
-          const { data: snapshot, error: snapshotError } = await admin
-            .from('menu_snapshots')
-            .upsert(
-              {
-                fetched_at: new Date().toISOString(),
-                hall_id: hall.id,
-                meal_period: section.mealPeriod,
-                service_date: targetDate,
-                source_url: parsedHall.sourceUrl,
-                status: 'ready',
-              },
-              {
-                onConflict: 'hall_id,service_date,meal_period',
-              },
-            )
-            .select('id')
-            .single()
-
-          if (snapshotError || !snapshot) {
-            throw snapshotError ?? new Error('Snapshot upsert failed')
-          }
-
-          snapshotCount += 1
-
-          if (options?.replaceExistingSnapshot ?? true) {
-            const { error: deleteError } = await admin
-              .from('menu_items')
-              .delete()
-              .eq('snapshot_id', snapshot.id)
-
-            if (deleteError) {
-              throw deleteError
-            }
-          }
+          const preparedRows: {
+            allergen_labels: string[]
+            badge_labels: string[]
+            calories: number | null
+            carbs_g: number | null
+            customization_options: {
+              allergenLabels: string[]
+              badgeLabels: string[]
+              calories: number | null
+              carbsG: number | null
+              defaultQuantity: number
+              detailPath: string | null
+              fatsG: number | null
+              ingredients: string[]
+              itemName: string
+              nutritionFacts: ParsedNutritionFact[]
+              proteinG: number | null
+              recipeId: number | null
+              servingSize: string | null
+            }[]
+            fats_g: number | null
+            ingredients: string[]
+            item_name: string
+            item_order: number
+            nutrition_facts: ParsedNutritionFact[]
+            protein_g: number | null
+            recipe_id: number | null
+            serving_size: string | null
+            snapshot_id?: number
+            station_name: string
+          }[] = []
 
           for (let itemIndex = 0; itemIndex < section.items.length; itemIndex += ITEM_PROCESSING_CHUNK_SIZE) {
             const itemChunk = section.items.slice(itemIndex, itemIndex + ITEM_PROCESSING_CHUNK_SIZE)
@@ -2281,7 +2278,6 @@ async function syncDiningMenus(
               return {
                 allergen_labels: allergenLabels,
                 badge_labels: item.badgeLabels,
-                snapshot_id: snapshot.id,
                 recipe_id: item.recipeId,
                 station_name: item.stationName,
                 item_name: nutrition?.itemName ?? item.itemName,
@@ -2297,16 +2293,71 @@ async function syncDiningMenus(
               }
             })
 
-            if (rows.length > 0) {
-              const { error: insertError } = await admin.from('menu_items').insert(rows)
-
-              if (insertError) {
-                throw insertError
-              }
-            }
-
-            itemCount += rows.length
+            preparedRows.push(...rows)
           }
+
+          const fetchedAt = new Date().toISOString()
+          const { data: snapshot, error: snapshotError } = await admin
+            .from('menu_snapshots')
+            .upsert(
+              {
+                fetched_at: fetchedAt,
+                hall_id: hall.id,
+                meal_period: section.mealPeriod,
+                service_date: targetDate,
+                source_url: parsedHall.sourceUrl,
+                status: 'processing',
+              },
+              {
+                onConflict: 'hall_id,service_date,meal_period',
+              },
+            )
+            .select('id')
+            .single()
+
+          if (snapshotError || !snapshot) {
+            throw snapshotError ?? new Error('Snapshot upsert failed')
+          }
+
+          snapshotCount += 1
+
+          if (options?.replaceExistingSnapshot ?? true) {
+            const { error: deleteError } = await admin
+              .from('menu_items')
+              .delete()
+              .eq('snapshot_id', snapshot.id)
+
+            if (deleteError) {
+              throw deleteError
+            }
+          }
+
+          if (preparedRows.length > 0) {
+            const rows = preparedRows.map((row) => ({
+              ...row,
+              snapshot_id: snapshot.id,
+            }))
+            const { error: insertError } = await admin.from('menu_items').insert(rows)
+
+            if (insertError) {
+              throw insertError
+            }
+          }
+
+          const { error: readyError } = await admin
+            .from('menu_snapshots')
+            .update({
+              fetched_at: fetchedAt,
+              source_url: parsedHall.sourceUrl,
+              status: 'ready',
+            })
+            .eq('id', snapshot.id)
+
+          if (readyError) {
+            throw readyError
+          }
+
+          itemCount += preparedRows.length
         }
 
         hallResults.push({
