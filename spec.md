@@ -1,5 +1,23 @@
 # BruinGains Product Spec
 
+Todo 
+1. Add Bruin bowl and food trucks
+2. Fix UI interactions on dining halls
+    a.) the clicks shouldnt have the bounce
+    b.) opening a dining item should automatically open the popup thing rather than just the plus 
+3. Fix the templates with your PPL workout atleast 
+4. Make the onboarding image better with GPT images
+
+
+
+
+
+
+
+
+
+
+
 ## Product Summary
 
 BruinGains is an Expo-first mobile app for UCLA students that combines three loops into one polished daily product:
@@ -44,7 +62,7 @@ Practical implication:
 
 - Do not design the architecture around custom native modules.
 - Prefer libraries that work in Expo Go and degrade cleanly to web when possible.
-- Keep the product shippable with JavaScript, Expo SDK modules, local device storage for personal data, and a lightweight Supabase backend for public UCLA data.
+- Keep the product shippable with JavaScript, Expo SDK modules, local device storage for personal data, and a lightweight Appwrite backend for public UCLA data.
 
 ## Experience Principles
 
@@ -148,7 +166,7 @@ Within `Gym`, active workout is a dedicated focus mode route, not a tab.
 ### Data Ownership Split
 
 - local device storage: meal logs, workout logs, templates, goals, PR history, and user preferences
-- Supabase: normalized UCLA dining menus, dining hall metadata, gym locations, and gym-capacity snapshots
+- Appwrite: normalized UCLA dining menus, dining hall metadata, gym locations, and gym-capacity snapshots
 
 ### Backend / Data Layer
 
@@ -163,12 +181,12 @@ Instead:
 
 Recommended backend shape:
 
-- Supabase Postgres for normalized public UCLA dining and gym data
-- Supabase Edge Functions for scraping, parsing, normalization, and read endpoints
+- Appwrite TablesDB for normalized public UCLA dining and gym data
+- Appwrite Functions for scraping, parsing, normalization, cache building, and read endpoints
 - scheduled jobs / cron to refresh dining and capacity snapshots
-- a compact read-only API consumed by the app
-- no auth requirement for end users in v1
-- user-created data remains on device and is not synced to Supabase in v1
+- a compact authenticated public-data gateway consumed by the app
+- anonymous auth for rate limiting without requiring visible sign-up in v1
+- user-created data remains on device and is not synced to Appwrite in v1
 
 Why this matters:
 
@@ -176,7 +194,7 @@ Why this matters:
 - website markup changes should not require an app update
 - server-side caching reduces load time and request volume
 - normalized public data stays separate from private on-device user data
-- Supabase gives us an admin-friendly hosted backend without forcing user accounts on day one
+- Appwrite gives us an admin-friendly hosted backend without forcing visible user accounts on day one
 
 ## Primary Data Entities
 
@@ -194,7 +212,7 @@ Local-only entities:
 - `personal_records`
 - `user_preferences`
 
-Supabase-backed public entities:
+Appwrite-backed public entities:
 
 - `dining_halls`
 - `menu_snapshots`
@@ -287,20 +305,20 @@ Done when:
 - feature teams can build screens from shared primitives instead of custom one-offs
 - the design system rules from this brief are reflected in code-level components
 
-### Module 3: Local Persistence, Supabase Client, And App Data Layer
+### Module 3: Local Persistence, Appwrite Client, And App Data Layer
 
 Goal:
 
-- Stand up the local app data model, device storage, and Supabase public-data client rules.
+- Stand up the local app data model, device storage, and Appwrite public-data client rules.
 
 Includes:
 
-- no-auth architecture for v1
+- anonymous-auth architecture for v1
 - local profile store
 - goal storage
 - local persistence for offline workout and meal logs
 - local template storage
-- Supabase client setup for public data reads
+- Appwrite client setup for public data reads
 - cache strategy for UCLA public data
 - API client and query/cache strategy
 
@@ -309,7 +327,7 @@ Done when:
 - a user can create and persist data across sessions
 - the app can recover gracefully from offline or stale network states
 - the app never requires sign-in to access its core features
-- Supabase-backed public data can be fetched and cached without mixing in user-private state
+- Appwrite-backed public data can be fetched and cached without mixing in user-private state
 
 ### Module 4: UCLA Dining Ingestion Pipeline
 
@@ -320,7 +338,7 @@ Goal:
 Includes:
 
 - source audit for official UCLA dining menu pages / feeds
-- Supabase Edge Function scraper or parser
+- Appwrite Function scraper or parser
 - normalization rules for halls, meal periods, and item names
 - calorie and macro extraction
 - cache windows and refresh cadence
@@ -359,7 +377,7 @@ Goal:
 Includes:
 
 - identify official capacity source for Wooden and BFit
-- Supabase-backed ingestion for capacity snapshots
+- Appwrite-backed ingestion for capacity snapshots
 - normalize occupancy into a shared format
 - freshness timestamps
 - gym screen weekly strip
@@ -599,11 +617,11 @@ Mitigation:
 - monitor parse failures
 - build fallback UI for unavailable halls or stale feeds
 
-### Risk: Supabase becomes a single dependency for campus data delivery
+### Risk: Appwrite becomes a single dependency for campus data delivery
 
 Mitigation:
 
-- keep the Supabase schema narrow and public-data-focused
+- keep the Appwrite schema narrow and public-data-focused
 - separate ingestion functions from mobile-facing read endpoints
 - cache the latest successful payload on device so the app still works during temporary backend issues
 
@@ -644,5 +662,5 @@ That order gives us:
 
 - a believable product quickly
 - one useful daily habit before the harder lifting features
-- a Supabase backend that can support both dining and gym data cleanly
+- an Appwrite backend that can support both dining and gym data cleanly
 - less risk of building polished screens on top of unstable foundations

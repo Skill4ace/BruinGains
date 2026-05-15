@@ -23,6 +23,7 @@ import {
   preloadCampusDataOnLaunch,
   refreshCampusDataInBackground,
 } from '@/hooks/use-campus-data';
+import { client } from '@/lib/appwrite/client';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -36,6 +37,12 @@ export default function RootLayout() {
     PlusJakartaSans_700Bold,
   });
   const [isLaunchReady, setIsLaunchReady] = useState(false);
+
+  useEffect(() => {
+    void client.ping().catch((error: unknown) => {
+      console.warn('Appwrite ping failed', error);
+    });
+  }, []);
 
   useEffect(() => {
     let isMounted = true;

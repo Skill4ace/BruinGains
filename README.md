@@ -13,7 +13,7 @@ A fitness and nutrition app built for UCLA students. Track workouts, log meals f
 
 - React Native + Expo (expo-router)
 - TypeScript
-- Supabase (public dining/gym data only)
+- Appwrite (authenticated public dining/gym data gateway)
 
 ## Getting Started
 
@@ -22,10 +22,9 @@ npm install
 npx expo start
 ```
 
-## Environment
+## Appwrite Backend
 
-Copy `.env.example` to `.env` and fill in your Supabase credentials.
-
-```bash
-cp .env.example .env
-```
+The mobile Appwrite project and endpoint are hardcoded in `lib/appwrite/client.ts`.
+Backend scripts read `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`, and
+`APPWRITE_API_KEY` from `.env`, `.env.local`, or the local Codex Appwrite MCP
+config.

@@ -167,10 +167,10 @@ const PRIVACY_POLICY_SECTIONS: ComplianceDocumentSection[] = [
   {
     title: 'Public data requests',
     items: [
-      'BruinGains uses Supabase-hosted services to deliver public dining menus, dining hall metadata, gym locations, and gym capacity snapshots.',
-      'When the app refreshes public campus data, BruinGains creates an anonymous session token and sends the request to Supabase so the service can authenticate the request and apply rate limits.',
+      'BruinGains uses Appwrite-hosted services to deliver public dining menus, dining hall metadata, gym locations, and gym capacity snapshots.',
+      'When the app refreshes public campus data, BruinGains creates an anonymous session token and sends the request to Appwrite so the service can authenticate the request and apply rate limits.',
       'These requests may include technical data such as an anonymous user identifier, IP address, and request timestamp for security, abuse prevention, and service operations.',
-      'BruinGains does not intentionally send your private workout logs, meal logs, templates, or goal history to Supabase in this version.',
+      'BruinGains does not intentionally send your private workout logs, meal logs, templates, or goal history to Appwrite in this version.',
     ],
   },
   {

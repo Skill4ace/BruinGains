@@ -26,7 +26,7 @@ import { AppText } from '@/components/ui/app-text';
 import { PressScale } from '@/components/ui/press-scale';
 import { SectionHeader } from '@/components/ui/section-header';
 import { SurfaceCard } from '@/components/ui/surface-card';
-import { AppColors, Radii, Spacing } from '@/constants/theme';
+import { Radii, Spacing } from '@/constants/theme';
 import type { ThemeColors } from '@/constants/theme';
 import { useAppTheme } from '@/providers/theme-provider';
 import { ThemeToggleButton } from '@/components/ui/theme-toggle-button';

@@ -6,10 +6,8 @@ import {
   fallbackGymCapacities,
 } from '@/data/public/campus-fallbacks';
 import {
-  ensureAnonymousSupabaseSession,
-  hasSupabasePublicEnv,
-  supabasePublicClient,
-} from '@/lib/supabase/client';
+  invokeCampusDataFunction,
+} from '@/lib/appwrite/client';
 import type {
   DiningCustomizationOption,
   DiningMenuItem,
@@ -30,12 +28,15 @@ const LAUNCH_PRELOAD_TIMEOUT_MS = 900;
 type CacheEnvelope<T> = {
   data: T;
   updatedAt: string;
+  version?: string | null;
 };
 
 type CampusDataBundle = {
   diningHalls: PublicDiningHall[];
   diningMenuItems: DiningMenuItem[];
+  generatedAt?: string | null;
   gymCapacities: GymCapacitySnapshot[];
+  version?: string | null;
 };
 
 type CampusDataRequestOptions = {
@@ -166,14 +167,29 @@ async function loadCachedResource<T>(key: string) {
   }
 }
 
-async function saveCachedResource<T>(key: string, data: T) {
-  return saveCachedResourceAt(key, data, new Date().toISOString());
+async function saveCachedResource<T>(key: string, data: T, version?: string | null) {
+  const existing = typeof version === 'undefined'
+    ? await loadCachedResource<T>(key)
+    : null;
+
+  return saveCachedResourceAt(
+    key,
+    data,
+    new Date().toISOString(),
+    version ?? existing?.version ?? null,
+  );
 }
 
-async function saveCachedResourceAt<T>(key: string, data: T, updatedAt: string) {
+async function saveCachedResourceAt<T>(
+  key: string,
+  data: T,
+  updatedAt: string,
+  version?: string | null,
+) {
   const payload: CacheEnvelope<T> = {
     data,
     updatedAt,
+    version,
   };
 
   await AsyncStorage.setItem(key, JSON.stringify(payload));
@@ -208,19 +224,58 @@ function normalizeCampusDataBundle(value: unknown): CampusDataBundle | null {
     diningMenuItems: Array.isArray(candidate.diningMenuItems)
       ? (candidate.diningMenuItems as DiningMenuItem[])
       : [],
+    generatedAt: typeof candidate.generatedAt === 'string' ? candidate.generatedAt : null,
     gymCapacities: Array.isArray(candidate.gymCapacities)
       ? (candidate.gymCapacities as GymCapacitySnapshot[])
       : [],
+    version: typeof candidate.version === 'string' ? candidate.version : null,
+  };
+}
+
+async function loadCampusDataBundleFromCache(
+  includeDiningMenuItems: boolean,
+  version: string | null,
+  generatedAt: string | null,
+): Promise<CampusDataBundle | null> {
+  const [cachedDiningHalls, cachedDiningMenuItems, cachedGymCapacities] =
+    await Promise.all([
+      loadCachedResource<PublicDiningHall[]>(DINING_CACHE_KEY),
+      includeDiningMenuItems
+        ? loadCachedResource<DiningMenuItem[]>(DINING_MENU_ITEMS_CACHE_KEY)
+        : Promise.resolve(null),
+      loadCachedResource<GymCapacitySnapshot[]>(GYM_CAPACITY_CACHE_KEY),
+    ]);
+  const diningHalls = cachedDiningHalls?.data ?? [];
+  const diningMenuItems = includeDiningMenuItems
+    ? cachedDiningMenuItems?.data ?? []
+    : EMPTY_DINING_MENU_ITEMS;
+  const gymCapacities = cachedGymCapacities?.data ?? [];
+
+  if (
+    diningHalls.length === 0 &&
+    gymCapacities.length === 0 &&
+    (!includeDiningMenuItems || diningMenuItems.length === 0)
+  ) {
+    return null;
+  }
+
+  return {
+    diningHalls,
+    diningMenuItems,
+    generatedAt: generatedAt ?? new Date().toISOString(),
+    gymCapacities,
+    version:
+      version ??
+      cachedDiningMenuItems?.version ??
+      cachedDiningHalls?.version ??
+      cachedGymCapacities?.version ??
+      null,
   };
 }
 
 async function fetchCampusDataBundleFromFunction(
   options: CampusDataRequestOptions = {},
 ) {
-  if (!hasSupabasePublicEnv || !supabasePublicClient) {
-    return null;
-  }
-
   const includeDiningMenuItems = options.includeDiningMenuItems ?? true;
   const existingPromise = includeDiningMenuItems
     ? campusDataFullInFlight
@@ -231,18 +286,31 @@ async function fetchCampusDataBundleFromFunction(
   }
 
   const requestPromise = (async () => {
-    await ensureAnonymousSupabaseSession();
-    const { data, error } = await supabasePublicClient.functions.invoke('campus-data', {
-      body: {
-        includeDiningMenuItems,
-      },
+    const cacheKey = includeDiningMenuItems
+      ? DINING_MENU_ITEMS_CACHE_KEY
+      : DINING_CACHE_KEY;
+    const cached = await loadCachedResource<unknown>(cacheKey);
+    const result = await invokeCampusDataFunction<unknown>({
+      includeDiningMenuItems,
+      knownVersion: cached?.version ?? undefined,
     });
 
-    if (error) {
-      throw error;
+    if (result.notModified) {
+      return loadCampusDataBundleFromCache(
+        includeDiningMenuItems,
+        result.version,
+        result.generatedAt,
+      );
     }
 
-    return normalizeCampusDataBundle(data);
+    const normalized = normalizeCampusDataBundle(result.data);
+    return normalized
+      ? {
+          ...normalized,
+          generatedAt: normalized.generatedAt ?? result.generatedAt,
+          version: normalized.version ?? result.version,
+        }
+      : null;
   })().finally(() => {
     if (includeDiningMenuItems) {
       campusDataFullInFlight = null;
@@ -261,51 +329,80 @@ async function fetchCampusDataBundleFromFunction(
   return requestPromise;
 }
 
-async function fetchDiningHallsFromSupabase() {
+async function fetchDiningHallsFromAppwrite() {
   const bundle = await fetchCampusDataBundleFromFunction({
     includeDiningMenuItems: false,
   });
-  return bundle && bundle.diningHalls.length > 0 ? bundle.diningHalls : null;
+
+  if (!bundle || bundle.diningHalls.length === 0) {
+    return null;
+  }
+
+  await saveCampusSummaryBundle(bundle);
+  return bundle.diningHalls;
 }
 
-async function fetchGymCapacitiesFromSupabase() {
+async function fetchGymCapacitiesFromAppwrite() {
   const bundle = await fetchCampusDataBundleFromFunction({
     includeDiningMenuItems: false,
   });
-  return bundle && bundle.gymCapacities.length > 0 ? bundle.gymCapacities : null;
+
+  if (!bundle || bundle.gymCapacities.length === 0) {
+    return null;
+  }
+
+  await saveCampusSummaryBundle(bundle);
+  return bundle.gymCapacities;
 }
 
-async function fetchLatestDiningMenuItemsFromSupabase() {
+async function fetchLatestDiningMenuItemsFromAppwrite() {
   const bundle = await fetchCampusDataBundleFromFunction({
     includeDiningMenuItems: true,
   });
-  return bundle && bundle.diningMenuItems.length > 0 ? bundle.diningMenuItems : null;
+
+  if (!bundle || bundle.diningMenuItems.length === 0) {
+    return null;
+  }
+
+  await saveCampusDataBundle(bundle);
+  return bundle.diningMenuItems;
 }
 
 async function saveCampusDataBundle(bundle: CampusDataBundle) {
-  const updatedAt = new Date().toISOString();
+  const updatedAt = bundle.generatedAt ?? new Date().toISOString();
 
   await Promise.all([
-    saveCachedResourceAt(DINING_CACHE_KEY, bundle.diningHalls, updatedAt),
-    saveCachedResourceAt(DINING_MENU_ITEMS_CACHE_KEY, bundle.diningMenuItems, updatedAt),
-    saveCachedResourceAt(GYM_CAPACITY_CACHE_KEY, bundle.gymCapacities, updatedAt),
+    saveCachedResourceAt(DINING_CACHE_KEY, bundle.diningHalls, updatedAt, bundle.version),
+    saveCachedResourceAt(
+      DINING_MENU_ITEMS_CACHE_KEY,
+      bundle.diningMenuItems,
+      updatedAt,
+      bundle.version,
+    ),
+    saveCachedResourceAt(
+      GYM_CAPACITY_CACHE_KEY,
+      bundle.gymCapacities,
+      updatedAt,
+      bundle.version,
+    ),
   ]);
 }
 
 async function saveCampusSummaryBundle(bundle: CampusDataBundle) {
-  const updatedAt = new Date().toISOString();
+  const updatedAt = bundle.generatedAt ?? new Date().toISOString();
 
   await Promise.all([
-    saveCachedResourceAt(DINING_CACHE_KEY, bundle.diningHalls, updatedAt),
-    saveCachedResourceAt(GYM_CAPACITY_CACHE_KEY, bundle.gymCapacities, updatedAt),
+    saveCachedResourceAt(DINING_CACHE_KEY, bundle.diningHalls, updatedAt, bundle.version),
+    saveCachedResourceAt(
+      GYM_CAPACITY_CACHE_KEY,
+      bundle.gymCapacities,
+      updatedAt,
+      bundle.version,
+    ),
   ]);
 }
 
 export async function preloadCampusDataOnLaunch() {
-  if (!hasSupabasePublicEnv || !supabasePublicClient) {
-    return;
-  }
-
   const cachedDiningHalls = await loadCachedResource<PublicDiningHall[]>(DINING_CACHE_KEY);
 
   if (cachedDiningHalls?.data.length) {
@@ -329,10 +426,6 @@ export async function preloadCampusDataOnLaunch() {
 }
 
 export async function refreshCampusDataInBackground() {
-  if (!hasSupabasePublicEnv || !supabasePublicClient) {
-    return;
-  }
-
   try {
     const bundle = await fetchCampusDataBundleFromFunction({
       includeDiningMenuItems: true,
@@ -372,7 +465,7 @@ function useCachedCampusResource<T>(
           data: cached.data,
           error: null,
           isLoading: false,
-          isRefreshing: hasSupabasePublicEnv,
+          isRefreshing: true,
           isStale: isStale(cached.updatedAt),
           source: 'cache',
           updatedAt: cached.updatedAt,
@@ -380,24 +473,9 @@ function useCachedCampusResource<T>(
       } else {
         setState((currentState) => ({
           ...currentState,
-          isLoading: !hasSupabasePublicEnv,
-          isRefreshing: hasSupabasePublicEnv,
+          isLoading: false,
+          isRefreshing: true,
         }));
-      }
-
-      if (!hasSupabasePublicEnv) {
-        if (!cached) {
-          setState({
-            data: fallbackData,
-            error: null,
-            isLoading: false,
-            isRefreshing: false,
-            isStale: false,
-            source: 'fallback',
-            updatedAt: null,
-          });
-        }
-        return;
       }
 
       if (cached && !isStale(cached.updatedAt)) {
@@ -510,7 +588,7 @@ export function useDiningHalls() {
   return useCachedCampusResource(
     DINING_CACHE_KEY,
     fallbackDiningHalls,
-    fetchDiningHallsFromSupabase,
+    fetchDiningHallsFromAppwrite,
   );
 }
 
@@ -518,7 +596,7 @@ export function useGymCapacities() {
   return useCachedCampusResource(
     GYM_CAPACITY_CACHE_KEY,
     fallbackGymCapacities,
-    fetchGymCapacitiesFromSupabase,
+    fetchGymCapacitiesFromAppwrite,
   );
 }
 
@@ -526,7 +604,7 @@ export function useDiningMenuItems() {
   return useCachedCampusResource(
     DINING_MENU_ITEMS_CACHE_KEY,
     EMPTY_DINING_MENU_ITEMS,
-    fetchLatestDiningMenuItemsFromSupabase,
+    fetchLatestDiningMenuItemsFromAppwrite,
   );
 }
 
