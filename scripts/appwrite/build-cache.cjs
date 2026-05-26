@@ -170,6 +170,45 @@ async function replaceFile(storage, fileId, filename, body) {
   });
 }
 
+async function replaceJsonFile(storage, fileId, filename, payload) {
+  await replaceFile(storage, fileId, filename, JSON.stringify(payload));
+}
+
+function fileRef(fileId, version, generatedAt) {
+  return {
+    fileId,
+    generatedAt,
+    version,
+  };
+}
+
+function createCampusManifest({ diningLatest, full, generatedAt, gymsCurrent, summary }) {
+  const files = {
+    summary: fileRef(CACHE_FILES.summary, summary.version, summary.generatedAt ?? generatedAt),
+    full: fileRef(CACHE_FILES.full, full.version, full.generatedAt ?? generatedAt),
+    diningLatest: fileRef(
+      CACHE_FILES.diningLatest,
+      diningLatest.version,
+      diningLatest.generatedAt ?? generatedAt,
+    ),
+    gymsCurrent: fileRef(
+      CACHE_FILES.gymsCurrent,
+      gymsCurrent.version,
+      gymsCurrent.generatedAt ?? generatedAt,
+    ),
+  };
+
+  return {
+    generatedAt,
+    version: createCacheVersion({
+      diningLatest: files.diningLatest.version,
+      gymsCurrent: files.gymsCurrent.version,
+      summary: files.summary.version,
+    }),
+    files,
+  };
+}
+
 async function buildCampusCache({ tables, storage }) {
   const generatedAt = new Date().toISOString();
   const diningHallRows = await listAllRows(tables, 'dining_halls', [
@@ -225,46 +264,60 @@ async function buildCampusCache({ tables, storage }) {
     );
 
   const gymCapacities = [...latestGymByLocation.values()];
-  const version = createCacheVersion({
+  const summaryVersion = createCacheVersion({
     diningHalls,
-    diningMenuItems,
     gymCapacities,
   });
+  const diningVersion = createCacheVersion({ diningMenuItems });
+  const gymsVersion = createCacheVersion({ gymCapacities });
+  const fullVersion = diningVersion;
   const summary = {
-    version,
+    version: summaryVersion,
     generatedAt,
     diningHalls,
     diningMenuItems: [],
     gymCapacities,
   };
   const full = {
-    version,
+    version: fullVersion,
     generatedAt,
     diningHalls,
     diningMenuItems,
     gymCapacities,
   };
+  const diningLatest = {
+    version: diningVersion,
+    generatedAt,
+    diningMenuItems,
+  };
+  const gymsCurrent = {
+    version: gymsVersion,
+    generatedAt,
+    gymCapacities: full.gymCapacities,
+  };
 
-  await replaceFile(storage, CACHE_FILES.summary, 'campus-summary.json', JSON.stringify(summary));
-  await replaceFile(storage, CACHE_FILES.full, 'campus-full.json', JSON.stringify(full));
-  await replaceFile(
+  await replaceJsonFile(storage, CACHE_FILES.summary, 'campus-summary.json', summary);
+  await replaceJsonFile(storage, CACHE_FILES.full, 'campus-full.json', full);
+  await replaceJsonFile(storage, CACHE_FILES.diningLatest, 'dining-latest.json', diningLatest);
+  await replaceJsonFile(storage, CACHE_FILES.gymsCurrent, 'gyms-current.json', gymsCurrent);
+  await replaceJsonFile(
     storage,
-    CACHE_FILES.diningLatest,
-    'dining-latest.json',
-    JSON.stringify({ version, generatedAt, diningMenuItems }),
-  );
-  await replaceFile(
-    storage,
-    CACHE_FILES.gymsCurrent,
-    'gyms-current.json',
-    JSON.stringify({ version, generatedAt, gymCapacities: full.gymCapacities }),
+    CACHE_FILES.manifest,
+    'campus-manifest.json',
+    createCampusManifest({
+      diningLatest,
+      full,
+      generatedAt,
+      gymsCurrent,
+      summary,
+    }),
   );
 
   return {
     diningHalls: diningHalls.length,
     diningMenuItems: diningMenuItems.length,
     gymCapacities: full.gymCapacities.length,
-    version,
+    version: fullVersion,
   };
 }
 

@@ -1,17 +1,19 @@
 import {
+  CACHE_FILES,
   DATABASE_ID,
-  buildCampusCache,
+  createCacheVersion,
   createServices,
   parseJson,
+  readOptionalCacheFile,
+  replaceJsonFile,
+  updateCacheManifest,
 } from '../_shared/campus-cache.js';
-import { Query } from 'node-appwrite';
 import * as cheerio from 'cheerio';
 
 const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu';
 const UCLA_DINING_TIME_ZONE = 'America/Los_Angeles';
 const USER_AGENT = 'BruinGainsDiningNutritionBackfill/2.0 (+https://sfo.cloud.appwrite.io)';
 const FETCH_TIMEOUT_MS = 15000;
-const PAGE_SIZE = 500;
 const DEFAULT_RECIPE_BATCH_SIZE = 40;
 const MAX_RECIPE_BATCH_SIZE = 160;
 const DETAIL_FETCH_CONCURRENCY = 5;
@@ -211,30 +213,6 @@ async function mapLimit(values, limit, mapper) {
   return results;
 }
 
-async function listAllRows(tables, tableId, queries = []) {
-  const rows = [];
-  let offset = 0;
-
-  for (;;) {
-    const result = await tables.listRows({
-      databaseId: DATABASE_ID,
-      tableId,
-      queries: [...queries, Query.limit(PAGE_SIZE), Query.offset(offset)],
-      total: false,
-    });
-
-    rows.push(...result.rows);
-
-    if (result.rows.length < PAGE_SIZE) {
-      break;
-    }
-
-    offset += PAGE_SIZE;
-  }
-
-  return rows;
-}
-
 function parseNutritionPage(html) {
   const $ = cheerio.load(html);
   const nutritionRoot = $('#nutrition');
@@ -428,53 +406,6 @@ function hasNutritionContent(detail) {
   return hasDirectContent || hasOptionContent;
 }
 
-function detailFromReadyRow(row) {
-  return {
-    allergenLabels: parseJson(row.allergen_labels, []),
-    calories: row.calories ?? null,
-    carbsG: row.carbs_g ?? null,
-    customizationOptions: parseJson(row.customization_options, []),
-    fatsG: row.fats_g ?? null,
-    ingredients: parseJson(row.ingredients, []),
-    itemName: row.item_name ?? null,
-    nutritionFacts: parseJson(row.nutrition_facts, []),
-    proteinG: row.protein_g ?? null,
-    servingSize: row.serving_size ?? null,
-  };
-}
-
-function isReadyNutritionRow(row) {
-  const detail = detailFromReadyRow(row);
-  return row.nutrition_status === 'ready' || hasNutritionContent(detail);
-}
-
-async function hydrateRecipeNutritionCacheFromDatabase(tables, cache, recipeIds) {
-  const recipeIdsToLoad = [...new Set(recipeIds)].filter((recipeId) =>
-    !cache.has(buildRecipeDetailPath(recipeId)),
-  );
-
-  for (let index = 0; index < recipeIdsToLoad.length; index += 50) {
-    const chunk = recipeIdsToLoad.slice(index, index + 50);
-    const rows = await listAllRows(tables, 'menu_items', [
-      Query.equal('recipe_id', chunk),
-    ]);
-
-    for (const row of rows) {
-      if (typeof row.recipe_id !== 'number') {
-        continue;
-      }
-
-      const cacheKey = buildRecipeDetailPath(row.recipe_id);
-
-      if (cache.has(cacheKey) || !isReadyNutritionRow(row)) {
-        continue;
-      }
-
-      cache.set(cacheKey, detailFromReadyRow(row));
-    }
-  }
-}
-
 async function fetchNutritionDetailByPath(detailPath) {
   const normalizedPath = normalizeMenuItemDetailPath(detailPath);
   const html = await fetchHtml(`${UCLA_DINING_BASE_URL}${normalizedPath}`);
@@ -482,9 +413,7 @@ async function fetchNutritionDetailByPath(detailPath) {
   return parseNutritionPage(html);
 }
 
-async function populateRecipeNutritionCache(tables, cache, errors, recipeIds) {
-  await hydrateRecipeNutritionCacheFromDatabase(tables, cache, recipeIds);
-
+async function populateRecipeNutritionCache(cache, errors, recipeIds) {
   const missingRecipeIds = [...new Set(recipeIds)].filter((recipeId) =>
     !cache.has(buildRecipeDetailPath(recipeId)),
   );
@@ -534,38 +463,6 @@ async function populateDetailNutritionCache(cache, errors, detailPaths) {
   }
 }
 
-async function loadTargetSnapshots(tables, targetDates) {
-  const snapshots = await listAllRows(tables, 'menu_snapshots', [
-    Query.equal('service_date', targetDates),
-  ]);
-
-  return snapshots.filter((snapshot) =>
-    ['ready', 'stale', 'processing'].includes(snapshot.status),
-  );
-}
-
-async function loadMenuRowsForSnapshots(tables, snapshots) {
-  const snapshotIds = snapshots.map((snapshot) => snapshot.$id);
-
-  if (snapshotIds.length === 0) {
-    return [];
-  }
-
-  const rows = [];
-
-  for (let index = 0; index < snapshotIds.length; index += 50) {
-    rows.push(
-      ...(await listAllRows(tables, 'menu_items', [
-        Query.equal('snapshot_id', snapshotIds.slice(index, index + 50)),
-        Query.orderAsc('snapshot_id'),
-        Query.orderAsc('item_order'),
-      ])),
-    );
-  }
-
-  return rows;
-}
-
 function normalizeTargetDates(body) {
   if (Array.isArray(body.targetDates)) {
     const targetDates = body.targetDates.filter((entry) => typeof entry === 'string');
@@ -588,55 +485,6 @@ function normalizeBatchSize(value) {
   }
 
   return Math.max(1, Math.min(MAX_RECIPE_BATCH_SIZE, Math.round(value)));
-}
-
-function isPendingNutritionRow(row, force) {
-  if (typeof row.recipe_id !== 'number') {
-    return false;
-  }
-
-  if (force) {
-    return true;
-  }
-
-  return !['ready', 'unavailable'].includes(row.nutrition_status);
-}
-
-function sortMenuRowsBySnapshotDate(rows, snapshotsById, targetDates) {
-  const dateRank = new Map(targetDates.map((targetDate, index) => [targetDate, index]));
-
-  return rows.toSorted((left, right) => {
-    const leftSnapshot = snapshotsById.get(left.snapshot_id);
-    const rightSnapshot = snapshotsById.get(right.snapshot_id);
-    const leftDateRank = dateRank.get(leftSnapshot?.service_date) ?? Number.MAX_SAFE_INTEGER;
-    const rightDateRank = dateRank.get(rightSnapshot?.service_date) ?? Number.MAX_SAFE_INTEGER;
-
-    return (
-      leftDateRank - rightDateRank ||
-      String(left.snapshot_id).localeCompare(String(right.snapshot_id)) ||
-      left.item_order - right.item_order
-    );
-  });
-}
-
-function getSelectedRecipeIds(rows, batchSize) {
-  const selected = [];
-  const seen = new Set();
-
-  for (const row of rows) {
-    if (typeof row.recipe_id !== 'number' || seen.has(row.recipe_id)) {
-      continue;
-    }
-
-    seen.add(row.recipe_id);
-    selected.push(row.recipe_id);
-
-    if (selected.length >= batchSize) {
-      break;
-    }
-  }
-
-  return selected;
 }
 
 function buildOptionWithDetail(option, cache) {
@@ -673,7 +521,10 @@ function buildOptionWithDetail(option, cache) {
 }
 
 function buildNutritionUpdateData(row, detail, cache, status, errorMessage) {
-  const badgeLabels = parseJson(row.badge_labels, []);
+  const badgeLabels = parseJson(
+    row.badge_labels,
+    Array.isArray(row.badgeLabels) ? row.badgeLabels : [],
+  );
   const allergenLabels =
     detail?.allergenLabels && detail.allergenLabels.length > 0
       ? detail.allergenLabels
@@ -697,7 +548,7 @@ function buildNutritionUpdateData(row, detail, cache, status, errorMessage) {
     customization_options: JSON.stringify(customizationOptions),
     fats_g: detail?.fatsG ?? null,
     ingredients: JSON.stringify(detail?.ingredients ?? []),
-    item_name: detail?.itemName ?? row.item_name,
+    item_name: detail?.itemName ?? row.item_name ?? row.itemName,
     nutrition_error: errorMessage ?? null,
     nutrition_fetched_at: new Date().toISOString(),
     nutrition_facts: JSON.stringify(detail?.nutritionFacts ?? []),
@@ -732,69 +583,322 @@ async function updateRowsForRecipe(tables, rows, recipeId, cache, errors) {
   return status;
 }
 
-async function markCompleteSnapshotsReady(tables, snapshots, menuRows, statusByRecipeId) {
-  const rowsBySnapshotId = new Map();
-
-  for (const row of menuRows) {
-    const rows = rowsBySnapshotId.get(row.snapshot_id) ?? [];
-
-    rows.push(row);
-    rowsBySnapshotId.set(row.snapshot_id, rows);
-  }
-
-  const completeSnapshots = snapshots.filter((snapshot) => {
-    const rows = rowsBySnapshotId.get(snapshot.$id) ?? [];
-
-    return (
-      rows.length > 0 &&
-      rows.every((row) => {
-        if (row.recipe_id === null) {
-          return true;
-        }
-
-        const status = statusByRecipeId.get(row.recipe_id) ?? row.nutrition_status;
-
-        return ['ready', 'unavailable'].includes(status);
-      })
-    );
-  });
-
-  await mapLimit(
-    completeSnapshots.filter((snapshot) => snapshot.status !== 'ready'),
-    ROW_UPDATE_CONCURRENCY,
-    (snapshot) =>
-      tables.updateRow({
-        databaseId: DATABASE_ID,
-        tableId: 'menu_snapshots',
-        rowId: snapshot.$id,
-        data: {
-          status: 'ready',
-        },
-      }),
+async function readNutritionQueue(storage) {
+  const queue = await readOptionalCacheFile(
+    storage,
+    CACHE_FILES.nutritionQueue,
+    { items: [] },
   );
 
-  return completeSnapshots.length;
+  return {
+    generatedAt: queue.generatedAt ?? null,
+    items: Array.isArray(queue.items) ? queue.items : [],
+    version: queue.version ?? null,
+  };
 }
 
-async function markRowsWithoutRecipeUnavailable(tables, rows) {
-  const rowsToMark = rows.filter((row) =>
-    row.recipe_id === null && row.nutrition_status !== 'unavailable',
+async function writeNutritionQueue(storage, items) {
+  const generatedAt = new Date().toISOString();
+  const payload = {
+    generatedAt,
+    items,
+    version: createCacheVersion({ items }),
+  };
+
+  await replaceJsonFile(
+    storage,
+    CACHE_FILES.nutritionQueue,
+    'dining-nutrition-queue.json',
+    payload,
   );
 
-  await mapLimit(rowsToMark, ROW_UPDATE_CONCURRENCY, (row) =>
+  return payload;
+}
+
+function isTerminalNutritionStatus(status) {
+  return status === 'ready' || status === 'unavailable';
+}
+
+function isTargetQueueItem(item, targetDateSet) {
+  return targetDateSet.size === 0 || targetDateSet.has(item.serviceDate);
+}
+
+function isPendingQueueItem(item, targetDateSet, force) {
+  return (
+    isTargetQueueItem(item, targetDateSet) &&
+    typeof item.recipeId === 'number' &&
+    (force || !isTerminalNutritionStatus(item.status))
+  );
+}
+
+function getQueuePendingRecipeIds(items, targetDateSet, force) {
+  return [...new Set(
+    items
+      .filter((item) => isPendingQueueItem(item, targetDateSet, force))
+      .map((item) => item.recipeId),
+  )];
+}
+
+function getSelectedQueueRecipeIds(items, targetDateSet, batchSize, force) {
+  return getQueuePendingRecipeIds(items, targetDateSet, force).slice(0, batchSize);
+}
+
+function queueItemToMenuRow(item) {
+  return {
+    $id: item.rowId,
+    badgeLabels: item.badgeLabels ?? [],
+    badge_labels: JSON.stringify(item.badgeLabels ?? []),
+    itemName: item.itemName,
+    item_name: item.itemName,
+    nutrition_status: item.status,
+    recipe_id: item.recipeId,
+    snapshot_id: item.snapshotId,
+  };
+}
+
+function buildQueueItemWithNutrition(item, detail, cache, status, errorMessage) {
+  const badgeLabels = item.badgeLabels ?? [];
+  const allergenLabels =
+    detail?.allergenLabels && detail.allergenLabels.length > 0
+      ? detail.allergenLabels
+      : badgeLabels.filter(isAllergenBadgeLabel);
+  const customizationOptions = detail?.customizationOptions.map((option) =>
+    buildOptionWithDetail(option, cache),
+  ) ?? [];
+
+  if (status === 'failed') {
+    return {
+      ...item,
+      attempts: (item.attempts ?? 0) + 1,
+      error: errorMessage ?? 'Nutrition detail fetch failed',
+      status,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    ...item,
+    allergenLabels,
+    attempts: (item.attempts ?? 0) + 1,
+    calories: detail?.calories ?? null,
+    carbsG: detail?.carbsG ?? null,
+    customizationOptions,
+    error: errorMessage ?? null,
+    fatsG: detail?.fatsG ?? null,
+    ingredients: detail?.ingredients ?? [],
+    itemName: detail?.itemName ?? item.itemName,
+    nutritionFacts: detail?.nutritionFacts ?? [],
+    proteinG: detail?.proteinG ?? null,
+    servingSize: detail?.servingSize ?? null,
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function updateQueueItems(items, targetDateSet, selectedRecipeIds, statusByRecipeId, cache, errors) {
+  const selectedRecipeIdSet = new Set(selectedRecipeIds);
+
+  return items.map((item) => {
+    if (
+      !isTargetQueueItem(item, targetDateSet) ||
+      !selectedRecipeIdSet.has(item.recipeId)
+    ) {
+      return item;
+    }
+
+    const detailPath = buildRecipeDetailPath(item.recipeId);
+    const status = statusByRecipeId.get(item.recipeId) ?? item.status;
+    const nutritionError = errors.get(detailPath) ?? null;
+    const detail = cache.get(detailPath) ?? null;
+
+    return buildQueueItemWithNutrition(item, detail, cache, status, nutritionError);
+  });
+}
+
+function getReadySnapshotIds(items, targetDateSet, affectedRecipeIds) {
+  const affectedRecipeIdSet = new Set(affectedRecipeIds);
+  const itemsBySnapshotId = new Map();
+  const affectedSnapshotIds = new Set();
+
+  for (const item of items) {
+    if (!isTargetQueueItem(item, targetDateSet)) {
+      continue;
+    }
+
+    const snapshotItems = itemsBySnapshotId.get(item.snapshotId) ?? [];
+    snapshotItems.push(item);
+    itemsBySnapshotId.set(item.snapshotId, snapshotItems);
+
+    if (affectedRecipeIdSet.has(item.recipeId)) {
+      affectedSnapshotIds.add(item.snapshotId);
+    }
+  }
+
+  return [...affectedSnapshotIds].filter((snapshotId) => {
+    const snapshotItems = itemsBySnapshotId.get(snapshotId) ?? [];
+
+    return (
+      snapshotItems.length > 0 &&
+      snapshotItems.every((item) => isTerminalNutritionStatus(item.status))
+    );
+  });
+}
+
+async function markQueueSnapshotsReady(tables, snapshotIds) {
+  await mapLimit(snapshotIds, ROW_UPDATE_CONCURRENCY, (snapshotId) =>
     tables.updateRow({
       databaseId: DATABASE_ID,
-      tableId: 'menu_items',
-      rowId: row.$id,
+      tableId: 'menu_snapshots',
+      rowId: snapshotId,
       data: {
-        nutrition_error: 'No UCLA recipe ID available',
-        nutrition_fetched_at: new Date().toISOString(),
-        nutrition_status: 'unavailable',
+        status: 'ready',
       },
     }),
   );
 
-  return rowsToMark.length;
+  return snapshotIds.length;
+}
+
+function mapQueueItemToDiningMenuItem(item) {
+  return {
+    allergenLabels: item.allergenLabels ?? [],
+    badgeLabels: item.badgeLabels ?? [],
+    calories: item.calories ?? null,
+    carbsG: item.carbsG ?? null,
+    customizationOptions: item.customizationOptions ?? [],
+    fatsG: item.fatsG ?? null,
+    fetchedAt: item.fetchedAt ?? item.updatedAt ?? null,
+    hallId: item.hallId,
+    hallName: item.hallName,
+    hallSortOrder: item.hallSortOrder ?? 999,
+    ingredients: item.ingredients ?? [],
+    itemName: item.itemName,
+    itemOrder: item.itemOrder ?? 0,
+    mealPeriod: item.mealPeriod,
+    nutritionFacts: item.nutritionFacts ?? [],
+    proteinG: item.proteinG ?? null,
+    recipeId: item.recipeId ?? null,
+    serviceDate: item.serviceDate,
+    servingSize: item.servingSize ?? null,
+    snapshotStatus: isTerminalNutritionStatus(item.status) ? 'ready' : 'processing',
+    stationName: item.stationName ?? 'Station',
+  };
+}
+
+function selectLatestQueueMenuItems(items) {
+  const today = getLosAngelesDateOffset(0);
+  const latestSnapshots = new Map();
+
+  for (const item of items) {
+    if (!item.snapshotId || !item.hallId || !item.mealPeriod || item.serviceDate > today) {
+      continue;
+    }
+
+    const key = `${item.hallId}:${item.mealPeriod}`;
+    const existing = latestSnapshots.get(key);
+
+    if (
+      !existing ||
+      item.serviceDate > existing.serviceDate ||
+      (
+        item.serviceDate === existing.serviceDate &&
+        (item.fetchedAt ?? '') > (existing.fetchedAt ?? '')
+      )
+    ) {
+      latestSnapshots.set(key, {
+        fetchedAt: item.fetchedAt ?? '',
+        serviceDate: item.serviceDate,
+        snapshotId: item.snapshotId,
+      });
+    }
+  }
+
+  const selectedSnapshotIds = new Set(
+    [...latestSnapshots.values()].map((snapshot) => snapshot.snapshotId),
+  );
+
+  return items
+    .filter((item) => selectedSnapshotIds.has(item.snapshotId))
+    .map(mapQueueItemToDiningMenuItem)
+    .sort(
+      (left, right) =>
+        left.hallSortOrder - right.hallSortOrder ||
+        left.mealPeriod.localeCompare(right.mealPeriod) ||
+        left.itemOrder - right.itemOrder,
+    );
+}
+
+function buildDiningHallsFromQueue(items) {
+  const hallsById = new Map();
+
+  for (const item of items) {
+    if (!item.hallId || hallsById.has(item.hallId)) {
+      continue;
+    }
+
+    hallsById.set(item.hallId, {
+      fitPercent: null,
+      hours: {
+        breakfast: null,
+        lunch: null,
+        dinner: null,
+        lateNight: null,
+      },
+      id: item.hallId,
+      name: item.hallName,
+    });
+  }
+
+  return [...hallsById.values()];
+}
+
+async function buildStorageDiningCacheFromQueue(storage, items) {
+  const generatedAt = new Date().toISOString();
+  const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
+  const gymsCurrent = await readOptionalCacheFile(storage, CACHE_FILES.gymsCurrent);
+  const diningMenuItems = selectLatestQueueMenuItems(items);
+  const diningHalls = summary?.diningHalls?.length
+    ? summary.diningHalls
+    : buildDiningHallsFromQueue(items);
+  const gymCapacities = gymsCurrent?.gymCapacities ?? summary?.gymCapacities ?? [];
+  const version = createCacheVersion({ diningMenuItems });
+  const diningLatest = {
+    diningMenuItems,
+    generatedAt,
+    version,
+  };
+  const full = {
+    diningHalls,
+    diningMenuItems,
+    generatedAt,
+    gymCapacities,
+    version,
+  };
+
+  await replaceJsonFile(storage, CACHE_FILES.diningLatest, 'dining-latest.json', diningLatest);
+  await replaceJsonFile(storage, CACHE_FILES.full, 'campus-full.json', full);
+  const manifest = await updateCacheManifest(
+    storage,
+    {
+      diningLatest: {
+        fileId: CACHE_FILES.diningLatest,
+        generatedAt,
+        version,
+      },
+      full: {
+        fileId: CACHE_FILES.full,
+        generatedAt,
+        version,
+      },
+    },
+    generatedAt,
+  );
+
+  return {
+    diningMenuItems: diningMenuItems.length,
+    manifestVersion: manifest.version,
+    version,
+  };
 }
 
 export default async ({ req, res, error }) => {
@@ -805,30 +909,50 @@ export default async ({ req, res, error }) => {
 
   try {
     const services = createServices(req);
-    const snapshots = await loadTargetSnapshots(services.tables, targetDates);
-    const snapshotsById = new Map(snapshots.map((snapshot) => [snapshot.$id, snapshot]));
-    const menuRows = sortMenuRowsBySnapshotDate(
-      await loadMenuRowsForSnapshots(services.tables, snapshots),
-      snapshotsById,
-      targetDates,
+    const targetDateSet = new Set(targetDates);
+    const queue = await readNutritionQueue(services.storage);
+    const pendingRecipeIds = getQueuePendingRecipeIds(queue.items, targetDateSet, force);
+    const selectedRecipeIds = getSelectedQueueRecipeIds(
+      queue.items,
+      targetDateSet,
+      batchSize,
+      force,
     );
-    const markedUnavailable = await markRowsWithoutRecipeUnavailable(services.tables, menuRows);
-    const pendingRows = menuRows.filter((row) => isPendingNutritionRow(row, force));
-    const pendingRecipeIds = [...new Set(
-      pendingRows.map((row) => row.recipe_id).filter((recipeId) => typeof recipeId === 'number'),
-    )];
-    const selectedRecipeIds = getSelectedRecipeIds(pendingRows, batchSize);
-    const shouldBuildCache =
-      body.buildCache === true ||
-      (
-        body.buildCache !== false &&
-        selectedRecipeIds.length > 0 &&
-        pendingRecipeIds.length <= selectedRecipeIds.length
-      );
+
+    if (selectedRecipeIds.length === 0) {
+      const cacheResult = body.buildCache === true
+        ? await buildStorageDiningCacheFromQueue(services.storage, queue.items)
+        : null;
+
+      return res.json({
+        ok: true,
+        batchSize,
+        cache: cacheResult,
+        complete: pendingRecipeIds.length === 0,
+        dates: targetDates,
+        pendingRecipeIds: pendingRecipeIds.length,
+        processedRecipeIds: 0,
+        queueItems: queue.items.length,
+        remainingRecipeIds: pendingRecipeIds.length,
+        readySnapshots: 0,
+        statusCounts: {
+          failed: 0,
+          ready: 0,
+          unavailable: 0,
+        },
+      });
+    }
+
+    const menuRows = queue.items
+      .filter((item) =>
+        isTargetQueueItem(item, targetDateSet) &&
+        selectedRecipeIds.includes(item.recipeId),
+      )
+      .map(queueItemToMenuRow);
     const cache = new Map();
     const errors = new Map();
 
-    await populateRecipeNutritionCache(services.tables, cache, errors, selectedRecipeIds);
+    await populateRecipeNutritionCache(cache, errors, selectedRecipeIds);
 
     const customizationDetailPaths = selectedRecipeIds.flatMap((recipeId) => {
       const detail = cache.get(buildRecipeDetailPath(recipeId));
@@ -858,33 +982,63 @@ export default async ({ req, res, error }) => {
       statusByRecipeId.set(recipeId, status);
       statusCounts[status] += 1;
     }
-    const readySnapshots = await markCompleteSnapshotsReady(
-      services.tables,
-      snapshots,
-      menuRows,
+    const nextQueueItems = updateQueueItems(
+      queue.items,
+      targetDateSet,
+      selectedRecipeIds,
       statusByRecipeId,
+      cache,
+      errors,
     );
+    const nextPendingRecipeIds = getQueuePendingRecipeIds(nextQueueItems, targetDateSet, force);
+    const shouldBuildCache =
+      body.buildCache === true ||
+      (
+        body.buildCache !== false &&
+        nextPendingRecipeIds.length === 0
+      );
+    const readySnapshotIds = getReadySnapshotIds(
+      nextQueueItems,
+      targetDateSet,
+      selectedRecipeIds,
+    );
+    const readySnapshots = await markQueueSnapshotsReady(
+      services.tables,
+      readySnapshotIds,
+    );
+    const nextQueue = await writeNutritionQueue(services.storage, nextQueueItems);
 
-    const cacheResult =
-      shouldBuildCache && (selectedRecipeIds.length > 0 || markedUnavailable > 0)
-        ? await buildCampusCache(services)
-        : null;
+    let cacheResult = null;
+    let cacheError = null;
+
+    if (shouldBuildCache) {
+      try {
+        cacheResult = await buildStorageDiningCacheFromQueue(
+          services.storage,
+          nextQueue.items,
+        );
+      } catch (exception) {
+        cacheError = exception?.message ?? String(exception);
+        error(`Storage dining cache rebuild failed after nutrition backfill: ${cacheError}`);
+      }
+    }
 
     return res.json({
-      ok: true,
+      ok: cacheError === null,
       batchSize,
       cache: cacheResult,
-      complete: pendingRecipeIds.length <= selectedRecipeIds.length,
+      cacheError,
+      complete: nextPendingRecipeIds.length === 0,
       dates: targetDates,
-      markedUnavailable,
       pendingRecipeIds: pendingRecipeIds.length,
       processedRecipeIds: selectedRecipeIds.length,
+      queueItems: nextQueue.items.length,
+      queueVersion: nextQueue.version,
       readySnapshots,
-      remainingRecipeIds: Math.max(0, pendingRecipeIds.length - selectedRecipeIds.length),
-      snapshots: snapshots.length,
+      remainingRecipeIds: nextPendingRecipeIds.length,
       statusCounts,
       targetRows: menuRows.length,
-    });
+    }, cacheError === null ? 200 : 500);
   } catch (exception) {
     error(`Dining nutrition backfill failed: ${exception?.message ?? exception}`);
     return res.json(

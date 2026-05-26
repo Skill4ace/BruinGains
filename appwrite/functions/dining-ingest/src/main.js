@@ -1,9 +1,14 @@
+import { createHash } from 'node:crypto';
+
 import {
+  CACHE_FILES,
   DATABASE_ID,
-  buildCampusCache,
+  createCacheVersion,
   createServices,
+  readOptionalCacheFile,
+  replaceJsonFile,
 } from '../_shared/campus-cache.js';
-import { ID, Query } from 'node-appwrite';
+import { ID } from 'node-appwrite';
 import * as cheerio from 'cheerio';
 
 const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu';
@@ -12,6 +17,119 @@ const USER_AGENT = 'BruinGainsDiningIngest/2.0 (+https://sfo.cloud.appwrite.io)'
 const FETCH_TIMEOUT_MS = 15000;
 const HALL_FETCH_CONCURRENCY = 2;
 const MENU_ITEM_BATCH_SIZE = 100;
+
+const DINING_HALL_DEFAULTS = [
+  {
+    $id: 'bruin-plate',
+    name: 'Bruin Plate',
+    sort_order: 1,
+    breakfast_hours: '7:00 AM - 9:00 AM',
+    lunch_hours: '11:00 AM - 2:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/bruin-plate',
+  },
+  {
+    $id: 'de-neve',
+    name: 'De Neve',
+    sort_order: 2,
+    breakfast_hours: '7:00 AM - 10:00 AM',
+    lunch_hours: '11:00 AM - 2:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: '10:00 PM - 12:00 AM',
+    source_path: '/de-neve-dining',
+  },
+  {
+    $id: 'epicuria-covel',
+    name: 'Epicuria at Covel',
+    sort_order: 3,
+    breakfast_hours: null,
+    lunch_hours: '11:00 AM - 3:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/epicuria-at-covel',
+  },
+  {
+    $id: 'feast-rieber',
+    name: 'Feast at Rieber',
+    sort_order: 4,
+    breakfast_hours: null,
+    lunch_hours: '11:00 AM - 2:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: '9:00 PM - 11:00 PM',
+    source_path: '/spice-kitchen',
+  },
+  {
+    $id: 'bruin-cafe',
+    name: 'Bruin Cafe',
+    sort_order: 5,
+    breakfast_hours: '7:00 AM - 10:00 AM',
+    lunch_hours: '11:00 AM - 4:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/bruin-cafe',
+  },
+  {
+    $id: 'cafe-1919',
+    name: 'Cafe 1919',
+    sort_order: 6,
+    breakfast_hours: null,
+    lunch_hours: '11:00 AM - 4:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/cafe-1919',
+  },
+  {
+    $id: 'study-hedrick',
+    name: 'The Study',
+    sort_order: 7,
+    breakfast_hours: '7:00 AM - 10:00 AM',
+    lunch_hours: '11:00 AM - 3:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: '9:00 PM - 12:00 AM',
+    source_path: '/the-study-at-hedrick',
+  },
+  {
+    $id: 'the-drey',
+    name: 'The Drey',
+    sort_order: 8,
+    breakfast_hours: null,
+    lunch_hours: '11:00 AM - 3:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/the-drey',
+  },
+  {
+    $id: 'rendezvous',
+    name: 'Rendezvous',
+    sort_order: 9,
+    breakfast_hours: null,
+    lunch_hours: '11:00 AM - 3:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/rendezvous',
+  },
+  {
+    $id: 'bruin-bowl',
+    name: 'Bruin Bowl',
+    sort_order: 10,
+    breakfast_hours: null,
+    lunch_hours: null,
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/bruin-bowl',
+  },
+  {
+    $id: 'epicuria-ackerman',
+    name: 'Epicuria at Ackerman',
+    sort_order: 11,
+    breakfast_hours: null,
+    lunch_hours: '11:00 AM - 4:00 PM',
+    dinner_hours: '5:00 PM - 9:00 PM',
+    late_night_hours: null,
+    source_path: '/epicuria-at-ackerman',
+  },
+];
 
 const PERIOD_CONFIG = [
   { key: 'breakfast', anchorId: 'breakfastmenu', heading: 'BREAKFAST' },
@@ -62,6 +180,31 @@ function normalizeComparableValue(value) {
     .replace(/[^a-zA-Z0-9]+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+function createDeterministicRowId(prefix, parts) {
+  return `${prefix}_${createHash('sha256')
+    .update(JSON.stringify(parts))
+    .digest('base64url')
+    .slice(0, 32)}`;
+}
+
+function getHallHours(hall, mealPeriod) {
+  const hours = hall.hours ?? {};
+
+  if (mealPeriod === 'breakfast') {
+    return hall.breakfast_hours ?? hours.breakfast ?? null;
+  }
+
+  if (mealPeriod === 'lunch') {
+    return hall.lunch_hours ?? hours.lunch ?? null;
+  }
+
+  if (mealPeriod === 'dinner') {
+    return hall.dinner_hours ?? hours.dinner ?? null;
+  }
+
+  return hall.late_night_hours ?? hours.lateNight ?? null;
 }
 
 function normalizeBadgeLabel(value) {
@@ -155,49 +298,13 @@ async function mapLimit(values, limit, mapper) {
   return results;
 }
 
-async function listAllRows(tables, tableId, queries = []) {
-  const rows = [];
-  let offset = 0;
-
-  for (;;) {
-    const result = await tables.listRows({
-      databaseId: DATABASE_ID,
-      tableId,
-      queries: [...queries, Query.limit(500), Query.offset(offset)],
-      total: false,
-    });
-
-    rows.push(...result.rows);
-
-    if (result.rows.length < 500) {
-      break;
-    }
-
-    offset += 500;
-  }
-
-  return rows;
-}
-
 function getOpenMealPeriodsForHall(hall, selectedMealPeriods) {
   const candidatePeriods = selectedMealPeriods?.length
     ? selectedMealPeriods
     : PERIOD_CONFIG.map((period) => period.key);
 
   return candidatePeriods.filter((mealPeriod) => {
-    if (mealPeriod === 'breakfast') {
-      return Boolean(hall.breakfast_hours);
-    }
-
-    if (mealPeriod === 'lunch') {
-      return Boolean(hall.lunch_hours);
-    }
-
-    if (mealPeriod === 'dinner') {
-      return Boolean(hall.dinner_hours);
-    }
-
-    return Boolean(hall.late_night_hours);
+    return Boolean(getHallHours(hall, mealPeriod));
   });
 }
 
@@ -405,45 +512,14 @@ function parseHallMenuPage(html, hall, targetDate, selectedMealPeriods) {
   };
 }
 
-async function findExistingSnapshot(tables, hallId, serviceDate, mealPeriod) {
-  const result = await tables.listRows({
-    databaseId: DATABASE_ID,
-    tableId: 'menu_snapshots',
-    queries: [
-      Query.equal('hall_id', hallId),
-      Query.equal('service_date', serviceDate),
-      Query.equal('meal_period', mealPeriod),
-      Query.limit(1),
-    ],
-  });
-
-  return result.rows[0] ?? null;
-}
-
-async function deleteMenuItemsForSnapshot(tables, snapshotId) {
-  const rows = await listAllRows(tables, 'menu_items', [
-    Query.equal('snapshot_id', snapshotId),
-  ]);
-
-  await Promise.all(
-    rows.map((row) =>
-      tables.deleteRow({
-        databaseId: DATABASE_ID,
-        tableId: 'menu_items',
-        rowId: row.$id,
-      }),
-    ),
-  );
-}
-
 async function upsertSnapshot(tables, hall, parsedHall, section, targetDate, fetchedAt) {
-  const existing = await findExistingSnapshot(
-    tables,
+  const snapshotId = createDeterministicRowId('ms', [
     hall.$id,
     targetDate,
     section.mealPeriod,
-  );
+  ]);
   const data = {
+    $id: snapshotId,
     fetched_at: fetchedAt,
     hall_id: hall.$id,
     meal_period: section.mealPeriod,
@@ -452,31 +528,18 @@ async function upsertSnapshot(tables, hall, parsedHall, section, targetDate, fet
     status: 'processing',
   };
 
-  if (existing) {
-    await deleteMenuItemsForSnapshot(tables, existing.$id);
-    await tables.updateRow({
-      databaseId: DATABASE_ID,
-      tableId: 'menu_snapshots',
-      rowId: existing.$id,
-      data,
-    });
-    return existing.$id;
-  }
-
-  const created = await tables.createRow({
+  await tables.upsertRows({
     databaseId: DATABASE_ID,
     tableId: 'menu_snapshots',
-    rowId: ID.unique(),
-    data,
-    permissions: [],
+    rows: [data],
   });
 
-  return created.$id;
+  return snapshotId;
 }
 
 function buildMenuRows(snapshotId, section) {
   return section.items.map((item) => ({
-    $id: ID.unique(),
+    $id: createDeterministicRowId('mi', [snapshotId, item.itemOrder]),
     allergen_labels: JSON.stringify([]),
     badge_labels: JSON.stringify(item.badgeLabels),
     carbs_g: null,
@@ -496,6 +559,37 @@ function buildMenuRows(snapshotId, section) {
     snapshot_id: snapshotId,
     station_name: item.stationName,
   }));
+}
+
+function buildNutritionQueueItems(hall, targetDate, section, rows, fetchedAt) {
+  return rows
+    .map((row) => ({
+      allergenLabels: [],
+      attempts: 0,
+      badgeLabels: JSON.parse(row.badge_labels || '[]'),
+      calories: null,
+      carbsG: null,
+      customizationOptions: [],
+      fatsG: null,
+      fetchedAt,
+      hallId: hall.$id,
+      hallName: hall.name,
+      hallSortOrder: hall.sort_order ?? 999,
+      ingredients: [],
+      itemName: row.item_name,
+      itemOrder: row.item_order,
+      mealPeriod: section.mealPeriod,
+      nutritionFacts: [],
+      proteinG: null,
+      recipeId: row.recipe_id,
+      rowId: row.$id,
+      serviceDate: targetDate,
+      servingSize: null,
+      snapshotId: row.snapshot_id,
+      status: typeof row.recipe_id === 'number' ? 'pending' : 'unavailable',
+      stationName: row.station_name ?? 'Station',
+      updatedAt: null,
+    }));
 }
 
 async function upsertMenuRows(tables, rows) {
@@ -519,6 +613,7 @@ async function ingestHall(tables, hall, options) {
   );
   const fetchedAt = new Date().toISOString();
   let itemCount = 0;
+  const nutritionQueueItems = [];
   let snapshotCount = 0;
 
   for (const section of parsedHall.sections) {
@@ -533,6 +628,9 @@ async function ingestHall(tables, hall, options) {
     const menuRows = buildMenuRows(snapshotId, section);
 
     await upsertMenuRows(tables, menuRows);
+    nutritionQueueItems.push(
+      ...buildNutritionQueueItems(hall, options.targetDate, section, menuRows, fetchedAt),
+    );
     itemCount += menuRows.length;
     snapshotCount += 1;
   }
@@ -542,6 +640,7 @@ async function ingestHall(tables, hall, options) {
     hallName: hall.name,
     itemCount,
     mealPeriods: parsedHall.sections.map((section) => section.mealPeriod),
+    nutritionQueueItems,
     snapshotCount,
     sourceUrl: parsedHall.sourceUrl,
     status: 'success',
@@ -591,18 +690,67 @@ async function updateRun(tables, runId, summary) {
   });
 }
 
-async function loadTargetHalls(tables, hallIds) {
-  const rows = await listAllRows(tables, 'dining_halls', [
-    Query.equal('is_active', true),
-    Query.orderAsc('sort_order'),
-  ]);
+function normalizeHallForIngest(hall) {
+  const hallId = hall.$id ?? hall.id;
+  const fallback = DINING_HALL_DEFAULTS.find((candidate) => candidate.$id === hallId);
+
+  return {
+    $id: hallId,
+    name: hall.name ?? fallback?.name ?? hallId,
+    sort_order: hall.sort_order ?? fallback?.sort_order ?? 999,
+    breakfast_hours: getHallHours(hall, 'breakfast') ?? fallback?.breakfast_hours ?? null,
+    lunch_hours: getHallHours(hall, 'lunch') ?? fallback?.lunch_hours ?? null,
+    dinner_hours: getHallHours(hall, 'dinner') ?? fallback?.dinner_hours ?? null,
+    late_night_hours: getHallHours(hall, 'lateNight') ?? fallback?.late_night_hours ?? null,
+    source_path: hall.source_path ?? fallback?.source_path ?? `/${hallId}`,
+  };
+}
+
+async function loadTargetHalls(storage, hallIds) {
+  const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
+  const rows = summary?.diningHalls?.length
+    ? summary.diningHalls.map(normalizeHallForIngest)
+    : DINING_HALL_DEFAULTS;
 
   if (hallIds?.length) {
     const selectedIds = new Set(hallIds);
     return rows.filter((hall) => selectedIds.has(hall.$id));
   }
 
-  return rows;
+  return rows.toSorted((left, right) => left.sort_order - right.sort_order);
+}
+
+async function writeNutritionQueue(storage, targetDates, newItems) {
+  const existing = await readOptionalCacheFile(
+    storage,
+    CACHE_FILES.nutritionQueue,
+    { items: [] },
+  );
+  const replacementDates = new Set(targetDates);
+  const retainedItems = (existing.items ?? []).filter((item) =>
+    !replacementDates.has(item.serviceDate),
+  );
+  const items = [...retainedItems, ...newItems];
+  const generatedAt = new Date().toISOString();
+  const payload = {
+    generatedAt,
+    items,
+    version: createCacheVersion({ items }),
+  };
+
+  await replaceJsonFile(
+    storage,
+    CACHE_FILES.nutritionQueue,
+    'dining-nutrition-queue.json',
+    payload,
+  );
+
+  return {
+    pendingItems: items.filter((item) => !['ready', 'unavailable'].includes(item.status)).length,
+    queuedItems: items.length,
+    targetDateItems: newItems.length,
+    version: payload.version,
+  };
 }
 
 function normalizeMealPeriods(value) {
@@ -631,11 +779,11 @@ export default async ({ req, res, error }) => {
     mealPeriods: normalizeMealPeriods(body.mealPeriods),
     trigger: typeof body.trigger === 'string' ? body.trigger : 'scheduled',
   };
-  const shouldBuildCache = body.buildCache === true;
 
   try {
     const services = createServices(req);
     const dateResults = [];
+    const nutritionQueueItems = [];
 
     for (const targetDate of targetDates) {
       const targetOptions = {
@@ -643,7 +791,7 @@ export default async ({ req, res, error }) => {
         targetDate,
       };
       const run = await createRun(services.tables, targetOptions);
-      const halls = await loadTargetHalls(services.tables, targetOptions.hallIds);
+      const halls = await loadTargetHalls(services.storage, targetOptions.hallIds);
       const hallResults = await mapLimit(
         halls,
         HALL_FETCH_CONCURRENCY,
@@ -665,12 +813,24 @@ export default async ({ req, res, error }) => {
         },
       );
       const errorCount = hallResults.filter((result) => result.status === 'failure').length;
+      nutritionQueueItems.push(
+        ...hallResults.flatMap((result) => result.nutritionQueueItems ?? []),
+      );
+      const publicHallResults = hallResults.map((result) => {
+        const { nutritionQueueItems: _nutritionQueueItems, ...publicResult } = result;
+
+        return publicResult;
+      });
       const itemCount = hallResults.reduce((total, result) => total + result.itemCount, 0);
       const snapshotCount = hallResults.reduce((total, result) => total + result.snapshotCount, 0);
       const summary = {
         errorCount,
-        hallResults,
+        hallResults: publicHallResults,
         itemCount,
+        nutritionQueueItems: hallResults.reduce(
+          (total, result) => total + (result.nutritionQueueItems?.length ?? 0),
+          0,
+        ),
         snapshotCount,
         status:
           errorCount === 0
@@ -684,6 +844,12 @@ export default async ({ req, res, error }) => {
       await updateRun(services.tables, run.$id, summary);
       dateResults.push(summary);
     }
+
+    const nutritionQueue = await writeNutritionQueue(
+      services.storage,
+      targetDates,
+      nutritionQueueItems,
+    );
 
     const totalFailures = dateResults.filter((result) => result.status === 'failure').length;
     const ok = totalFailures < dateResults.length;
@@ -699,11 +865,10 @@ export default async ({ req, res, error }) => {
             ? 'failure'
             : 'partial_failure',
     };
-    const cache = ok && shouldBuildCache ? await buildCampusCache(services) : null;
-
     return res.json(
       {
-        cache,
+        cache: null,
+        nutritionQueue,
         ok,
         ...summary,
       },

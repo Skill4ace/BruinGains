@@ -1,9 +1,13 @@
 import {
+  CACHE_FILES,
   DATABASE_ID,
-  buildCampusCache,
+  createCacheVersion,
   createServices,
+  readOptionalCacheFile,
+  replaceJsonFile,
+  updateCacheManifest,
 } from '../_shared/campus-cache.js';
-import { ID, Query } from 'node-appwrite';
+import { ID } from 'node-appwrite';
 
 const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu';
 const UCLA_DINING_ACTIVITY_PATH = '/wp-content/plugins/activity-meter/activity_ajax.php';
@@ -14,16 +18,164 @@ const USER_AGENT = 'BruinGainsCampusActivitySync/2.0 (+https://sfo.cloud.appwrit
 const FETCH_TIMEOUT_MS = 15000;
 const DINING_FETCH_CONCURRENCY = 3;
 
+const DINING_ACTIVITY_TARGETS = [
+  {
+    activityLocationId: '865',
+    id: 'bruin-plate',
+    name: 'Bruin Plate',
+    sortOrder: 1,
+    sourcePath: '/bruin-plate',
+    hours: {
+      breakfast: '7:00 AM - 9:00 AM',
+      lunch: '11:00 AM - 2:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+  {
+    activityLocationId: '866',
+    id: 'de-neve',
+    name: 'De Neve',
+    sortOrder: 2,
+    sourcePath: '/de-neve-dining',
+    hours: {
+      breakfast: '7:00 AM - 10:00 AM',
+      lunch: '11:00 AM - 2:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: '10:00 PM - 12:00 AM',
+    },
+  },
+  {
+    activityLocationId: '864',
+    id: 'epicuria-covel',
+    name: 'Epicuria at Covel',
+    sortOrder: 3,
+    sourcePath: '/epicuria-at-covel',
+    hours: {
+      breakfast: null,
+      lunch: '11:00 AM - 3:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+  {
+    activityLocationId: '872',
+    id: 'feast-rieber',
+    name: 'Feast at Rieber',
+    sortOrder: 4,
+    sourcePath: '/spice-kitchen',
+    hours: {
+      breakfast: null,
+      lunch: '11:00 AM - 2:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: '9:00 PM - 11:00 PM',
+    },
+  },
+  {
+    activityLocationId: '867',
+    id: 'bruin-cafe',
+    name: 'Bruin Cafe',
+    sortOrder: 5,
+    sourcePath: '/bruin-cafe',
+    hours: {
+      breakfast: '7:00 AM - 10:00 AM',
+      lunch: '11:00 AM - 4:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+  {
+    activityLocationId: '873',
+    id: 'cafe-1919',
+    name: 'Cafe 1919',
+    sortOrder: 6,
+    sourcePath: '/cafe-1919',
+    hours: {
+      breakfast: null,
+      lunch: '11:00 AM - 4:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+  {
+    activityLocationId: '871',
+    id: 'study-hedrick',
+    name: 'The Study',
+    sortOrder: 7,
+    sourcePath: '/the-study-at-hedrick',
+    hours: {
+      breakfast: '7:00 AM - 10:00 AM',
+      lunch: '11:00 AM - 3:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: '9:00 PM - 12:00 AM',
+    },
+  },
+  {
+    activityLocationId: '869',
+    id: 'the-drey',
+    name: 'The Drey',
+    sortOrder: 8,
+    sourcePath: '/the-drey',
+    hours: {
+      breakfast: null,
+      lunch: '11:00 AM - 3:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+  {
+    activityLocationId: '870',
+    id: 'rendezvous',
+    name: 'Rendezvous',
+    sortOrder: 9,
+    sourcePath: '/rendezvous',
+    hours: {
+      breakfast: null,
+      lunch: '11:00 AM - 3:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+  {
+    activityLocationId: '868',
+    id: 'bruin-bowl',
+    name: 'Bruin Bowl',
+    sortOrder: 10,
+    sourcePath: '/bruin-bowl',
+    hours: {
+      breakfast: null,
+      lunch: null,
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+  {
+    activityLocationId: '874',
+    id: 'epicuria-ackerman',
+    name: 'Epicuria at Ackerman',
+    sortOrder: 11,
+    sourcePath: '/epicuria-at-ackerman',
+    hours: {
+      breakfast: null,
+      lunch: '11:00 AM - 4:00 PM',
+      dinner: '5:00 PM - 9:00 PM',
+      lateNight: null,
+    },
+  },
+];
+
 const GYM_TARGETS = [
   {
     facilityId: 802,
     facilityName: 'John Wooden Center - FITWELL',
     gymLocationId: 'wooden',
+    name: 'Wooden Center',
   },
   {
     facilityId: 803,
     facilityName: 'Bruin Fitness Center - FITWELL',
     gymLocationId: 'bfit',
+    name: 'BFit Gym',
   },
 ];
 
@@ -214,40 +366,54 @@ function parseTimeRange(range) {
   };
 }
 
-function getCurrentDiningActivityPeriod(currentMinutes) {
-  if (currentMinutes >= 5 * 60 && currentMinutes < 11 * 60) {
-    return 'breakfast';
-  }
-
-  if (currentMinutes >= 11 * 60 && currentMinutes < 17 * 60) {
-    return 'lunch';
-  }
-
-  if (currentMinutes >= 17 * 60 && currentMinutes < 22 * 60) {
-    return 'dinner';
-  }
-
-  if (currentMinutes >= 22 * 60 && currentMinutes < 24 * 60) {
-    return 'lateNight';
-  }
-
-  return null;
+function getHallId(hall) {
+  return hall.id ?? hall.$id;
 }
 
-function hasHoursForPeriod(hall, mealPeriod) {
+function getHallHours(hall, mealPeriod) {
+  const hours = hall.hours ?? {};
+
   if (mealPeriod === 'breakfast') {
-    return Boolean(hall.breakfast_hours);
+    return hall.breakfast_hours ?? hours.breakfast ?? null;
   }
 
   if (mealPeriod === 'lunch') {
-    return Boolean(hall.lunch_hours);
+    return hall.lunch_hours ?? hours.lunch ?? null;
   }
 
   if (mealPeriod === 'dinner') {
-    return Boolean(hall.dinner_hours);
+    return hall.dinner_hours ?? hours.dinner ?? null;
   }
 
-  return Boolean(hall.late_night_hours);
+  return hall.late_night_hours ?? hours.lateNight ?? null;
+}
+
+function hasHoursForPeriod(hall, mealPeriod) {
+  return Boolean(getHallHours(hall, mealPeriod));
+}
+
+function isCurrentTimeInRange(range, currentMinutes) {
+  if (!range) {
+    return false;
+  }
+
+  if (range.crossesMidnight) {
+    return currentMinutes >= range.startMinutes || currentMinutes < range.endMinutes;
+  }
+
+  return currentMinutes >= range.startMinutes && currentMinutes < range.endMinutes;
+}
+
+function getActiveMealPeriodForHall(hall, currentMinutes) {
+  for (const mealPeriod of ['breakfast', 'lunch', 'dinner', 'lateNight']) {
+    const hours = getHallHours(hall, mealPeriod);
+
+    if (isCurrentTimeInRange(parseTimeRange(hours), currentMinutes)) {
+      return mealPeriod;
+    }
+  }
+
+  return null;
 }
 
 function parseDiningActivityLocationId(pageHtml) {
@@ -329,29 +495,30 @@ function getEffectiveGymHours(gymLocationId, currentMinutes, weekday) {
   };
 }
 
-async function syncDiningActivity(tables) {
-  const diningHallResult = await tables.listRows({
-    databaseId: DATABASE_ID,
-    tableId: 'dining_halls',
-    queries: [Query.equal('is_active', true), Query.orderAsc('sort_order')],
-  });
+async function syncDiningActivity(tables, diningHalls) {
+  const targetsById = new Map(DINING_ACTIVITY_TARGETS.map((target) => [target.id, target]));
   const currentMinutes = getLosAngelesCurrentMinutes();
-  const activeMealPeriod = getCurrentDiningActivityPeriod(currentMinutes);
   const syncedAt = new Date().toISOString();
 
-  return mapLimit(diningHallResult.rows, DINING_FETCH_CONCURRENCY, async (hall) => {
+  return mapLimit(diningHalls, DINING_FETCH_CONCURRENCY, async (hall) => {
+    const hallId = getHallId(hall);
+    const target = targetsById.get(hallId);
+    const sourcePath = hall.source_path ?? target?.sourcePath ?? null;
+    const activeMealPeriod = getActiveMealPeriodForHall(hall, currentMinutes);
     const openNow = activeMealPeriod !== null && hasHoursForPeriod(hall, activeMealPeriod);
     let nextFitPercent = hall.fit_percent ?? null;
-    let locationId = null;
+    let locationId = target?.activityLocationId ?? null;
     let status = 'updated';
 
-    if (!openNow || !hall.source_path) {
+    if (!openNow || (!sourcePath && !locationId)) {
       nextFitPercent = null;
       status = 'cleared';
     } else {
       try {
-        const pageHtml = await fetchText(`${UCLA_DINING_BASE_URL}${hall.source_path}/`);
-        locationId = parseDiningActivityLocationId(pageHtml);
+        if (!locationId) {
+          const pageHtml = await fetchText(`${UCLA_DINING_BASE_URL}${sourcePath}/`);
+          locationId = parseDiningActivityLocationId(pageHtml);
+        }
 
         if (!locationId) {
           status = 'preserved_on_error';
@@ -367,26 +534,33 @@ async function syncDiningActivity(tables) {
         }
       } catch (exception) {
         console.error('Failed to sync dining activity', {
-          hallId: hall.$id,
+          hallId,
           error: exception instanceof Error ? exception.message : String(exception),
         });
         status = 'preserved_on_error';
       }
     }
 
-    await tables.updateRow({
-      databaseId: DATABASE_ID,
-      tableId: 'dining_halls',
-      rowId: hall.$id,
-      data: {
-        fit_percent: nextFitPercent,
-        updated_at: syncedAt,
-      },
-    });
+    try {
+      await tables.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: 'dining_halls',
+        rowId: hallId,
+        data: {
+          fit_percent: nextFitPercent,
+          updated_at: syncedAt,
+        },
+      });
+    } catch (exception) {
+      console.error('Failed to write dining activity row', {
+        hallId,
+        error: exception instanceof Error ? exception.message : String(exception),
+      });
+    }
 
     return {
       fitPercent: nextFitPercent,
-      hallId: hall.$id,
+      hallId,
       locationId,
       openNow,
       status,
@@ -472,44 +646,161 @@ async function syncGymCapacities(tables) {
     const percent = isClosed ? 0 : getWeightedGymPercent(sourceLocationsForGym);
     const zoneBreakdown = buildGymZoneBreakdown(sourceLocationsForGym);
 
-    await tables.updateRow({
-      databaseId: DATABASE_ID,
-      tableId: 'gym_locations',
-      rowId: target.gymLocationId,
-      data: {
-        hours: effectiveHours.hours,
-        updated_at: capturedAt,
-      },
-    });
+    try {
+      await tables.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: 'gym_locations',
+        rowId: target.gymLocationId,
+        data: {
+          hours: effectiveHours.hours,
+          updated_at: capturedAt,
+        },
+      });
 
-    await tables.createRow({
-      databaseId: DATABASE_ID,
-      tableId: 'gym_capacity_snapshots',
-      rowId: ID.unique(),
-      data: {
-        captured_at: capturedAt,
-        is_closed: isClosed,
-        load: clampLoad(percent / 100),
-        location_id: target.gymLocationId,
-        percent_full: percent,
-        source: `appwrite-campus-activity-sync:${target.facilityName}`,
-        zone_breakdown: JSON.stringify(zoneBreakdown),
-        zone_name: target.facilityName,
-      },
-      permissions: [],
-    });
+      await tables.createRow({
+        databaseId: DATABASE_ID,
+        tableId: 'gym_capacity_snapshots',
+        rowId: ID.unique(),
+        data: {
+          captured_at: capturedAt,
+          is_closed: isClosed,
+          load: clampLoad(percent / 100),
+          location_id: target.gymLocationId,
+          percent_full: percent,
+          source: `appwrite-campus-activity-sync:${target.facilityName}`,
+          zone_breakdown: JSON.stringify(zoneBreakdown),
+          zone_name: target.facilityName,
+        },
+        permissions: [],
+      });
+    } catch (exception) {
+      console.error('Failed to write gym capacity rows', {
+        gymLocationId: target.gymLocationId,
+        error: exception instanceof Error ? exception.message : String(exception),
+      });
+    }
 
     results.push({
+      capturedAt,
       hours: effectiveHours.hours,
+      id: target.gymLocationId,
       isClosed,
+      load: clampLoad(percent / 100),
       locationId: target.gymLocationId,
+      name: target.name,
       percent,
       status: 'inserted',
+      zoneBreakdown,
       zoneName: target.facilityName,
+      zones: zoneBreakdown,
     });
   }
 
   return results;
+}
+
+function buildFallbackDiningHalls() {
+  return DINING_ACTIVITY_TARGETS
+    .toSorted((left, right) => left.sortOrder - right.sortOrder)
+    .map((target) => ({
+      fitPercent: null,
+      hours: target.hours,
+      id: target.id,
+      name: target.name,
+    }));
+}
+
+async function readCampusSummary(storage) {
+  const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
+
+  if (summary) {
+    return summary;
+  }
+
+  const full = await readOptionalCacheFile(storage, CACHE_FILES.full);
+
+  if (full) {
+    return {
+      diningHalls: full.diningHalls ?? [],
+      diningMenuItems: [],
+      generatedAt: full.generatedAt,
+      gymCapacities: full.gymCapacities ?? [],
+      version: full.version,
+    };
+  }
+
+  return {
+    diningHalls: buildFallbackDiningHalls(),
+    diningMenuItems: [],
+    generatedAt: new Date().toISOString(),
+    gymCapacities: [],
+    version: null,
+  };
+}
+
+function mergeDiningActivity(diningHalls, diningResults) {
+  const resultsByHallId = new Map(diningResults.map((result) => [result.hallId, result]));
+
+  return diningHalls.map((hall) => {
+    const hallId = getHallId(hall);
+    const result = resultsByHallId.get(hallId);
+
+    if (!result) {
+      return hall;
+    }
+
+    return {
+      ...hall,
+      fitPercent: result.fitPercent,
+    };
+  });
+}
+
+async function writeActivityCache(storage, summary, gymCapacities, wroteGyms) {
+  const generatedAt = new Date().toISOString();
+  const nextSummary = {
+    diningHalls: summary.diningHalls ?? [],
+    diningMenuItems: [],
+    generatedAt,
+    gymCapacities,
+    version: createCacheVersion({
+      diningHalls: summary.diningHalls ?? [],
+      gymCapacities,
+    }),
+  };
+  const updates = {
+    summary: {
+      fileId: CACHE_FILES.summary,
+      generatedAt,
+      version: nextSummary.version,
+    },
+  };
+  let gymsCurrent = null;
+
+  await replaceJsonFile(storage, CACHE_FILES.summary, 'campus-summary.json', nextSummary);
+
+  if (wroteGyms) {
+    gymsCurrent = {
+      generatedAt,
+      gymCapacities,
+      version: createCacheVersion({ gymCapacities }),
+    };
+    updates.gymsCurrent = {
+      fileId: CACHE_FILES.gymsCurrent,
+      generatedAt,
+      version: gymsCurrent.version,
+    };
+    await replaceJsonFile(storage, CACHE_FILES.gymsCurrent, 'gyms-current.json', gymsCurrent);
+  }
+
+  const manifest = await updateCacheManifest(storage, updates, generatedAt);
+
+  return {
+    gymCapacities: gymCapacities.length,
+    manifestVersion: manifest.version,
+    summaryVersion: nextSummary.version,
+    gymsVersion: gymsCurrent?.version ?? manifest.files?.gymsCurrent?.version ?? null,
+  };
 }
 
 export default async ({ req, res, error }) => {
@@ -520,13 +811,26 @@ export default async ({ req, res, error }) => {
 
   try {
     const services = createServices(req);
+    const currentSummary = await readCampusSummary(services.storage);
+    let nextSummary = {
+      ...currentSummary,
+      diningHalls: currentSummary.diningHalls?.length
+        ? currentSummary.diningHalls
+        : buildFallbackDiningHalls(),
+      gymCapacities: currentSummary.gymCapacities ?? [],
+    };
     const errors = {};
     let dining = [];
     let gyms = [];
+    let wroteGyms = false;
 
     if (includeDining) {
       try {
-        dining = await syncDiningActivity(services.tables);
+        dining = await syncDiningActivity(services.tables, nextSummary.diningHalls);
+        nextSummary = {
+          ...nextSummary,
+          diningHalls: mergeDiningActivity(nextSummary.diningHalls, dining),
+        };
       } catch (exception) {
         error(`Dining activity sync failed: ${exception?.message ?? exception}`);
         errors.dining = 'Dining activity sync failed';
@@ -536,6 +840,21 @@ export default async ({ req, res, error }) => {
     if (includeGyms) {
       try {
         gyms = await syncGymCapacities(services.tables);
+        nextSummary = {
+          ...nextSummary,
+          gymCapacities: gyms.map((gym) => ({
+            capturedAt: gym.capturedAt,
+            hours: gym.hours,
+            id: gym.id,
+            isClosed: gym.isClosed,
+            load: gym.load,
+            name: gym.name,
+            percent: gym.percent,
+            zoneName: gym.zoneName,
+            zones: gym.zones,
+          })),
+        };
+        wroteGyms = true;
       } catch (exception) {
         error(`Gym capacity sync failed: ${exception?.message ?? exception}`);
         errors.gyms = 'Gym capacity sync failed';
@@ -552,7 +871,12 @@ export default async ({ req, res, error }) => {
           : 'partial_failure';
     const cache = status === 'failure'
       ? null
-      : await buildCampusCache(services);
+      : await writeActivityCache(
+          services.storage,
+          nextSummary,
+          nextSummary.gymCapacities,
+          wroteGyms,
+        );
 
     return res.json(
       {

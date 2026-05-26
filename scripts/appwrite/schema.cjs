@@ -2,10 +2,12 @@ const DATABASE_ID = 'bruingains_campus';
 const CACHE_BUCKET_ID = 'campus-cache';
 
 const CACHE_FILES = {
+  manifest: 'campus-manifest-json',
   summary: 'campus-summary-json',
   full: 'campus-full-json',
   diningLatest: 'dining-latest-json',
   gymsCurrent: 'gyms-current-json',
+  nutritionQueue: 'dining-nutrition-queue-json',
 };
 
 const TABLES = [
@@ -214,13 +216,13 @@ const FUNCTION_DEFINITIONS = [
     execute: ['users'],
     schedule: '',
     timeout: 30,
-    scopes: ['rows.read', 'rows.write', 'buckets.read', 'files.read'],
+    scopes: ['buckets.read', 'files.read'],
   },
   {
     id: 'campus-cache-build',
     name: 'Campus Cache Build',
     execute: [],
-    schedule: '*/15 * * * *',
+    schedule: '',
     timeout: 120,
     scopes: ['rows.read', 'buckets.read', 'buckets.write', 'files.read', 'files.write'],
   },
@@ -230,7 +232,7 @@ const FUNCTION_DEFINITIONS = [
     execute: [],
     schedule: '*/5 * * * *',
     timeout: 120,
-    scopes: ['rows.read', 'rows.write', 'buckets.read', 'buckets.write', 'files.read', 'files.write'],
+    scopes: ['rows.write', 'buckets.read', 'buckets.write', 'files.read', 'files.write'],
   },
   {
     id: 'dining-ingest',
@@ -238,7 +240,7 @@ const FUNCTION_DEFINITIONS = [
     execute: [],
     schedule: '0 0,4,11,18 * * *',
     timeout: 300,
-    scopes: ['rows.read', 'rows.write', 'buckets.read', 'buckets.write', 'files.read', 'files.write'],
+    scopes: ['rows.write', 'buckets.read', 'buckets.write', 'files.read', 'files.write'],
   },
   {
     id: 'dining-nutrition-backfill',
@@ -246,7 +248,7 @@ const FUNCTION_DEFINITIONS = [
     execute: [],
     schedule: '*/5 * * * *',
     timeout: 300,
-    scopes: ['rows.read', 'rows.write', 'buckets.read', 'buckets.write', 'files.read', 'files.write'],
+    scopes: ['rows.write', 'buckets.read', 'buckets.write', 'files.read', 'files.write'],
   },
 ];
 
