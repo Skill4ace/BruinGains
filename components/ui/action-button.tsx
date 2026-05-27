@@ -12,7 +12,9 @@ type ActionButtonProps = {
   variant?: 'primary' | 'secondary' | 'ghost';
   style?: StyleProp<ViewStyle>;
   compact?: boolean;
-  pressEffect?: 'none' | 'opacity' | 'scale';
+  haptic?: 'none' | 'light' | 'medium';
+  hapticTrigger?: 'pressIn' | 'press';
+  pressEffect?: 'none' | 'opacity' | 'scale' | 'smooth';
 };
 
 export function ActionButton({
@@ -21,12 +23,19 @@ export function ActionButton({
   variant = 'primary',
   style,
   compact = false,
+  haptic = 'light',
+  hapticTrigger = 'pressIn',
   pressEffect = 'scale',
 }: ActionButtonProps) {
   const { colors, shadows } = useAppTheme();
 
   return (
-    <PressScale containerStyle={style} onPress={onPress} pressEffect={pressEffect}>
+    <PressScale
+      containerStyle={style}
+      haptic={haptic}
+      hapticTrigger={hapticTrigger}
+      onPress={onPress}
+      pressEffect={pressEffect}>
       {variant === 'primary' ? (
         <View style={[styles.button, { backgroundColor: colors.primary }, shadows.soft, compact && styles.buttonCompact]}>
           <AppText variant="bodyStrong" color={colors.white}>

@@ -898,7 +898,7 @@ function DiningHallModal({
 
   return (
     <Modal
-      allowSwipeDismissal={Platform.OS === 'ios'}
+      allowSwipeDismissal={Platform.OS === 'ios' && !activeItem}
       animationType="slide"
       onRequestClose={onClose}
       presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'fullScreen'}
@@ -948,38 +948,40 @@ function DiningHallModal({
                   </AppText>
                   <View style={styles.menuItemsList}>
                     {section.items.map((item) => (
-                      <SurfaceCard
+                      <PressScale
+                        accessibilityRole="button"
                         key={`${item.stationName}-${item.itemOrder}-${item.itemName}`}
-                        style={styles.menuItemCard}>
-                        <View style={styles.menuItemTopRowCompact}>
-                          <View style={styles.menuItemCopyCompact}>
-                            <AppText numberOfLines={2} variant="bodyStrong">
-                              {item.itemName}
-                            </AppText>
-                            <AppText
-                              numberOfLines={1}
-                              style={styles.menuItemNutritionLabelCompact}
-                              variant="micro"
-                              dimmed>
-                              {formatInlineMacros(item)}
-                            </AppText>
-                          </View>
-                          {item.badgeLabels.length > 0 ? (
-                            <View style={styles.menuBadgeRowCompact}>
-                              {item.badgeLabels.slice(0, 4).map((badge) => (
-                                <MenuBadge key={`${item.itemName}-${badge}`} label={badge} />
-                              ))}
+                        haptic="light"
+                        hapticTrigger="press"
+                        onPress={() => onOpenItem(item)}
+                        pressEffect="smooth">
+                        <SurfaceCard style={styles.menuItemCard}>
+                          <View style={styles.menuItemTopRowCompact}>
+                            <View style={styles.menuItemCopyCompact}>
+                              <AppText numberOfLines={2} variant="bodyStrong">
+                                {item.itemName}
+                              </AppText>
+                              <AppText
+                                numberOfLines={1}
+                                style={styles.menuItemNutritionLabelCompact}
+                                variant="micro"
+                                dimmed>
+                                {formatInlineMacros(item)}
+                              </AppText>
                             </View>
-                          ) : null}
-                          <PressScale
-                            haptic="light"
-                            onPress={() => onOpenItem(item)}>
+                            {item.badgeLabels.length > 0 ? (
+                              <View style={styles.menuBadgeRowCompact}>
+                                {item.badgeLabels.slice(0, 4).map((badge) => (
+                                  <MenuBadge key={`${item.itemName}-${badge}`} label={badge} />
+                                ))}
+                              </View>
+                            ) : null}
                             <View style={styles.menuAddButtonCompact}>
                               <Ionicons name="add" size={16} color={AppColors.primary} />
                             </View>
-                          </PressScale>
-                        </View>
-                      </SurfaceCard>
+                          </View>
+                        </SurfaceCard>
+                      </PressScale>
                     ))}
                   </View>
                 </View>
@@ -1012,7 +1014,6 @@ function DiningHallModal({
                     bounces={false}
                     contentContainerStyle={styles.buildYourOwnContent}
                     showsVerticalScrollIndicator={false}>
-                    <View style={styles.sheetGrabber} />
                     <View style={styles.itemSheetHeader}>
                       <View style={styles.itemSheetCopy}>
                         <AppText variant="headline">{activeItem.itemName}</AppText>
@@ -1045,7 +1046,7 @@ function DiningHallModal({
                         return (
                           <View key={optionKey} style={styles.buildYourOwnOptionCard}>
                             <PressScale
-                              haptic="light"
+                              haptic="none"
                               pressEffect="none"
                               onPress={() => handleCustomizationToggle(option)}>
                               <View style={styles.buildYourOwnOptionTopRow}>
@@ -1112,7 +1113,7 @@ function DiningHallModal({
                           : null,
                       ]}>
                       <PressScale
-                        haptic="medium"
+                        haptic="none"
                         onPress={selectedCustomizationCount > 0 ? handleCustomizationSave : undefined}>
                         <View style={styles.buildYourOwnAddButtonInner}>
                           <Ionicons
@@ -1147,7 +1148,6 @@ function DiningHallModal({
                     style={styles.itemSheetScroll}
                     contentContainerStyle={styles.itemSheetContent}
                     showsVerticalScrollIndicator={false}>
-                    <View style={styles.sheetGrabber} />
                     <View style={styles.itemSheetHeader}>
                       <View style={styles.itemSheetCopy}>
                         <AppText variant="headline">{activeItem.itemName}</AppText>
@@ -1262,6 +1262,7 @@ function DiningHallModal({
                   </ScrollView>
                   <View style={styles.itemSheetFooter}>
                     <ActionButton
+                      haptic="none"
                       label={`Add ${formatServingCount(servings)} serving${servings === 1 ? '' : 's'}`}
                       onPress={() => onSaveItem()}
                     />
@@ -1501,7 +1502,7 @@ function StepperButton({
 
   return (
     <PressScale
-      haptic="light"
+      haptic="none"
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}>
@@ -1861,7 +1862,7 @@ function HallRow({
   const showActivity = hall.fitPercent !== null && isDiningHallOpenForHours(hours);
 
   return (
-    <PressScale haptic="light" onPress={onPress}>
+    <PressScale haptic="light" hapticTrigger="press" onPress={onPress} pressEffect="smooth">
       <SurfaceCard style={styles.hallCard}>
         <View style={styles.hallCopy}>
           <AppText variant="title">{hall.name}</AppText>
