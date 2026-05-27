@@ -7,7 +7,7 @@ Todo
     b.) opening a dining item should automatically open the popup thing rather than just the plus 
 3. Fix the templates with your PPL workout atleast 
 4. Make the onboarding image better with GPT images
-
+5. Put a referral loop within the app so that people can share it with others 
 
 
 

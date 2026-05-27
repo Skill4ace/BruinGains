@@ -182,9 +182,14 @@ function fileRef(fileId, version, generatedAt) {
   };
 }
 
-function createCampusManifest({ diningLatest, full, generatedAt, gymsCurrent, summary }) {
+function createCampusManifest({ diningHalls, diningLatest, full, generatedAt, gymsCurrent, summary }) {
   const files = {
     summary: fileRef(CACHE_FILES.summary, summary.version, summary.generatedAt ?? generatedAt),
+    diningHalls: fileRef(
+      CACHE_FILES.summary,
+      diningHalls.version,
+      diningHalls.generatedAt ?? summary.generatedAt ?? generatedAt,
+    ),
     full: fileRef(CACHE_FILES.full, full.version, full.generatedAt ?? generatedAt),
     diningLatest: fileRef(
       CACHE_FILES.diningLatest,
@@ -202,6 +207,7 @@ function createCampusManifest({ diningLatest, full, generatedAt, gymsCurrent, su
     generatedAt,
     version: createCacheVersion({
       diningLatest: files.diningLatest.version,
+      diningHalls: files.diningHalls.version,
       gymsCurrent: files.gymsCurrent.version,
       summary: files.summary.version,
     }),
@@ -268,11 +274,13 @@ async function buildCampusCache({ tables, storage }) {
     diningHalls,
     gymCapacities,
   });
+  const diningHallsVersion = createCacheVersion({ diningHalls });
   const diningVersion = createCacheVersion({ diningMenuItems });
   const gymsVersion = createCacheVersion({ gymCapacities });
   const fullVersion = diningVersion;
   const summary = {
     version: summaryVersion,
+    diningHallsVersion,
     generatedAt,
     diningHalls,
     diningMenuItems: [],
@@ -305,6 +313,10 @@ async function buildCampusCache({ tables, storage }) {
     CACHE_FILES.manifest,
     'campus-manifest.json',
     createCampusManifest({
+      diningHalls: {
+        generatedAt,
+        version: diningHallsVersion,
+      },
       diningLatest,
       full,
       generatedAt,

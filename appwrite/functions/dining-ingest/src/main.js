@@ -7,7 +7,9 @@ import {
   createServices,
   readOptionalCacheFile,
   replaceJsonFile,
+  updateCacheManifest,
 } from '../_shared/campus-cache.js';
+import { fetchUclaDiningHours } from '../_shared/ucla-hours.js';
 import { ID } from 'node-appwrite';
 import * as cheerio from 'cheerio';
 
@@ -690,27 +692,32 @@ async function updateRun(tables, runId, summary) {
   });
 }
 
-function normalizeHallForIngest(hall) {
+function normalizeHallForIngest(hall, liveHoursByHallId = new Map()) {
   const hallId = hall.$id ?? hall.id;
   const fallback = DINING_HALL_DEFAULTS.find((candidate) => candidate.$id === hallId);
+  const liveHours = liveHoursByHallId.get(hallId);
+  const getHours = (mealPeriod, fallbackValue) =>
+    liveHours && Object.hasOwn(liveHours, mealPeriod)
+      ? liveHours[mealPeriod]
+      : getHallHours(hall, mealPeriod) ?? fallbackValue ?? null;
 
   return {
     $id: hallId,
     name: hall.name ?? fallback?.name ?? hallId,
     sort_order: hall.sort_order ?? fallback?.sort_order ?? 999,
-    breakfast_hours: getHallHours(hall, 'breakfast') ?? fallback?.breakfast_hours ?? null,
-    lunch_hours: getHallHours(hall, 'lunch') ?? fallback?.lunch_hours ?? null,
-    dinner_hours: getHallHours(hall, 'dinner') ?? fallback?.dinner_hours ?? null,
-    late_night_hours: getHallHours(hall, 'lateNight') ?? fallback?.late_night_hours ?? null,
+    breakfast_hours: getHours('breakfast', fallback?.breakfast_hours),
+    lunch_hours: getHours('lunch', fallback?.lunch_hours),
+    dinner_hours: getHours('dinner', fallback?.dinner_hours),
+    late_night_hours: getHours('lateNight', fallback?.late_night_hours),
     source_path: hall.source_path ?? fallback?.source_path ?? `/${hallId}`,
   };
 }
 
-async function loadTargetHalls(storage, hallIds) {
+async function loadTargetHalls(storage, hallIds, liveHoursByHallId = new Map()) {
   const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
   const rows = summary?.diningHalls?.length
-    ? summary.diningHalls.map(normalizeHallForIngest)
-    : DINING_HALL_DEFAULTS;
+    ? summary.diningHalls.map((hall) => normalizeHallForIngest(hall, liveHoursByHallId))
+    : DINING_HALL_DEFAULTS.map((hall) => normalizeHallForIngest(hall, liveHoursByHallId));
 
   if (hallIds?.length) {
     const selectedIds = new Set(hallIds);
@@ -720,15 +727,83 @@ async function loadTargetHalls(storage, hallIds) {
   return rows.toSorted((left, right) => left.sort_order - right.sort_order);
 }
 
-async function writeNutritionQueue(storage, targetDates, newItems) {
+async function updateSummaryHours(storage, halls) {
+  const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
+
+  if (!summary?.diningHalls?.length) {
+    return null;
+  }
+
+  const hallsById = new Map(halls.map((hall) => [hall.$id, hall]));
+  const diningHalls = summary.diningHalls.map((hall) => {
+    const liveHall = hallsById.get(hall.id);
+
+    if (!liveHall) {
+      return hall;
+    }
+
+    return {
+      ...hall,
+      hours: {
+        breakfast: liveHall.breakfast_hours,
+        lunch: liveHall.lunch_hours,
+        dinner: liveHall.dinner_hours,
+        lateNight: liveHall.late_night_hours,
+      },
+    };
+  });
+  const generatedAt = new Date().toISOString();
+  const diningHallsVersion = createCacheVersion({ diningHalls });
+  const payload = {
+    ...summary,
+    diningHalls,
+    diningHallsVersion,
+    generatedAt,
+    version: createCacheVersion({
+      diningHalls,
+      gymCapacities: summary.gymCapacities ?? [],
+    }),
+  };
+
+  await replaceJsonFile(storage, CACHE_FILES.summary, 'campus-summary.json', payload);
+  const manifest = await updateCacheManifest(
+    storage,
+    {
+      diningHalls: {
+        fileId: CACHE_FILES.summary,
+        generatedAt,
+        version: diningHallsVersion,
+      },
+      summary: {
+        fileId: CACHE_FILES.summary,
+        generatedAt,
+        version: payload.version,
+      },
+    },
+    generatedAt,
+  );
+
+  return {
+    diningHalls: diningHalls.length,
+    diningHallsVersion,
+    manifestVersion: manifest.version,
+    version: payload.version,
+  };
+}
+
+async function writeNutritionQueue(storage, targetDates, newItems, options) {
   const existing = await readOptionalCacheFile(
     storage,
     CACHE_FILES.nutritionQueue,
     { items: [] },
   );
   const replacementDates = new Set(targetDates);
+  const replacementHallIds = options.hallIds?.length ? new Set(options.hallIds) : null;
+  const replacementMealPeriods = options.mealPeriods?.length ? new Set(options.mealPeriods) : null;
   const retainedItems = (existing.items ?? []).filter((item) =>
-    !replacementDates.has(item.serviceDate),
+    !replacementDates.has(item.serviceDate) ||
+    (replacementHallIds !== null && !replacementHallIds.has(item.hallId)) ||
+    (replacementMealPeriods !== null && !replacementMealPeriods.has(item.mealPeriod)),
   );
   const items = [...retainedItems, ...newItems];
   const generatedAt = new Date().toISOString();
@@ -783,15 +858,48 @@ export default async ({ req, res, error }) => {
   try {
     const services = createServices(req);
     const dateResults = [];
+    const hoursByDate = new Map();
     const nutritionQueueItems = [];
+    const getHoursForDate = async (targetDate) => {
+      if (hoursByDate.has(targetDate)) {
+        return hoursByDate.get(targetDate);
+      }
+
+      try {
+        const hours = await fetchUclaDiningHours(
+          fetchHtml,
+          UCLA_DINING_BASE_URL,
+          targetDate,
+        );
+        hoursByDate.set(targetDate, hours);
+        return hours;
+      } catch (exception) {
+        error(`Dining hours sync failed for ${targetDate}: ${exception?.message ?? exception}`);
+        hoursByDate.set(targetDate, new Map());
+        return hoursByDate.get(targetDate);
+      }
+    };
+    const currentDate = getLosAngelesDateOffset(0);
+    const currentHours = await getHoursForDate(currentDate);
+    const allCurrentHalls = await loadTargetHalls(
+      services.storage,
+      undefined,
+      currentHours,
+    );
+    const hoursCache = await updateSummaryHours(services.storage, allCurrentHalls);
 
     for (const targetDate of targetDates) {
       const targetOptions = {
         ...options,
         targetDate,
       };
+      const targetHours = await getHoursForDate(targetDate);
       const run = await createRun(services.tables, targetOptions);
-      const halls = await loadTargetHalls(services.storage, targetOptions.hallIds);
+      const halls = await loadTargetHalls(
+        services.storage,
+        targetOptions.hallIds,
+        targetHours,
+      );
       const hallResults = await mapLimit(
         halls,
         HALL_FETCH_CONCURRENCY,
@@ -849,6 +957,7 @@ export default async ({ req, res, error }) => {
       services.storage,
       targetDates,
       nutritionQueueItems,
+      options,
     );
 
     const totalFailures = dateResults.filter((result) => result.status === 'failure').length;
@@ -867,7 +976,7 @@ export default async ({ req, res, error }) => {
     };
     return res.json(
       {
-        cache: null,
+        cache: hoursCache,
         nutritionQueue,
         ok,
         ...summary,

@@ -1,6 +1,7 @@
 import {
   CACHE_FILES,
   buildManifestFromCacheFiles,
+  createCacheVersion,
   createServices,
   readCacheFile,
   readOptionalCacheFile,
@@ -31,14 +32,30 @@ function getManifestFile(manifest, key) {
   return manifest?.files?.[key] ?? null;
 }
 
+function getLatestGeneratedAt(...values) {
+  return values
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? null;
+}
+
 function getCacheSelection(manifest, includeDiningMenuItems) {
   if (includeDiningMenuItems) {
     const diningLatest = getManifestFile(manifest, 'diningLatest');
+    const diningHalls = getManifestFile(manifest, 'diningHalls');
     const full = getManifestFile(manifest, 'full');
+    const version = createCacheVersion({
+      diningHalls: diningHalls?.version ?? null,
+      diningLatest: diningLatest?.version ?? full?.version ?? null,
+    });
 
     return {
-      generatedAt: diningLatest?.generatedAt ?? full?.generatedAt ?? manifest?.generatedAt ?? null,
-      version: diningLatest?.version ?? full?.version ?? manifest?.version ?? null,
+      generatedAt: getLatestGeneratedAt(
+        diningLatest?.generatedAt ?? full?.generatedAt,
+        diningHalls?.generatedAt,
+        manifest?.generatedAt,
+      ),
+      version,
     };
   }
 
@@ -72,6 +89,22 @@ async function readSummaryPayload(storage) {
   throw new Error('Campus summary cache is not available');
 }
 
+function filterDiningMenuItemsForCurrentHours(diningMenuItems, diningHalls) {
+  const hallsById = new Map(
+    (diningHalls ?? []).map((hall) => [hall.id, hall]),
+  );
+
+  return (diningMenuItems ?? []).filter((item) => {
+    const hall = hallsById.get(item.hallId);
+
+    if (!hall?.hours || typeof item.mealPeriod !== 'string') {
+      return true;
+    }
+
+    return hall.hours[item.mealPeriod] !== null;
+  });
+}
+
 async function composeCampusPayload(storage, includeDiningMenuItems, selection) {
   const summary = await readSummaryPayload(storage);
 
@@ -91,7 +124,10 @@ async function composeCampusPayload(storage, includeDiningMenuItems, selection) 
   if (diningLatest || gymsCurrent) {
     return {
       diningHalls: summary.diningHalls ?? [],
-      diningMenuItems: diningLatest?.diningMenuItems ?? [],
+      diningMenuItems: filterDiningMenuItemsForCurrentHours(
+        diningLatest?.diningMenuItems ?? [],
+        summary.diningHalls ?? [],
+      ),
       generatedAt:
         selection.generatedAt ??
         diningLatest?.generatedAt ??
@@ -110,7 +146,10 @@ async function composeCampusPayload(storage, includeDiningMenuItems, selection) 
 
   return {
     diningHalls: full.diningHalls ?? [],
-    diningMenuItems: full.diningMenuItems ?? [],
+    diningMenuItems: filterDiningMenuItemsForCurrentHours(
+      full.diningMenuItems ?? [],
+      full.diningHalls ?? [],
+    ),
     generatedAt: selection.generatedAt ?? full.generatedAt,
     gymCapacities: full.gymCapacities ?? [],
     version: selection.version ?? full.version,
@@ -141,6 +180,12 @@ function createUserAccount(req) {
 }
 
 async function authenticateRequest(req) {
+  const runtimeUserId = req.headers['x-appwrite-user-id'];
+
+  if (runtimeUserId) {
+    return { error: null, userId: runtimeUserId };
+  }
+
   const account = createUserAccount(req);
 
   if (!account) {

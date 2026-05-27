@@ -239,6 +239,7 @@ function fileRef(fileId, version, generatedAt) {
 }
 
 export function createCampusManifest({
+  diningHalls,
   diningLatest,
   full,
   generatedAt = new Date().toISOString(),
@@ -247,6 +248,11 @@ export function createCampusManifest({
 }) {
   const files = {
     summary: fileRef(CACHE_FILES.summary, summary?.version ?? null, summary?.generatedAt ?? generatedAt),
+    diningHalls: fileRef(
+      CACHE_FILES.summary,
+      diningHalls?.version ?? summary?.diningHallsVersion ?? null,
+      diningHalls?.generatedAt ?? summary?.generatedAt ?? generatedAt,
+    ),
     full: fileRef(CACHE_FILES.full, full?.version ?? null, full?.generatedAt ?? generatedAt),
     diningLatest: fileRef(
       CACHE_FILES.diningLatest,
@@ -264,6 +270,7 @@ export function createCampusManifest({
     generatedAt,
     version: createCacheVersion({
       diningLatest: files.diningLatest.version,
+      diningHalls: files.diningHalls.version,
       gymsCurrent: files.gymsCurrent.version,
       summary: files.summary.version,
     }),
@@ -291,6 +298,7 @@ export async function updateCacheManifest(storage, updates, generatedAt = new Da
     generatedAt,
     version: createCacheVersion({
       diningLatest: files.diningLatest?.version ?? null,
+      diningHalls: files.diningHalls?.version ?? null,
       gymsCurrent: files.gymsCurrent?.version ?? null,
       summary: files.summary?.version ?? null,
     }),
@@ -337,6 +345,14 @@ export async function buildManifestFromCacheFiles(storage) {
         }
       : null);
   const manifest = createCampusManifest({
+    diningHalls: summary
+      ? {
+          generatedAt: summary.generatedAt ?? generatedAt,
+          version: summary.diningHallsVersion ?? createCacheVersion({
+            diningHalls: summary.diningHalls ?? [],
+          }),
+        }
+      : null,
     diningLatest,
     full,
     generatedAt,
@@ -405,6 +421,9 @@ export async function buildCampusCache({ tables, storage }) {
     diningHalls,
     gymCapacities,
   });
+  const diningHallsVersion = createCacheVersion({
+    diningHalls,
+  });
   const diningVersion = createCacheVersion({
     diningMenuItems,
   });
@@ -414,6 +433,7 @@ export async function buildCampusCache({ tables, storage }) {
   const fullVersion = diningVersion;
   const summary = {
     version: summaryVersion,
+    diningHallsVersion,
     generatedAt,
     diningHalls,
     diningMenuItems: [],
@@ -444,6 +464,10 @@ export async function buildCampusCache({ tables, storage }) {
   await writeCacheManifest(
     storage,
     createCampusManifest({
+      diningHalls: {
+        generatedAt,
+        version: diningHallsVersion,
+      },
       diningLatest,
       full,
       generatedAt,

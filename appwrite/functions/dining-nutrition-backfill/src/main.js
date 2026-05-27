@@ -852,14 +852,31 @@ function buildDiningHallsFromQueue(items) {
   return [...hallsById.values()];
 }
 
+function filterDiningMenuItemsForCurrentHours(diningMenuItems, diningHalls) {
+  const hallsById = new Map(diningHalls.map((hall) => [hall.id, hall]));
+
+  return diningMenuItems.filter((item) => {
+    const hall = hallsById.get(item.hallId);
+
+    if (!hall?.hours || typeof item.mealPeriod !== 'string') {
+      return true;
+    }
+
+    return hall.hours[item.mealPeriod] !== null;
+  });
+}
+
 async function buildStorageDiningCacheFromQueue(storage, items) {
   const generatedAt = new Date().toISOString();
   const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
   const gymsCurrent = await readOptionalCacheFile(storage, CACHE_FILES.gymsCurrent);
-  const diningMenuItems = selectLatestQueueMenuItems(items);
   const diningHalls = summary?.diningHalls?.length
     ? summary.diningHalls
     : buildDiningHallsFromQueue(items);
+  const diningMenuItems = filterDiningMenuItemsForCurrentHours(
+    selectLatestQueueMenuItems(items),
+    diningHalls,
+  );
   const gymCapacities = gymsCurrent?.gymCapacities ?? summary?.gymCapacities ?? [];
   const version = createCacheVersion({ diningMenuItems });
   const diningLatest = {

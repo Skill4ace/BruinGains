@@ -7,6 +7,7 @@ import {
   replaceJsonFile,
   updateCacheManifest,
 } from '../_shared/campus-cache.js';
+import { fetchUclaDiningHours } from '../_shared/ucla-hours.js';
 import { ID } from 'node-appwrite';
 
 const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu';
@@ -547,7 +548,11 @@ async function syncDiningActivity(tables, diningHalls) {
         tableId: 'dining_halls',
         rowId: hallId,
         data: {
+          breakfast_hours: getHallHours(hall, 'breakfast'),
           fit_percent: nextFitPercent,
+          lunch_hours: getHallHours(hall, 'lunch'),
+          dinner_hours: getHallHours(hall, 'dinner'),
+          late_night_hours: getHallHours(hall, 'lateNight'),
           updated_at: syncedAt,
         },
       });
@@ -710,6 +715,26 @@ function buildFallbackDiningHalls() {
     }));
 }
 
+function mergeDiningHours(diningHalls, hoursByHallId) {
+  if (!hoursByHallId?.size) {
+    return diningHalls;
+  }
+
+  return diningHalls.map((hall) => {
+    const hallId = getHallId(hall);
+    const hours = hoursByHallId.get(hallId);
+
+    if (!hours) {
+      return hall;
+    }
+
+    return {
+      ...hall,
+      hours,
+    };
+  });
+}
+
 async function readCampusSummary(storage) {
   const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
 
@@ -758,11 +783,15 @@ function mergeDiningActivity(diningHalls, diningResults) {
 
 async function writeActivityCache(storage, summary, gymCapacities, wroteGyms) {
   const generatedAt = new Date().toISOString();
+  const diningHallsVersion = createCacheVersion({
+    diningHalls: summary.diningHalls ?? [],
+  });
   const nextSummary = {
     diningHalls: summary.diningHalls ?? [],
     diningMenuItems: [],
     generatedAt,
     gymCapacities,
+    diningHallsVersion,
     version: createCacheVersion({
       diningHalls: summary.diningHalls ?? [],
       gymCapacities,
@@ -773,6 +802,11 @@ async function writeActivityCache(storage, summary, gymCapacities, wroteGyms) {
       fileId: CACHE_FILES.summary,
       generatedAt,
       version: nextSummary.version,
+    },
+    diningHalls: {
+      fileId: CACHE_FILES.summary,
+      generatedAt,
+      version: diningHallsVersion,
     },
   };
   let gymsCurrent = null;
@@ -812,11 +846,24 @@ export default async ({ req, res, error }) => {
   try {
     const services = createServices(req);
     const currentSummary = await readCampusSummary(services.storage);
+    let liveDiningHours = new Map();
+
+    if (includeDining) {
+      try {
+        liveDiningHours = await fetchUclaDiningHours(fetchText, UCLA_DINING_BASE_URL);
+      } catch (exception) {
+        error(`Dining hours sync failed: ${exception?.message ?? exception}`);
+      }
+    }
+
     let nextSummary = {
       ...currentSummary,
-      diningHalls: currentSummary.diningHalls?.length
-        ? currentSummary.diningHalls
-        : buildFallbackDiningHalls(),
+      diningHalls: mergeDiningHours(
+        currentSummary.diningHalls?.length
+          ? currentSummary.diningHalls
+          : buildFallbackDiningHalls(),
+        liveDiningHours,
+      ),
       gymCapacities: currentSummary.gymCapacities ?? [],
     };
     const errors = {};
