@@ -8,6 +8,7 @@ import {
   updateCacheManifest,
 } from '../_shared/campus-cache.js';
 import { fetchUclaDiningHours } from '../_shared/ucla-hours.js';
+import { fetchUclaFoodTrucks } from '../_shared/ucla-food-trucks.js';
 import { ID } from 'node-appwrite';
 
 const UCLA_DINING_BASE_URL = 'https://dining.ucla.edu';
@@ -313,6 +314,18 @@ function getLosAngelesWeekday() {
   }).format(new Date());
 }
 
+function getLosAngelesToday() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: UCLA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function getPreviousWeekday(weekday) {
   const weekdays = [
     'Monday',
@@ -369,6 +382,10 @@ function parseTimeRange(range) {
 
 function getHallId(hall) {
   return hall.id ?? hall.$id;
+}
+
+function isFoodTruckVenue(hall) {
+  return hall?.kind === 'foodTruck' || String(getHallId(hall) ?? '').startsWith('food-truck-');
 }
 
 function getHallHours(hall, mealPeriod) {
@@ -711,6 +728,8 @@ function buildFallbackDiningHalls() {
       fitPercent: null,
       hours: target.hours,
       id: target.id,
+      isInteractive: true,
+      kind: 'diningHall',
       name: target.name,
     }));
 }
@@ -781,6 +800,13 @@ function mergeDiningActivity(diningHalls, diningResults) {
   });
 }
 
+function mergeFoodTrucks(diningHalls, foodTrucks) {
+  return [
+    ...diningHalls.filter((hall) => !isFoodTruckVenue(hall)),
+    ...(foodTrucks ?? []),
+  ];
+}
+
 async function writeActivityCache(storage, summary, gymCapacities, wroteGyms) {
   const generatedAt = new Date().toISOString();
   const diningHallsVersion = createCacheVersion({
@@ -847,6 +873,7 @@ export default async ({ req, res, error }) => {
     const services = createServices(req);
     const currentSummary = await readCampusSummary(services.storage);
     let liveDiningHours = new Map();
+    let liveFoodTrucks = null;
 
     if (includeDining) {
       try {
@@ -854,16 +881,30 @@ export default async ({ req, res, error }) => {
       } catch (exception) {
         error(`Dining hours sync failed: ${exception?.message ?? exception}`);
       }
+
+      try {
+        liveFoodTrucks = await fetchUclaFoodTrucks(
+          fetchText,
+          UCLA_DINING_BASE_URL,
+          getLosAngelesToday(),
+        );
+      } catch (exception) {
+        error(`Food truck schedule sync failed: ${exception?.message ?? exception}`);
+      }
     }
 
+    const existingDiningHalls = currentSummary.diningHalls?.length
+      ? currentSummary.diningHalls
+      : buildFallbackDiningHalls();
+    const existingFoodTrucks = existingDiningHalls.filter(isFoodTruckVenue);
+    const existingCampusDiningHalls = existingDiningHalls.filter((hall) =>
+      !isFoodTruckVenue(hall),
+    );
     let nextSummary = {
       ...currentSummary,
-      diningHalls: mergeDiningHours(
-        currentSummary.diningHalls?.length
-          ? currentSummary.diningHalls
-          : buildFallbackDiningHalls(),
-        liveDiningHours,
-      ),
+      diningHalls: includeDining
+        ? mergeDiningHours(existingCampusDiningHalls, liveDiningHours)
+        : existingDiningHalls,
       gymCapacities: currentSummary.gymCapacities ?? [],
     };
     const errors = {};
@@ -882,6 +923,14 @@ export default async ({ req, res, error }) => {
         error(`Dining activity sync failed: ${exception?.message ?? exception}`);
         errors.dining = 'Dining activity sync failed';
       }
+
+      nextSummary = {
+        ...nextSummary,
+        diningHalls: mergeFoodTrucks(
+          nextSummary.diningHalls,
+          liveFoodTrucks ?? existingFoodTrucks,
+        ),
+      };
     }
 
     if (includeGyms) {

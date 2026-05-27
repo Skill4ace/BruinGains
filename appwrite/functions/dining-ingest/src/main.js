@@ -139,6 +139,7 @@ const PERIOD_CONFIG = [
   { key: 'dinner', anchorId: 'dinnermenu', heading: 'DINNER' },
   { key: 'lateNight', anchorId: 'latenightmenu', heading: 'Late Night' },
 ];
+const DINING_HALL_IDS = new Set(DINING_HALL_DEFAULTS.map((hall) => hall.$id));
 
 function parseRequestBody(req) {
   try {
@@ -716,7 +717,9 @@ function normalizeHallForIngest(hall, liveHoursByHallId = new Map()) {
 async function loadTargetHalls(storage, hallIds, liveHoursByHallId = new Map()) {
   const summary = await readOptionalCacheFile(storage, CACHE_FILES.summary);
   const rows = summary?.diningHalls?.length
-    ? summary.diningHalls.map((hall) => normalizeHallForIngest(hall, liveHoursByHallId))
+    ? summary.diningHalls
+        .filter((hall) => DINING_HALL_IDS.has(hall.id ?? hall.$id))
+        .map((hall) => normalizeHallForIngest(hall, liveHoursByHallId))
     : DINING_HALL_DEFAULTS.map((hall) => normalizeHallForIngest(hall, liveHoursByHallId));
 
   if (hallIds?.length) {

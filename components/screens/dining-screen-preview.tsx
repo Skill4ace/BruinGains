@@ -125,6 +125,10 @@ type DiningMealSaveOverrides = {
   titleOverride?: string;
 };
 
+function isFoodTruckVenue(hall: PublicDiningHall) {
+  return hall.kind === 'foodTruck' || hall.id.startsWith('food-truck-');
+}
+
 export function DiningScreenPreview() {
   const AppColors = useAppTheme().colors;
   const styles = useMemo(() => createStyles(AppColors), [AppColors]);
@@ -204,6 +208,10 @@ export function DiningScreenPreview() {
           return false;
         }
 
+        if (isFoodTruckVenue(hall)) {
+          return true;
+        }
+
         if (!diningMenuState.data.length || !latestGlobalServiceDate) {
           return true;
         }
@@ -221,6 +229,17 @@ export function DiningScreenPreview() {
           aPriority === -1 ? Number.MAX_SAFE_INTEGER : aPriority;
         const normalizedBPriority =
           bPriority === -1 ? Number.MAX_SAFE_INTEGER : bPriority;
+        const aIsFoodTruck = isFoodTruckVenue(a);
+        const bIsFoodTruck = isFoodTruckVenue(b);
+
+        if (aIsFoodTruck !== bIsFoodTruck) {
+          return aIsFoodTruck ? 1 : -1;
+        }
+
+        if (aIsFoodTruck && bIsFoodTruck && a.sortOrder !== b.sortOrder) {
+          return (a.sortOrder ?? Number.MAX_SAFE_INTEGER) -
+            (b.sortOrder ?? Number.MAX_SAFE_INTEGER);
+        }
 
         if (normalizedAPriority !== normalizedBPriority) {
           return normalizedAPriority - normalizedBPriority;
@@ -409,6 +428,10 @@ export function DiningScreenPreview() {
   };
 
   const handleHallOpen = (hall: PublicDiningHall) => {
+    if (isFoodTruckVenue(hall)) {
+      return;
+    }
+
     setActiveHallId(hall.id);
     setActiveHallPeriod(selectedPeriod);
     setHallSearchQuery('');
@@ -1853,37 +1876,56 @@ function HallRow({
   selectedPeriod,
 }: {
   hall: PublicDiningHall;
-  onPress: () => void;
+  onPress?: () => void;
   selectedPeriod: PeriodKey;
 }) {
   const AppColors = useAppTheme().colors;
   const styles = useMemo(() => createStyles(AppColors), [AppColors]);
   const hours = hall.hours[selectedPeriod];
-  const showActivity = hall.fitPercent !== null && isDiningHallOpenForHours(hours);
+  const isFoodTruck = isFoodTruckVenue(hall);
+  const isPressable = !isFoodTruck && hall.isInteractive !== false && Boolean(onPress);
+  const showActivity = !isFoodTruck && hall.fitPercent !== null && isDiningHallOpenForHours(hours);
+  const card = (
+    <SurfaceCard style={styles.hallCard}>
+      <View style={styles.hallCopy}>
+        <AppText variant="title">{hall.name}</AppText>
+        <AppText dimmed>{hours}</AppText>
+      </View>
+      <View style={styles.hallMeta}>
+        <View style={styles.hallMetaValue}>
+          {showActivity ? (
+            <View style={styles.hallMetaCopy}>
+              <AppText variant="headline" color={AppColors.primary}>
+                {hall.fitPercent}%
+              </AppText>
+              <AppText variant="micro" dimmed>
+                activity
+              </AppText>
+            </View>
+          ) : null}
+          {isFoodTruck ? (
+            <View style={styles.hallTruckIcon}>
+              <MaterialCommunityIcons
+                name="truck-outline"
+                size={20}
+                color={AppColors.primary}
+              />
+            </View>
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
+          )}
+        </View>
+      </View>
+    </SurfaceCard>
+  );
+
+  if (!isPressable) {
+    return card;
+  }
 
   return (
     <PressScale haptic="light" hapticTrigger="press" onPress={onPress} pressEffect="smooth">
-      <SurfaceCard style={styles.hallCard}>
-        <View style={styles.hallCopy}>
-          <AppText variant="title">{hall.name}</AppText>
-          <AppText dimmed>{hours}</AppText>
-        </View>
-        <View style={styles.hallMeta}>
-          <View style={styles.hallMetaValue}>
-            {showActivity ? (
-              <View style={styles.hallMetaCopy}>
-                <AppText variant="headline" color={AppColors.primary}>
-                  {hall.fitPercent}%
-                </AppText>
-                <AppText variant="micro" dimmed>
-                  activity
-                </AppText>
-              </View>
-            ) : null}
-            <Ionicons name="chevron-forward" size={16} color={AppColors.textSubtle} />
-          </View>
-        </View>
-      </SurfaceCard>
+      {card}
     </PressScale>
   );
 }
@@ -2444,6 +2486,14 @@ function createStyles(c: ThemeColors) {
   },
   hallMetaCopy: {
     alignItems: 'flex-end',
+  },
+  hallTruckIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: Radii.pill,
+    backgroundColor: c.surfaceLow,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   menuModalRoot: {
     flex: 1,

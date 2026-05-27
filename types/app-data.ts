@@ -17,6 +17,10 @@ export type PublicDiningHall = {
   name: string;
   fitPercent: number | null;
   hours: PublicDiningHallHours;
+  isInteractive?: boolean;
+  kind?: 'diningHall' | 'foodTruck';
+  locationName?: string;
+  sortOrder?: number;
 };
 
 export type GymCapacitySnapshot = {

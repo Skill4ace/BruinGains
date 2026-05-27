@@ -1,13 +1,11 @@
 # BruinGains Product Spec
 
 Todo 
-1. Add Bruin bowl and food trucks
-2. Fix UI interactions on dining halls
-    a.) the clicks shouldnt have the bounce
-    b.) opening a dining item should automatically open the popup thing rather than just the plus 
+1. Add food trucks
 3. Fix the templates with your PPL workout atleast 
 4. Make the onboarding image better with GPT images
-5. Put a referral loop within the app so that people can share it with others 
+
+
 
 
 
