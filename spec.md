@@ -1,9 +1,7 @@
 # BruinGains Product Spec
 
 Todo 
-1. Add food trucks
-3. Fix the templates with your PPL workout atleast 
-4. Make the onboarding image better with GPT images
+1. Make the onboarding image better with GPT images
 
 
 
